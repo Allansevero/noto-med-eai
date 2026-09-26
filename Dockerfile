@@ -1,0 +1,22 @@
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copia manifestos de dependência
+COPY package*.json ./
+
+# Instala dependências de produção
+RUN npm ci
+
+# Copia código-fonte e configurações
+COPY tsconfig.json ./
+COPY src ./src
+
+# Porta padrão da aplicação HTTP
+EXPOSE 3000
+
+ENV PORT=3000
+ENV NODE_ENV=production
+
+# Comando padrão (API Webhook + UI). Para o worker, use command: ["npm", "run", "worker"]
+CMD ["npm", "start"]

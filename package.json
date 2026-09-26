@@ -1,0 +1,39 @@
+{
+  "name": "notomed-whats",
+  "version": "0.1.0",
+  "description": "Sistema de emissão de NFS-e para médicos via WhatsApp",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "start": "node --import tsx src/server.ts",
+    "worker": "node --import tsx src/worker-runner.ts"
+  },
+  "keywords": [
+    "nfse",
+    "whatsapp",
+    "medicos",
+    "saas"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.13.0",
+    "@types/pg": "^8.23.1"
+  },
+  "dependencies": {
+    "@nfewizard/types": "^1.0.11",
+    "@supabase/supabase-js": "^2.117.2",
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0",
+    "zod": "^3.24.0"
+  }
+}

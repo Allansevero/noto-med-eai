@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notomed Whats — Emissão de NFS-e para Médicos via WhatsApp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090e17;
+      --card-bg: rgba(18, 27, 43, 0.85);
+      --card-border: rgba(45, 62, 94, 0.5);
+      --primary: #00d285;
+      --primary-hover: #00ba75;
+      --primary-glow: rgba(0, 210, 133, 0.25);
+      --accent: #00a8ff;
+      --text: #f0f4f8;
+      --text-muted: #8fa0b5;
+      --danger: #ff4757;
+      --success: #2ed573;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at 20% 20%, #152238 0%, var(--bg) 70%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      perspective: 1000px;
+    }
+
+    .brand-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(0, 210, 133, 0.12);
+      border: 1px solid rgba(0, 210, 133, 0.3);
+      color: var(--primary);
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-header h1 {
+      font-size: 2.25rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 40%, var(--primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    .brand-header p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 2.25rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 25px var(--primary-glow);
+      backdrop-filter: blur(16px);
+      transition: transform 0.3s ease, border-color 0.3s ease;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    input[type="tel"],
+    input[type="text"] {
+      width: 100%;
+      background: rgba(10, 16, 26, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+      color: var(--text);
+      font-size: 1.1rem;
+      letter-spacing: 0.5px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+      background: rgba(10, 16, 26, 0.95);
+    }
+
+    .btn {
+      width: 100%;
+      background: var(--primary);
+      color: #061019;
+      border: none;
+      border-radius: 12px;
+      padding: 0.9rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px var(--primary-glow);
+    }
+
+    .btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .alert-error {
+      background: rgba(255, 71, 87, 0.15);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      color: var(--danger);
+    }
+
+    .alert-success {
+      background: rgba(46, 213, 115, 0.15);
+      border: 1px solid rgba(46, 213, 115, 0.3);
+      color: var(--success);
+    }
+
+    .otp-inputs {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .otp-inputs input {
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      padding: 0.75rem 0;
+      border-radius: 12px;
+    }
+
+    .footer-links {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: 0.825rem;
+      color: var(--text-muted);
+    }
+
+    .footer-links a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    /* Dashboard preview */
+    .dashboard-panel {
+      text-align: left;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+
+    .tag-active {
+      color: var(--success);
+      background: rgba(46, 213, 115, 0.15);
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .code-box {
+      background: #080d16;
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 0.85rem;
+      border-radius: 10px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #00d285;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand-header">
+      <div class="badge">● SISTEMA OFICIAL DE EMISSÃO</div>
+      <h1>Notomed Whats</h1>
+      <p>Emissão de NFS-e para médicos diretamente pelo WhatsApp, sem formulários ou fricção.</p>
+    </div>
+
+    <!-- CARD PRINCIPAL DE AUTENTICAÇÃO -->
+    <div class="card" id="cardAuth">
+      <div id="alertBox" class="alert alert-error hidden"></div>
+
+      <!-- ETAPA 1: DIGITAR TELEFONE -->
+      <form id="formTelefone">
+        <div class="form-group">
+          <label for="inputTelefone">WhatsApp do Médico ou Consultório</label>
+          <input type="tel" id="inputTelefone" placeholder="(11) 98765-4321" required autofocus maxlength="15">
+        </div>
+        <button type="submit" class="btn" id="btnEnviarOtp">
+          <span>Receber código no WhatsApp</span>
+          <span>→</span>
+        </button>
+      </form>
+
+      <!-- ETAPA 2: DIGITAR OTP -->
+      <form id="formOtp" class="hidden">
+        <div class="form-group">
+          <label>Código de 6 dígitos enviado ao seu WhatsApp</label>
+          <div class="otp-inputs">
+            <input type="text" maxlength="1" class="otp-digit" autofocus>
+            <input type="text" maxlength="1" class="otp-digit">
+            <input type="text" maxlength="1" class="otp-digit">
+            <input type="text" maxlength="1" class="otp-digit">
+            <input type="text" maxlength="1" class="otp-digit">
+            <input type="text" maxlength="1" class="otp-digit">
+          </div>
+        </div>
+        <button type="submit" class="btn" id="btnValidarOtp">
+          <span>Acessar Consultório</span>
+          <span>✓</span>
+        </button>
+        <div style="text-align: center; margin-top: 1rem;">
+          <a href="#" id="linkVoltar" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">← Voltar e alterar número</a>
+        </div>
+      </form>
+
+      <!-- ETAPA 3: PAINEL APÓS LOGIN -->
+      <div id="painelConectado" class="dashboard-panel hidden">
+        <div class="stat-row">
+          <span>Médico Autenticado</span>
+          <span id="nomeMedicoLogado" style="font-weight: 600;">Dr(a). Médico</span>
+        </div>
+        <div class="stat-row">
+          <span>Instância WhatsApp</span>
+          <span class="tag-active">CONECTADO</span>
+        </div>
+        <div class="stat-row">
+          <span>Regime Fiscal</span>
+          <span style="color: var(--text-muted);">Simples Nacional / SEFIN</span>
+        </div>
+
+        <div style="margin-top: 1.5rem;">
+          <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Comandos Rápidos Ativos no WhatsApp:</label>
+          <div class="code-box">/agendado → "Consulta agendada!"</div>
+          <div class="code-box">/emissao → "Vou enviar em instantes sua NF no valor de R$"</div>
+        </div>
+
+        <button class="btn" style="margin-top: 1.5rem; background: rgba(255, 71, 87, 0.2); color: var(--danger); border: 1px solid rgba(255, 71, 87, 0.4);" onclick="location.reload()">
+          Sair da Conta
+        </button>
+      </div>
+    </div>
+
+    <div class="footer-links">
+      Protegido por criptografia pgcrypto & Supabase Auth. Hospedado na Hostinger VPS.
+    </div>
+  </div>
+
+  <script>
+    const formTelefone = document.getElementById('formTelefone');
+    const formOtp = document.getElementById('formOtp');
+    const painelConectado = document.getElementById('painelConectado');
+    const inputTelefone = document.getElementById('inputTelefone');
+    const alertBox = document.getElementById('alertBox');
+    const otpDigits = document.querySelectorAll('.otp-digit');
+    const linkVoltar = document.getElementById('linkVoltar');
+    let telefoneAtual = '';
+
+    // Máscara de telefone brasileiro (XX) XXXXX-XXXX
+    inputTelefone.addEventListener('input', (e) => {
+      let v = e.target.value.replace(/\D/g, '');
+      if (v.length > 11) v = v.slice(0, 11);
+      if (v.length > 6) {
+        e.target.value = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+      } else if (v.length > 2) {
+        e.target.value = `(${v.slice(0,2)}) ${v.slice(2)}`;
+      } else if (v.length > 0) {
+        e.target.value = `(${v}`;
+      }
+    });
+
+    function showAlert(msg, isError = true) {
+      alertBox.textContent = msg;
+      alertBox.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
+      alertBox.classList.remove('hidden');
+    }
+
+    function hideAlert() {
+      alertBox.classList.add('hidden');
+    }
+
+    // Enviar OTP
+    formTelefone.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+      const digitos = inputTelefone.value.replace(/\D/g, '');
+      if (digitos.length < 10) {
+        showAlert('Digite um número de WhatsApp válido com DDD.');
+        return;
+      }
+
+      telefoneAtual = digitos;
+      const btn = document.getElementById('btnEnviarOtp');
+      btn.disabled = true;
+      btn.textContent = 'Enviando código...';
+
+      try {
+        const res = await fetch('/api/auth/otp/solicitar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telefone: digitos })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showAlert(data.detalhe || 'Erro ao enviar código. Tente novamente.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
+          return;
+        }
+
+        showAlert('Código enviado com sucesso para o seu WhatsApp!', false);
+        formTelefone.classList.add('hidden');
+        formOtp.classList.remove('hidden');
+        otpDigits[0].focus();
+      } catch (err) {
+        showAlert('Erro de conexão com o servidor.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
+      }
+    });
+
+    // Auto-avanço nos inputs do OTP
+    otpDigits.forEach((input, index) => {
+      input.addEventListener('input', () => {
+        if (input.value.length === 1 && index < otpDigits.length - 1) {
+          otpDigits[index + 1].focus();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && index > 0) {
+          otpDigits[index - 1].focus();
+        }
+      });
+    });
+
+    // Confirmar OTP
+    formOtp.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+      const codigo = Array.from(otpDigits).map(i => i.value).join('');
+      if (codigo.length !== 6) {
+        showAlert('Digite o código de 6 dígitos completo.');
+        return;
+      }
+
+      const btn = document.getElementById('btnValidarOtp');
+      btn.disabled = true;
+      btn.textContent = 'Validando...';
+
+      try {
+        const res = await fetch('/api/auth/otp/verificar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telefone: telefoneAtual, codigo })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showAlert(data.detalhe || 'Código incorreto ou expirado.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>Acessar Consultório</span><span>✓</span>';
+          return;
+        }
+
+        formOtp.classList.add('hidden');
+        painelConectado.classList.remove('hidden');
+        document.getElementById('nomeMedicoLogado').textContent = data.sessao.usuario.nome || 'Médico Autenticado';
+        showAlert('Autenticado com sucesso via Supabase Auth!', false);
+      } catch (err) {
+        showAlert('Erro ao autenticar.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>Acessar Consultório</span><span>✓</span>';
+      }
+    });
+
+    linkVoltar.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideAlert();
+      formOtp.classList.add('hidden');
+      formTelefone.classList.remove('hidden');
+      document.getElementById('btnEnviarOtp').disabled = false;
+      document.getElementById('btnEnviarOtp').innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
+    });
+  </script>
+</body>
+</html>
