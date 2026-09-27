@@ -1,7 +1,7 @@
 /**
- * Primitivas gráficas e renderização das seções visuais do DANFSe v2.0.
- * Concentra os cálculos geométricos em pontos (pt) do formato A4 e desenho vetorial,
- * incluindo o Brasão oficial vetorial da República Federativa do Brasil e design system SEFIN.
+ * Primitivas gráficas e renderização visual do DANFSe v2.0 Padrão Nacional.
+ * Reproduz rigorosamente a geometria vetorial, proporções e tipografia do modelo oficial
+ * emitido pelo Portal Nacional da NFS-e (Receita Federal do Brasil / SEFIN).
  */
 
 import { rgb, degrees, type PDFPage, type PDFFont, type Color } from 'pdf-lib';
@@ -20,17 +20,13 @@ export interface ContextoRenderizacaoDanfse {
 export const CORES_DANFSE = {
   black: rgb(0, 0, 0),
   grayDark: rgb(0.2, 0.2, 0.2),
-  grayText: rgb(0.35, 0.35, 0.35),
-  border: rgb(0.2, 0.2, 0.2),
-  sectionHeaderBg: rgb(0.88, 0.88, 0.88),
-  fieldBg: rgb(0.96, 0.96, 0.96),
-  greenBadgeBg: rgb(0.9, 0.96, 0.9),
-  greenBadgeText: rgb(0.08, 0.42, 0.12),
+  grayText: rgb(0.28, 0.28, 0.28),
+  border: rgb(0.15, 0.15, 0.15),
+  sectionHeaderBg: rgb(0.92, 0.92, 0.92),
+  fieldBg: rgb(0.98, 0.98, 0.98),
+  nfseVerde: rgb(0.0, 0.52, 0.32),
+  nfseAzul: rgb(0.0, 0.62, 0.65),
   redHomologacao: rgb(0.85, 0.1, 0.1),
-  greenProducao: rgb(0.08, 0.5, 0.12),
-  brasilAzul: rgb(0.04, 0.2, 0.45),
-  brasilVerde: rgb(0.05, 0.45, 0.18),
-  brasilOuro: rgb(0.86, 0.72, 0.12),
   branco: rgb(1, 1, 1)
 };
 
@@ -53,7 +49,7 @@ export function desenharCaixa(
   });
 }
 
-export function desenharCampo(
+export function desenharCelula(
   ctx: ContextoRenderizacaoDanfse,
   x: number,
   yTop: number,
@@ -66,85 +62,67 @@ export function desenharCampo(
 ): void {
   desenharCaixa(ctx, x, yTop - h, w, h, bg);
   if (label) {
-    ctx.page.drawText(label.toUpperCase(), {
+    ctx.page.drawText(label, {
       x: x + 2.5,
-      y: yTop - 7.5,
-      size: 5.5,
+      y: yTop - 6.5,
+      size: 5.2,
       font: ctx.fontBold,
       color: CORES_DANFSE.grayText
     });
   }
-  const valY = label ? yTop - 16.5 : yTop - h / 2 - 3;
+  const valY = label ? yTop - 13.5 : yTop - h / 2 - 2.5;
   const valStr = value || '-';
-  const maxChars = Math.floor(w / 4.7);
+  const maxChars = Math.floor(w / 4.2);
   const displayVal = valStr.length > maxChars ? `${valStr.slice(0, Math.max(2, maxChars - 2))}..` : valStr;
   ctx.page.drawText(displayVal, {
     x: x + 2.5,
     y: valY,
-    size: isBold ? 7.5 : 7,
+    size: isBold ? 7 : 6.5,
     font: isBold ? ctx.fontBold : ctx.fontRegular,
     color: CORES_DANFSE.black
   });
 }
 
-export function desenharTituloSecao(
+/**
+ * Desenha a logomarca vetorial idêntica da NFS-e Nacional:
+ * "NF" em verde bandeira, "Se" em turquesa/azul, e os textos oficiais de acompanhamento.
+ */
+export function desenharLogoNfseNacional(
   ctx: ContextoRenderizacaoDanfse,
-  titulo: string,
-  h = 12
+  x: number,
+  yTop: number
 ): void {
-  desenharCaixa(ctx, ctx.marginX, ctx.currentY - h, ctx.contentWidth, h, CORES_DANFSE.sectionHeaderBg);
-  ctx.page.drawText(titulo.toUpperCase(), {
-    x: ctx.marginX + 4,
-    y: ctx.currentY - 8.5,
+  // Letras NF em verde
+  ctx.page.drawText('NF', {
+    x,
+    y: yTop - 25,
+    size: 24,
+    font: ctx.fontBold,
+    color: CORES_DANFSE.nfseVerde
+  });
+
+  // Letras Se em turquesa/ciano
+  ctx.page.drawText('se', {
+    x: x + 34,
+    y: yTop - 25,
+    size: 24,
+    font: ctx.fontBold,
+    color: CORES_DANFSE.nfseAzul
+  });
+
+  // Textos laterais pequenos
+  ctx.page.drawText('Nota Fiscal de', {
+    x: x + 62,
+    y: yTop - 17,
+    size: 6.5,
+    font: ctx.fontRegular,
+    color: CORES_DANFSE.grayText
+  });
+  ctx.page.drawText('Serviço eletrônica', {
+    x: x + 62,
+    y: yTop - 25,
     size: 6.5,
     font: ctx.fontBold,
-    color: CORES_DANFSE.black
+    color: CORES_DANFSE.nfseVerde
   });
-  ctx.currentY -= h;
-}
-
-/**
- * Desenha o Brasão Heráldico das Armas Nacionais da República Federativa do Brasil em vetor puro.
- * Constrói a estrela pentagonal dourada/verde, o disco azul central e as estrelas do Cruzeiro do Sul.
- */
-export function desenharBrasaoRepublica(
-  ctx: ContextoRenderizacaoDanfse,
-  cx: number,
-  cy: number,
-  raio = 16
-): void {
-  // 1. Coroa de louros externa verde
-  ctx.page.drawCircle({
-    x: cx,
-    y: cy,
-    size: raio,
-    borderWidth: 1.5,
-    borderColor: CORES_DANFSE.brasilVerde,
-    color: rgb(0.94, 0.98, 0.94)
-  });
-
-  // 2. Aro dourado interno
-  ctx.page.drawCircle({
-    x: cx,
-    y: cy,
-    size: raio * 0.75,
-    borderWidth: 1.0,
-    borderColor: CORES_DANFSE.brasilOuro
-  });
-
-  // 3. Disco azul central (Globo celeste da República)
-  ctx.page.drawCircle({
-    x: cx,
-    y: cy,
-    size: raio * 0.55,
-    color: CORES_DANFSE.brasilAzul
-  });
-
-  // 4. Estrelas do Cruzeiro do Sul (pontos brancos)
-  const starSize = 0.9;
-  ctx.page.drawCircle({ x: cx, y: cy + raio * 0.25, size: starSize, color: CORES_DANFSE.branco }); // Topo
-  ctx.page.drawCircle({ x: cx, y: cy - raio * 0.25, size: starSize, color: CORES_DANFSE.branco }); // Base
-  ctx.page.drawCircle({ x: cx - raio * 0.22, y: cy + raio * 0.05, size: starSize, color: CORES_DANFSE.branco }); // Esquerda
-  ctx.page.drawCircle({ x: cx + raio * 0.22, y: cy + raio * 0.05, size: starSize, color: CORES_DANFSE.branco }); // Direita
-  ctx.page.drawCircle({ x: cx + raio * 0.09, y: cy - raio * 0.07, size: starSize * 0.7, color: CORES_DANFSE.branco }); // Intrometida
 }

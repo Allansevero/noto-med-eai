@@ -1,17 +1,17 @@
 /**
  * Renderização dos blocos de serviços, tributação municipal (ISSQN),
- * tributação federal (RTC 2026 - IBS/CBS), valores totais e informações complementares.
- * Atende rigorosamente às diretrizes da NT 008/2026 v1.02 e Resolução CGSN 169/2022.
+ * tributação federal (exceto CBS), tributação IBS/CBS (RTC 2026),
+ * valores totais, informações complementares e canhoto de cientificação.
+ * Segue 1:1 o layout oficial do Portal Nacional da NFS-e.
  */
 
-import { rgb, degrees } from 'pdf-lib';
+import { degrees, rgb } from 'pdf-lib';
 import type { DanfsePdfOptions, DanfseServico, DanfsePrestador } from './danfse-pdf-options.js';
 import {
   type ContextoRenderizacaoDanfse,
   CORES_DANFSE,
   desenharCaixa,
-  desenharCampo,
-  desenharTituloSecao
+  desenharCelula
 } from './renderizar-secoes-danfse.js';
 import { resolverNomeMunicipio } from './formatadores-fiscais.js';
 
@@ -20,178 +20,252 @@ export function renderizarServico(
   servico: DanfseServico = {},
   prestador: DanfsePrestador = {}
 ): void {
-  desenharTituloSecao(ctx, 'Serviço Prestado');
-  const colW4 = ctx.contentWidth / 4;
-  const munUf = `${resolverNomeMunicipio(prestador.municipio, prestador.municipio)} - ${(prestador.uf || 'RS').toUpperCase()}`;
+  const rowH = 16;
+  let y = ctx.currentY;
 
-  desenharCampo(ctx, ctx.marginX, ctx.currentY, colW4, 18, 'Cód. Tributação Nacional', servico.cTribNac || '041601', true);
-  desenharCampo(ctx, ctx.marginX + colW4, ctx.currentY, colW4, 18, 'Código da NBS', servico.cNBS || '123011300');
-  desenharCampo(ctx, ctx.marginX + colW4 * 2, ctx.currentY, colW4 * 2, 18, 'Local da Prestação', `${munUf} / Brasil`);
-  ctx.currentY -= 18;
+  // Linha 1: Título | Código Trib Nac/Mun | Código NBS | Local da Prestação
+  const munNome = resolverNomeMunicipio(prestador.municipio, prestador.municipio);
+  const locPrest = `${munNome} / ${(prestador.uf || 'RS').toUpperCase()} / -`;
 
-  renderizarDiscriminacaoServicos(ctx, servico.discriminacao || '');
-}
+  desenharCelula(ctx, ctx.marginX, y, 130, rowH, '', 'SERVIÇO PRESTADO', true);
+  desenharCelula(ctx, ctx.marginX + 130, y, 140, rowH, 'Código de Tributação Nacional/Municipal', `${servico.cTribNac || '04.16.01'} / -`);
+  desenharCelula(ctx, ctx.marginX + 270, y, 145, rowH, 'Código da NBS', servico.cNBS || '1.2301.13.00');
+  desenharCelula(ctx, ctx.marginX + 415, y, ctx.contentWidth - 415, rowH, 'Local da Prestação / Sigla UF / País', locPrest);
+  y -= rowH;
 
-function renderizarDiscriminacaoServicos(ctx: ContextoRenderizacaoDanfse, rawDesc: string): void {
-  const descH = 46;
-  desenharCaixa(ctx, ctx.marginX, ctx.currentY - descH, ctx.contentWidth, descH);
-  ctx.page.drawText('DISCRIMINAÇÃO DOS SERVIÇOS', {
-    x: ctx.marginX + 4,
-    y: ctx.currentY - 8,
+  // Linha 2: Descrição da atividade e Discriminação dos Serviços
+  const descH = 26;
+  desenharCaixa(ctx, ctx.marginX, y - descH, ctx.contentWidth, descH);
+
+  // Sub-descrição da NBS (linha superior)
+  const subTexto = 'Atos e procedimentos médicos, consultas clínicas, diagnósticos e atendimentos profissionais em saúde humana.';
+  ctx.page.drawText(subTexto, {
+    x: ctx.marginX + 3,
+    y: y - 7.5,
     size: 5.5,
-    font: ctx.fontBold,
+    font: ctx.fontRegular,
     color: CORES_DANFSE.grayText
   });
 
-  const linhas = quebrarLinhasDescricao(rawDesc, 95);
-  let descY = ctx.currentY - 20;
-  for (const line of linhas.slice(0, 3)) {
-    ctx.page.drawText(line, {
-      x: ctx.marginX + 6,
-      y: descY,
-      size: 7.5,
-      font: ctx.fontRegular,
-      color: CORES_DANFSE.black
-    });
-    descY -= 11;
-  }
-  ctx.currentY -= descH;
-}
+  // Label Descrição do Serviço
+  ctx.page.drawText('Descrição do Serviço', {
+    x: ctx.marginX + 3,
+    y: y - 14.5,
+    size: 5.5,
+    font: ctx.fontBold,
+    color: CORES_DANFSE.black
+  });
 
-function quebrarLinhasDescricao(texto: string, maxCharsPorLinha: number): string[] {
-  const descLines: string[] = [];
-  let currentLine = '';
-  for (const word of texto.split(' ')) {
-    if ((currentLine + ' ' + word).trim().length <= maxCharsPorLinha) {
-      currentLine = (currentLine + ' ' + word).trim();
-    } else {
-      descLines.push(currentLine);
-      currentLine = word;
-    }
-  }
-  if (currentLine) descLines.push(currentLine);
-  return descLines;
+  // Conteúdo real digitado pelo médico
+  const descReal = servico.discriminacao || 'Serviços médicos profissionais.';
+  const maxChars = Math.floor(ctx.contentWidth / 4.4);
+  const descDisplay = descReal.length > maxChars ? `${descReal.slice(0, maxChars - 3)}...` : descReal;
+
+  ctx.page.drawText(descDisplay, {
+    x: ctx.marginX + 3,
+    y: y - 22,
+    size: 6.8,
+    font: ctx.fontRegular,
+    color: CORES_DANFSE.black
+  });
+  y -= descH;
+
+  ctx.currentY = y;
 }
 
 export function renderizarTributacaoMunicipal(
   ctx: ContextoRenderizacaoDanfse,
-  servico: DanfseServico = {},
+  _servico: DanfseServico = {},
   prestador: DanfsePrestador = {}
 ): void {
-  desenharTituloSecao(ctx, 'Tributação Municipal (ISSQN)');
-  const colW4 = ctx.contentWidth / 4;
-  const munUf = `${resolverNomeMunicipio(prestador.municipio, prestador.municipio)} - ${(prestador.uf || 'RS').toUpperCase()}`;
+  const rowH = 16;
+  let y = ctx.currentY;
+  const munNome = resolverNomeMunicipio(prestador.municipio, prestador.municipio);
 
-  desenharCampo(ctx, ctx.marginX, ctx.currentY, colW4, 19, 'Tipo de Tributação', 'Operação Tributável');
-  desenharCampo(ctx, ctx.marginX + colW4, ctx.currentY, colW4, 19, 'Município de Incidência', munUf);
-  desenharCampo(ctx, ctx.marginX + colW4 * 2, ctx.currentY, colW4, 19, 'Regime Especial', 'Nenhum');
-  desenharCampo(ctx, ctx.marginX + colW4 * 3, ctx.currentY, colW4, 19, 'Retenção ISSQN', 'Não Retido');
-  ctx.currentY -= 19;
+  // Linha 1
+  desenharCelula(ctx, ctx.marginX, y, 170, rowH, '', 'TRIBUTAÇÃO MUNICIPAL (ISSQN)', true);
+  desenharCelula(ctx, ctx.marginX + 170, y, 175, rowH, 'Tipo de Tributação do ISSQN', 'Operação Tributável');
+  desenharCelula(ctx, ctx.marginX + 345, y, ctx.contentWidth - 345, rowH, 'Município / Sigla UF / País de Incidência do ISSQN', `${munNome} / ${(prestador.uf || 'RS').toUpperCase()} / -`);
+  y -= rowH;
 
-  const vServ = (servico.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-  const aliq = (servico.aliquota || 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-  const vIss = (servico.issApurado || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  // Linha 2
+  const cW4 = ctx.contentWidth / 4;
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'BC ISSQN', '-');
+  desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'Alíquota Aplicada', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Retenção do ISSQN', 'Não Retido');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'ISSQN Apurado', '-');
+  y -= rowH;
 
-  desenharCampo(ctx, ctx.marginX, ctx.currentY, colW4, 19, 'Base de Cálculo ISSQN', `R$ ${vServ}`);
-  desenharCampo(ctx, ctx.marginX + colW4, ctx.currentY, colW4, 19, 'Alíquota Aplicada', `${aliq}%`);
-  desenharCampo(ctx, ctx.marginX + colW4 * 2, ctx.currentY, colW4, 19, 'ISSQN Apurado', `R$ ${vIss}`);
-  desenharCampo(ctx, ctx.marginX + colW4 * 3, ctx.currentY, colW4, 19, 'Total Deduções / Reduções', 'R$ 0,00');
-  ctx.currentY -= 19;
+  ctx.currentY = y;
 }
 
-export function renderizarTributacaoFederalEReforma(
-  ctx: ContextoRenderizacaoDanfse,
-  servico: DanfseServico = {},
-  prestador: DanfsePrestador = {}
-): void {
-  desenharTituloSecao(ctx, 'Tributação Federal & Reforma Tributária (RTC 2026 - IBS / CBS)');
-  const colW4 = ctx.contentWidth / 4;
+export function renderizarTributacaoFederalExcetoCbs(ctx: ContextoRenderizacaoDanfse): void {
+  const rowH = 16;
+  let y = ctx.currentY;
 
-  const cst = servico.cstIbsCbs || (prestador.simplesNacional ? '000 - Tributável Integralmente' : '000');
-  const cClass = servico.cClassTrib || '000001';
-  const cIndOp = servico.cIndOp || '030101';
-  const vServ = (servico.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  // Linha 1
+  const cW3Dir = (ctx.contentWidth - 170) / 3;
+  desenharCelula(ctx, ctx.marginX, y, 170, rowH, '', 'TRIBUTAÇÃO FEDERAL (EXCETO CBS)', true);
+  desenharCelula(ctx, ctx.marginX + 170, y, cW3Dir, rowH, 'IRRF', '-');
+  desenharCelula(ctx, ctx.marginX + 170 + cW3Dir, y, cW3Dir, rowH, 'Contribuição Previdenciária - Retida', '-');
+  desenharCelula(ctx, ctx.marginX + 170 + cW3Dir * 2, y, ctx.contentWidth - 170 - cW3Dir * 2, rowH, 'Contribuições Sociais - Retidas', '-');
+  y -= rowH;
 
-  desenharCampo(ctx, ctx.marginX, ctx.currentY, colW4, 19, 'CST IBS/CBS', cst);
-  desenharCampo(ctx, ctx.marginX + colW4, ctx.currentY, colW4, 19, 'Classificação Trib.', cClass);
-  desenharCampo(ctx, ctx.marginX + colW4 * 2, ctx.currentY, colW4, 19, 'Indicador Operação', cIndOp);
-  desenharCampo(ctx, ctx.marginX + colW4 * 3, ctx.currentY, colW4, 19, 'Base Cálculo IBS/CBS', `R$ ${vServ}`);
-  ctx.currentY -= 19;
+  // Linha 2
+  desenharCelula(ctx, ctx.marginX, y, 170, rowH, 'PIS - Débito Apuração Própria', '-');
+  desenharCelula(ctx, ctx.marginX + 170, y, 175, rowH, 'COFINS - Débito Apuração Própria', '-');
+  desenharCelula(ctx, ctx.marginX + 345, y, ctx.contentWidth - 345, rowH, 'Descrição Contrib. Sociais - Retidas', '-');
+  y -= rowH;
 
-  const aliqCbs = (servico.aliquotaCbs || 0).toFixed(2).replace('.', ',');
-  const vCbs = (servico.valorCbs || 0).toFixed(2).replace('.', ',');
-  const aliqIbs = (servico.aliquotaIbs || 0).toFixed(2).replace('.', ',');
-  const vIbs = (servico.valorIbs || 0).toFixed(2).replace('.', ',');
-
-  desenharCampo(ctx, ctx.marginX, ctx.currentY, colW4, 19, 'Alíquota CBS Federal', `${aliqCbs}%`);
-  desenharCampo(ctx, ctx.marginX + colW4, ctx.currentY, colW4, 19, 'CBS Apurada', `R$ ${vCbs}`);
-  desenharCampo(ctx, ctx.marginX + colW4 * 2, ctx.currentY, colW4, 19, 'Alíquota IBS Est./Mun.', `${aliqIbs}%`);
-  desenharCampo(ctx, ctx.marginX + colW4 * 3, ctx.currentY, colW4, 19, 'IBS Apurado', `R$ ${vIbs}`);
-  ctx.currentY -= 19;
+  ctx.currentY = y;
 }
 
-export function renderizarTotaisEValorLiquido(ctx: ContextoRenderizacaoDanfse, servico: DanfseServico = {}): void {
-  desenharTituloSecao(ctx, 'Valores Totais da NFS-e');
-  const colW4 = ctx.contentWidth / 4;
-  const totH = 24;
+export function renderizarTributacaoIbsCbs(ctx: ContextoRenderizacaoDanfse): void {
+  const rowH = 16;
+  let y = ctx.currentY;
+
+  // Linha 1
+  desenharCelula(ctx, ctx.marginX, y, 140, rowH, '', 'TRIBUTAÇÃO IBS/CBS', true);
+  desenharCelula(ctx, ctx.marginX + 140, y, 140, rowH, 'CST / cClassTrib', '- / -');
+  desenharCelula(ctx, ctx.marginX + 280, y, ctx.contentWidth - 280, rowH, 'Indicador de Operação / Código IBGE Incidência / Município Incidência / Sigla UF', '- / - / - / -');
+  y -= rowH;
+
+  // Linha 2
+  const cW4 = ctx.contentWidth / 4;
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Exclusões e Reduções da Base de Cálculo', 'R$ 0,00');
+  desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'Base de Cálculo Após Exclusões e Reduções', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Red. Alíquota IBS / Red. Alíquota CBS', '- / - / -');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'Alíquota - IBS UF / IBS Mun', '- / -');
+  y -= rowH;
+
+  // Linha 3
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Aliq. Efetiva Municipal - IBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'Valor Apurado Municipal - IBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Aliq. Efetiva Estadual - IBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'Valor Apurado Estadual - IBS', '-');
+  y -= rowH;
+
+  // Linha 4
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Valor Total Apurado - IBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'Alíquota - CBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Alíquota Efetiva - CBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'Valor Total Apurado - CBS', '-');
+  y -= rowH;
+
+  ctx.currentY = y;
+}
+
+export function renderizarValoresTotais(ctx: ContextoRenderizacaoDanfse, servico: DanfseServico = {}): void {
+  const rowH = 16;
+  let y = ctx.currentY;
+  const cW4 = ctx.contentWidth / 4;
   const vServ = (servico.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-  const vDesc = (servico.desconto || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-  const vRet = (servico.retencoes || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
-  desenharCampo(ctx, ctx.marginX, ctx.currentY, colW4, totH, 'Valor dos Serviços', `R$ ${vServ}`, true);
-  desenharCampo(ctx, ctx.marginX + colW4, ctx.currentY, colW4, totH, 'Desconto Incondicionado', `R$ ${vDesc}`);
-  desenharCampo(ctx, ctx.marginX + colW4 * 2, ctx.currentY, colW4, totH, 'Total Retenções Federais', `R$ ${vRet}`);
+  // Linha 1
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, '', 'VALOR TOTAL DA NFS-e', true);
+  desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'VALOR DA OPERAÇÃO / SERVIÇO', `R$ ${vServ}`, true);
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Desconto Incondicionado', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'Desconto Condicionado', '-');
+  y -= rowH;
 
-  // Quadro de destaque do Valor Líquido
-  const valLiq = (servico.valor || 0) - (servico.desconto || 0) - (servico.retencoes || 0);
-  const xLiq = ctx.marginX + colW4 * 3;
-  desenharCaixa(ctx, xLiq, ctx.currentY - totH, colW4, totH, CORES_DANFSE.greenBadgeBg);
-  ctx.page.drawText('VALOR LÍQUIDO DA NFS-e', {
-    x: xLiq + 3,
+  // Linha 2
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Total das Retenções (ISSQN / Federais)', '-');
+  desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'VALOR LÍQUIDO DA NFS-e', `R$ ${vServ}`, true);
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Total do IBS/CBS', 'R$ 0,00');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'VALOR LÍQUIDO DA NFS-e + IBS/CBS', 'R$ 0,00');
+  y -= rowH;
+
+  ctx.currentY = y;
+}
+
+export function renderizarInformacoesComplementares(ctx: ContextoRenderizacaoDanfse): void {
+  const h = 26;
+  desenharCaixa(ctx, ctx.marginX, ctx.currentY - h, ctx.contentWidth, h);
+
+  ctx.page.drawText('INFORMAÇÕES COMPLEMENTARES', {
+    x: ctx.marginX + 3,
     y: ctx.currentY - 8,
+    size: 5.5,
+    font: ctx.fontBold,
+    color: CORES_DANFSE.black
+  });
+
+  const texto = 'Totais aproximados dos Tributos cfe. Lei n° 12.741/2012: Federais: -; Estaduais: -; Municipais: -;';
+  ctx.page.drawText(texto, {
+    x: ctx.marginX + 3,
+    y: ctx.currentY - 17,
+    size: 6,
+    font: ctx.fontRegular,
+    color: CORES_DANFSE.black
+  });
+
+  ctx.currentY -= h;
+}
+
+export function renderizarCanhotoCientificacao(
+  ctx: ContextoRenderizacaoDanfse,
+  options: DanfsePdfOptions
+): void {
+  const yBottom = 20;
+  const h = 22;
+  const col1W = 145;
+  const col2W = 195;
+  const col3W = ctx.contentWidth - col1W - col2W;
+
+  // Caixa externa
+  desenharCaixa(ctx, ctx.marginX, yBottom, ctx.contentWidth, h);
+
+  // Linhas verticais separadoras
+  ctx.page.drawLine({
+    start: { x: ctx.marginX + col1W, y: yBottom },
+    end: { x: ctx.marginX + col1W, y: yBottom + h },
+    thickness: 0.5,
+    color: CORES_DANFSE.border
+  });
+  ctx.page.drawLine({
+    start: { x: ctx.marginX + col1W + col2W, y: yBottom },
+    end: { x: ctx.marginX + col1W + col2W, y: yBottom + h },
+    thickness: 0.5,
+    color: CORES_DANFSE.border
+  });
+
+  // Coluna 1: Data Cientificação
+  ctx.page.drawText('DATA CIENTIFICAÇÃO:', {
+    x: ctx.marginX + 3,
+    y: yBottom + h - 8,
     size: 6,
     font: ctx.fontBold,
-    color: CORES_DANFSE.greenBadgeText
+    color: CORES_DANFSE.black
   });
-  ctx.page.drawText(`R$ ${valLiq.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, {
-    x: xLiq + 3,
-    y: ctx.currentY - 19,
-    size: 10,
+
+  // Coluna 2: Identificação e Assinatura
+  ctx.page.drawText('IDENTIFICAÇÃO E ASSINATURA', {
+    x: ctx.marginX + col1W + 3,
+    y: yBottom + h - 8,
+    size: 6,
     font: ctx.fontBold,
-    color: CORES_DANFSE.greenBadgeText
+    color: CORES_DANFSE.black
   });
-  ctx.currentY -= totH;
-}
 
-export function renderizarInformacoesComplementares(
-  ctx: ContextoRenderizacaoDanfse,
-  prestador: DanfsePrestador = {}
-): void {
-  desenharTituloSecao(ctx, 'Informações Complementares', 11);
-  const infoH = 46;
-  desenharCaixa(ctx, ctx.marginX, ctx.currentY - infoH, ctx.contentWidth, infoH);
+  // Coluna 3: N° NFS-e / Chave
+  const xCol3 = ctx.marginX + col1W + col2W;
+  ctx.page.drawText('N° NFS-e / CHAVE NFS-e', {
+    x: xCol3 + 3,
+    y: yBottom + h - 8,
+    size: 6,
+    font: ctx.fontBold,
+    color: CORES_DANFSE.black
+  });
 
-  const textos = [
-    prestador.simplesNacional
-      ? 'I - Documento emitido por ME ou EPP optante pelo Simples Nacional (Microempreendedor Individual ou EPP).'
-      : 'I - Empresa tributada pelo Lucro Presumido/Real. CBS e IBS apurados conforme RTC/2026.',
-    'II - Não gera direito a crédito fiscal de IPI ou ISSQN.',
-    'III - Total aproximado de tributos federais, estaduais e municipais: R$ 0,00 (0.00%) - Lei Federal nº 12.741/2012.',
-    'IV - NFS-e emitida em conformidade com o Convênio Nacional da NFS-e (Lei Complementar nº 116/2003 e Resolução CGSN nº 169/2022).'
-  ];
-
-  let infoY = ctx.currentY - 10;
-  for (const t of textos) {
-    ctx.page.drawText(t, {
-      x: ctx.marginX + 6,
-      y: infoY,
-      size: 6,
-      font: ctx.fontRegular,
-      color: CORES_DANFSE.grayText
-    });
-    infoY -= 10;
-  }
-  ctx.currentY -= infoH;
+  const num = options.numero || '1';
+  const chaveLimpa = (options.chaveAcesso || '').replace(/\D/g, '');
+  ctx.page.drawText(`${num} / ${chaveLimpa}`, {
+    x: xCol3 + 3,
+    y: yBottom + 5,
+    size: 5.8,
+    font: ctx.fontRegular,
+    color: CORES_DANFSE.black
+  });
 }
 
 export function renderizarMarcaDagua(ctx: ContextoRenderizacaoDanfse, options: DanfsePdfOptions): void {
@@ -212,10 +286,10 @@ export function renderizarMarcaDagua(ctx: ContextoRenderizacaoDanfse, options: D
     ctx.page.drawText('NFS-e SEM VALIDADE JURÍDICA', {
       x: ctx.width / 2 - 225,
       y: ctx.height / 2 - 40,
-      size: 32,
+      size: 30,
       font: ctx.fontBold,
       color: rgb(0.85, 0.15, 0.15),
-      opacity: 0.22,
+      opacity: 0.2,
       rotate: degrees(30)
     });
   }

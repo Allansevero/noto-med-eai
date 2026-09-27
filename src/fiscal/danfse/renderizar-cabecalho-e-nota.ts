@@ -1,7 +1,7 @@
 /**
  * Renderização do Cabeçalho Oficial e Dados da Nota Fiscal com QR Code (Bandas 1 e 2).
- * Inclui o Brasão Heráldico Nacional, títulos da Receita Federal/Ministério da Fazenda,
- * chave de acesso de 50 dígitos formatada em blocos de 4 e QR Code vetorial.
+ * Reproduz com fidelidade absoluta o modelo do Portal Nacional da NFS-e (DANFSe v2.0):
+ * Logomarca oficial, Chave de Acesso contínua de 50 dígitos, grade 3x3 e QR Code.
  */
 
 import type { PDFImage } from 'pdf-lib';
@@ -10,12 +10,11 @@ import {
   type ContextoRenderizacaoDanfse,
   CORES_DANFSE,
   desenharCaixa,
-  desenharCampo,
-  desenharBrasaoRepublica
+  desenharCelula,
+  desenharLogoNfseNacional
 } from './renderizar-secoes-danfse.js';
 import {
   resolverNomeMunicipio,
-  formatarChaveAcessoEmGruposDe4,
   comporChaveAcessoNacional
 } from './formatadores-fiscais.js';
 
@@ -23,84 +22,79 @@ export function renderizarCabecalho(
   ctx: ContextoRenderizacaoDanfse,
   options: DanfsePdfOptions
 ): void {
-  const h = 50;
+  const h = 42;
   desenharCaixa(ctx, ctx.marginX, ctx.currentY - h, ctx.contentWidth, h);
 
-  // 1. Brasão e Ministério da Fazenda / Receita Federal
-  desenharBrasaoRepublica(ctx, ctx.marginX + 20, ctx.currentY - 25, 15);
-  ctx.page.drawText('REPÚBLICA FEDERATIVA DO BRASIL', {
-    x: ctx.marginX + 42,
+  // 1. Logotipo oficial da NFS-e
+  desenharLogoNfseNacional(ctx, ctx.marginX + 8, ctx.currentY - 4);
+
+  // Linhas divisórias verticais
+  const col1W = 150;
+  const col2W = 255;
+  const xDiv1 = ctx.marginX + col1W;
+  const xDiv2 = xDiv1 + col2W;
+
+  ctx.page.drawLine({
+    start: { x: xDiv1, y: ctx.currentY },
+    end: { x: xDiv1, y: ctx.currentY - h },
+    thickness: 0.5,
+    color: CORES_DANFSE.border
+  });
+  ctx.page.drawLine({
+    start: { x: xDiv2, y: ctx.currentY },
+    end: { x: xDiv2, y: ctx.currentY - h },
+    thickness: 0.5,
+    color: CORES_DANFSE.border
+  });
+
+  // 2. Títulos Centrais
+  const centroX = xDiv1 + col2W / 2;
+  const t1 = 'DANFSe v2.0';
+  const t2 = 'Documento Auxiliar da NFS-e';
+  const w1 = ctx.fontBold.widthOfTextAtSize(t1, 11);
+  const w2 = ctx.fontBold.widthOfTextAtSize(t2, 9.5);
+
+  ctx.page.drawText(t1, {
+    x: centroX - w1 / 2,
     y: ctx.currentY - 17,
-    size: 7,
+    size: 11,
     font: ctx.fontBold,
     color: CORES_DANFSE.black
   });
-  ctx.page.drawText('MINISTÉRIO DA FAZENDA', {
-    x: ctx.marginX + 42,
-    y: ctx.currentY - 27,
-    size: 6,
-    font: ctx.fontBold,
-    color: CORES_DANFSE.grayDark
-  });
-  ctx.page.drawText('SECRETARIA ESPECIAL DA RECEITA FEDERAL DO BRASIL', {
-    x: ctx.marginX + 42,
-    y: ctx.currentY - 37,
-    size: 5,
-    font: ctx.fontRegular,
-    color: CORES_DANFSE.grayText
-  });
-
-  // 2. Identificação Central da NFS-e Nacional
-  const centroX = ctx.marginX + 195;
-  ctx.page.drawText('NFS-e - NOTA FISCAL DE SERVIÇO ELETRÔNICA', {
-    x: centroX,
-    y: ctx.currentY - 17,
-    size: 9,
+  ctx.page.drawText(t2, {
+    x: centroX - w2 / 2,
+    y: ctx.currentY - 29,
+    size: 9.5,
     font: ctx.fontBold,
     color: CORES_DANFSE.black
   });
-  ctx.page.drawText('DANFSe v2.0 - Documento Auxiliar da NFS-e', {
-    x: centroX,
-    y: ctx.currentY - 28,
-    size: 8,
-    font: ctx.fontBold,
-    color: CORES_DANFSE.grayDark
-  });
-  ctx.page.drawText('Padrão Nacional (Resolução CGSN nº 169/2022 e RTC 2026)', {
-    x: centroX,
-    y: ctx.currentY - 38,
-    size: 6,
-    font: ctx.fontRegular,
-    color: CORES_DANFSE.grayText
-  });
 
-  // 3. Município e Ambiente SEFIN
-  const dirW = 145;
-  const dirX = ctx.width - ctx.marginX - dirW;
+  // 3. Informações da Direita (Município e Ambientes)
   const nomeMun = resolverNomeMunicipio(options.prestador?.municipio, options.prestador?.municipio);
   const uf = (options.prestador?.uf || 'RS').toUpperCase();
-  ctx.page.drawText(`MUNICÍPIO: ${nomeMun} - ${uf}`, {
+  const dirX = xDiv2 + 6;
+
+  ctx.page.drawText(`Município: ${nomeMun} - ${uf}`, {
     x: dirX,
-    y: ctx.currentY - 16,
+    y: ctx.currentY - 14,
     size: 7,
-    font: ctx.fontBold,
+    font: ctx.fontRegular,
     color: CORES_DANFSE.black
   });
-  ctx.page.drawText('Ambiente Gerador: SEFIN Nacional', {
+  ctx.page.drawText('Ambiente Gerador: 2', {
     x: dirX,
-    y: ctx.currentY - 26,
-    size: 6,
+    y: ctx.currentY - 24,
+    size: 7,
     font: ctx.fontRegular,
-    color: CORES_DANFSE.grayText
+    color: CORES_DANFSE.black
   });
-
-  const ehHomolog = options.ambiente === 'homologacao';
-  ctx.page.drawText(`Ambiente: ${ehHomolog ? 'Homologação' : 'Produção'}`, {
+  const codAmbiente = options.ambiente === 'homologacao' ? '2' : '1';
+  ctx.page.drawText(`Tipo de Ambiente: ${codAmbiente}`, {
     x: dirX,
-    y: ctx.currentY - 36,
-    size: 6.5,
-    font: ctx.fontBold,
-    color: ehHomolog ? CORES_DANFSE.redHomologacao : CORES_DANFSE.greenProducao
+    y: ctx.currentY - 34,
+    size: 7,
+    font: ctx.fontRegular,
+    color: CORES_DANFSE.black
   });
 
   ctx.currentY -= h;
@@ -112,30 +106,44 @@ export function renderizarDadosNotaEQrCode(
   qrImg?: PDFImage
 ): void {
   const dadosNfseH = 82;
-  const qrColW = 95;
+  const qrColW = 120;
   const dadosColW = ctx.contentWidth - qrColW;
   desenharCaixa(ctx, ctx.marginX, ctx.currentY - dadosNfseH, ctx.contentWidth, dadosNfseH);
 
-  // Obtém ou compõe chave de acesso de 50 dígitos
-  const chave = obterChave50Digitos(options);
-  const chaveFmt = formatarChaveAcessoEmGruposDe4(chave);
-
-  ctx.page.drawText('CHAVE DE ACESSO DA NFS-e', {
-    x: ctx.marginX + 4,
-    y: ctx.currentY - 9,
-    size: 6,
-    font: ctx.fontBold,
-    color: CORES_DANFSE.grayText
+  // Linha vertical separando dados do QR Code
+  ctx.page.drawLine({
+    start: { x: ctx.marginX + dadosColW, y: ctx.currentY },
+    end: { x: ctx.marginX + dadosColW, y: ctx.currentY - dadosNfseH },
+    thickness: 0.5,
+    color: CORES_DANFSE.border
   });
-  ctx.page.drawText(chaveFmt, {
-    x: ctx.marginX + 4,
-    y: ctx.currentY - 20,
-    size: 8.5,
+
+  // 1. Chave de acesso contínua de 50 dígitos no topo
+  const chave = obterChave50Digitos(options);
+  ctx.page.drawText('CHAVE DE ACESSO DA NFS-e', {
+    x: ctx.marginX + 3,
+    y: ctx.currentY - 8,
+    size: 6.5,
     font: ctx.fontBold,
     color: CORES_DANFSE.black
   });
+  ctx.page.drawText(chave, {
+    x: ctx.marginX + 3,
+    y: ctx.currentY - 17,
+    size: 7.5,
+    font: ctx.fontRegular,
+    color: CORES_DANFSE.black
+  });
 
-  renderizarGradeDadosNota(ctx, dadosColW, options, chave);
+  // Linha horizontal sob a chave de acesso
+  ctx.page.drawLine({
+    start: { x: ctx.marginX, y: ctx.currentY - 21 },
+    end: { x: ctx.marginX + dadosColW, y: ctx.currentY - 21 },
+    thickness: 0.5,
+    color: CORES_DANFSE.border
+  });
+
+  renderizarGrade3x3(ctx, dadosColW, options);
   renderizarQuadroQrCode(ctx, dadosColW, qrColW, qrImg);
 
   ctx.currentY -= dadosNfseH;
@@ -155,31 +163,52 @@ function obterChave50Digitos(options: DanfsePdfOptions): string {
   });
 }
 
-function renderizarGradeDadosNota(
+function renderizarGrade3x3(
   ctx: ContextoRenderizacaoDanfse,
   dadosColW: number,
-  options: DanfsePdfOptions,
-  chave: string
+  options: DanfsePdfOptions
 ): void {
   const cW3 = dadosColW / 3;
-  const rowH = 19;
-  let rY = ctx.currentY - 25;
+  const rowH = 20;
+  let rY = ctx.currentY - 21;
 
   const dataEmissao = options.dataEmissao || new Date().toISOString();
-  desenharCampo(ctx, ctx.marginX, rY, cW3, rowH, 'Número da NFS-e', options.numero || '1', true, CORES_DANFSE.fieldBg);
-  desenharCampo(ctx, ctx.marginX + cW3, rY, cW3, rowH, 'Competência', options.competencia || dataEmissao.slice(0, 10));
-  desenharCampo(ctx, ctx.marginX + cW3 * 2, rY, cW3, rowH, 'Data/Hora Emissão NFS-e', dataEmissao.replace('T', ' ').slice(0, 19));
+  const dataFmt = formatarDataHora(dataEmissao);
+  const dataApenas = dataEmissao.slice(0, 10).split('-').reverse().join('/');
 
-  rY -= rowH;
-  desenharCampo(ctx, ctx.marginX, rY, cW3, rowH, 'Número da DPS', options.numero || '1', false);
-  desenharCampo(ctx, ctx.marginX + cW3, rY, cW3, rowH, 'Série da DPS', options.serie || '00001', false);
-  desenharCampo(ctx, ctx.marginX + cW3 * 2, rY, cW3, rowH, 'Data/Hora Emissão DPS', dataEmissao.slice(0, 10));
+  // Linha 1
+  desenharCelula(ctx, ctx.marginX, rY, cW3, rowH, 'NÚMERO DA NFS-e', options.numero || '1', true);
+  desenharCelula(ctx, ctx.marginX + cW3, rY, cW3, rowH, 'COMPETÊNCIA DA NFS-e', options.competencia || dataApenas);
+  desenharCelula(ctx, ctx.marginX + cW3 * 2, rY, cW3, rowH, 'DATA E HORA DA EMISSÃO DA NFS-e', dataFmt);
 
+  // Linha 2
   rY -= rowH;
-  desenharCampo(ctx, ctx.marginX, rY, cW3, rowH, 'Emitente da NFS-e', 'Prestador', false);
-  desenharCampo(ctx, ctx.marginX + cW3, rY, cW3, rowH, 'Situação da NFS-e', options.cancelada ? 'CANCELADA' : 'EMITIDA COM SUCESSO', true);
-  const codVerif = options.codigoVerificacao || chave.slice(chave.length - 8).toUpperCase();
-  desenharCampo(ctx, ctx.marginX + cW3 * 2, rY, cW3, rowH, 'Código de Verificação', codVerif);
+  desenharCelula(ctx, ctx.marginX, rY, cW3, rowH, 'NÚMERO DA DPS', options.numero || '1', false);
+  desenharCelula(ctx, ctx.marginX + cW3, rY, cW3, rowH, 'SÉRIE DA DPS', options.serie || '70000', false);
+  desenharCelula(ctx, ctx.marginX + cW3 * 2, rY, cW3, rowH, 'DATA E HORA DA EMISSÃO DA DPS', dataFmt);
+
+  // Linha 3
+  rY -= rowH;
+  const situacao = options.cancelada ? 'CANCELADA' : (options.prestador?.simplesNacional ? 'NFS-e MEI' : 'EMITIDA COM SUCESSO');
+  desenharCelula(ctx, ctx.marginX, rY, cW3, 21, 'EMITENTE DA NFS-e', 'Prestador', false);
+  desenharCelula(ctx, ctx.marginX + cW3, rY, cW3, 21, 'SITUAÇÃO DA NFS-e', situacao, true);
+  desenharCelula(ctx, ctx.marginX + cW3 * 2, rY, cW3, 21, 'FINALIDADE', '-');
+}
+
+function formatarDataHora(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return isoString;
+    const dia = String(d.getDate()).padStart(2, '0');
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const ano = d.getFullYear();
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${dia}/${mes}/${ano} ${h}:${m}:${s}`;
+  } catch {
+    return isoString;
+  }
 }
 
 function renderizarQuadroQrCode(
@@ -191,24 +220,36 @@ function renderizarQuadroQrCode(
   const qrBoxX = ctx.marginX + dadosColW;
   if (qrImg) {
     ctx.page.drawImage(qrImg, {
-      x: qrBoxX + (qrColW - 58) / 2,
-      y: ctx.currentY - 58 - 4,
-      width: 58,
-      height: 58
+      x: qrBoxX + (qrColW - 52) / 2,
+      y: ctx.currentY - 52 - 4,
+      width: 52,
+      height: 52
     });
   }
-  ctx.page.drawText('Consulte pela chave ou QR Code', {
-    x: qrBoxX + 5,
-    y: ctx.currentY - 68,
-    size: 5,
+
+  const t1 = 'A autenticidade desta NFS-e pode ser verificada';
+  const t2 = 'pela leitura deste código QR ou pela consulta da';
+  const t3 = 'chave de acesso no portal nacional da NFS-e';
+  const cx = qrBoxX + qrColW / 2;
+
+  drawCenteredText(ctx, t1, cx, ctx.currentY - 62, 4.8);
+  drawCenteredText(ctx, t2, cx, ctx.currentY - 69, 4.8);
+  drawCenteredText(ctx, t3, cx, ctx.currentY - 76, 4.8);
+}
+
+function drawCenteredText(
+  ctx: ContextoRenderizacaoDanfse,
+  text: string,
+  cx: number,
+  y: number,
+  size: number
+): void {
+  const w = ctx.fontRegular.widthOfTextAtSize(text, size);
+  ctx.page.drawText(text, {
+    x: cx - w / 2,
+    y,
+    size,
     font: ctx.fontRegular,
-    color: CORES_DANFSE.grayText
-  });
-  ctx.page.drawText('no Portal Nacional da NFS-e', {
-    x: qrBoxX + 11,
-    y: ctx.currentY - 76,
-    size: 5,
-    font: ctx.fontRegular,
-    color: CORES_DANFSE.grayText
+    color: CORES_DANFSE.black
   });
 }
