@@ -132,20 +132,21 @@ export async function conectarInstanciaWhatsappMedico(
 
   // 6. Salva ou atualiza a instância em whatsapp_instancias (coluna status com enum status_conexao_whatsapp)
   const statusDb = status === 'open' ? 'conectado' : 'pendente';
+  const conectadoEm = status === 'open' ? new Date() : null;
   const sql = `
     insert into whatsapp_instancias (
       medico_id, conta_id, nome_instancia, oficial, status, conectado_em
     ) values (
-      $1, (select conta_id from medicos where id = $1), $2, false, $3, case when $3 = 'conectado' then now() else null end
+      $1, (select conta_id from medicos where id = $1), $2, false, $3::status_conexao_whatsapp, $4
     )
     on conflict (nome_instancia) do update set
       status = excluded.status,
       medico_id = excluded.medico_id,
       conta_id = coalesce(excluded.conta_id, whatsapp_instancias.conta_id),
-      conectado_em = case when excluded.status = 'conectado' then now() else whatsapp_instancias.conectado_em end
+      conectado_em = coalesce(excluded.conectado_em, whatsapp_instancias.conectado_em)
     returning id
   `;
-  await pool.query(sql, [medicoId, nomeInstancia, statusDb]);
+  await pool.query(sql, [medicoId, nomeInstancia, statusDb, conectadoEm]);
 
   return {
     ok: true,
