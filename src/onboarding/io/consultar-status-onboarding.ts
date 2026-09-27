@@ -54,7 +54,7 @@ export async function consultarStatusOnboarding(
       pf.confirmado_pelo_medico,
       msf.aliquota_iss,
       (select count(*) from medico_certificados c where c.medico_id = m.id and c.status = 'ativo') as cert_ativos,
-      (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status_conexao = 'conectado') as whats_conectados
+      (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado') as whats_conectados
     from medicos m
     join usuarios u on u.id = m.usuario_id
     left join medico_perfil_fiscal pf on pf.medico_id = m.id
@@ -69,18 +69,19 @@ export async function consultarStatusOnboarding(
   }
 
   const r = rows[0];
-  const passo1Nome = Boolean(r.usuario_nome && r.usuario_nome.trim().length > 2 && r.usuario_nome !== 'Médico');
+  const nomeExibicao = (r.medico_nome || r.usuario_nome || '').trim();
+  const passo1Nome = Boolean(nomeExibicao.length > 2 && nomeExibicao !== 'Médico');
   const passo2XmlEnviado = Boolean(r.extraido_automaticamente || r.confirmado_pelo_medico);
   const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico);
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
 
-  const liberadoParaEmitir = passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
+  const liberadoParaEmitir = passo1Nome && passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
 
   return {
     medicoId: r.medico_id,
     usuarioId: r.usuario_id,
-    nomeUsuario: r.usuario_nome || r.medico_nome || 'Dr(a).',
+    nomeUsuario: nomeExibicao || 'Dr(a).',
     passos: {
       passo1Nome,
       passo2XmlEnviado,

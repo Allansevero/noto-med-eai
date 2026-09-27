@@ -88,7 +88,27 @@ export async function conectarInstanciaWhatsappMedico(
     }
   }
 
-  // 3. Configura o webhook na Evolution para receber os comandos /agendado e /emissao
+  // 3. Normaliza prefixo base64 se presente
+  if (qrcodeBase64 && !qrcodeBase64.startsWith('data:image')) {
+    qrcodeBase64 = `data:image/png;base64,${qrcodeBase64}`;
+  }
+
+  // 4. Se não veio QR code, verifica se já está conectado na Evolution
+  if (!qrcodeBase64 && !pairingCode && status !== 'open') {
+    try {
+      const resState = await fetch(`${baseUrl}/instance/connectionState/${nomeInstancia}`, {
+        headers: { apikey: evolutionApiKey }
+      });
+      const dataState = await resState.json().catch(() => ({}));
+      if (dataState.instance?.state === 'open') {
+        status = 'open';
+      }
+    } catch {
+      // Ignora erro de rede momentâneo
+    }
+  }
+
+  // 5. Configura o webhook na Evolution para receber os comandos /agendado e /emissao
   try {
     await fetch(`${baseUrl}/webhook/set/${nomeInstancia}`, {
       method: 'POST',
@@ -110,19 +130,22 @@ export async function conectarInstanciaWhatsappMedico(
     // Falha silenciosa no setWebhook
   }
 
-  // 4. Salva ou atualiza a instância em whatsapp_instancias
+  // 6. Salva ou atualiza a instância em whatsapp_instancias (coluna status com enum status_conexao_whatsapp)
+  const statusDb = status === 'open' ? 'conectado' : 'pendente';
   const sql = `
     insert into whatsapp_instancias (
-      medico_id, nome_instancia, oficial, status_conexao
+      medico_id, conta_id, nome_instancia, oficial, status, conectado_em
     ) values (
-      $1, $2, false, $3
+      $1, (select conta_id from medicos where id = $1), $2, false, $3, case when $3 = 'conectado' then now() else null end
     )
     on conflict (nome_instancia) do update set
-      status_conexao = excluded.status_conexao,
-      medico_id = excluded.medico_id
+      status = excluded.status,
+      medico_id = excluded.medico_id,
+      conta_id = coalesce(excluded.conta_id, whatsapp_instancias.conta_id),
+      conectado_em = case when excluded.status = 'conectado' then now() else whatsapp_instancias.conectado_em end
     returning id
   `;
-  await pool.query(sql, [medicoId, nomeInstancia, status === 'open' ? 'conectado' : 'pendente']);
+  await pool.query(sql, [medicoId, nomeInstancia, statusDb]);
 
   return {
     ok: true,

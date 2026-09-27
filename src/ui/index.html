@@ -394,6 +394,21 @@
       margin: 1rem 0;
     }
 
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.7; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.7; }
+    }
+
+    .pulse-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #2ed573;
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+
     .footer-links {
       text-align: center;
       font-size: 0.8rem;
@@ -575,25 +590,34 @@
         </p>
 
         <div id="loadingQr" class="hidden" style="text-align: center; padding: 2rem;">
-          <p>Gerando QR Code de conexão...</p>
+          <div class="pulse-dot" style="margin-bottom: 0.75rem;"></div>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">Gerando QR Code de conexão segura...</p>
         </div>
 
         <div id="boxQrCode" class="hidden">
           <div class="qr-container">
             <img id="imgQrCode" alt="QR Code WhatsApp">
           </div>
+          <div id="statusEsperandoQr" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; color: #2ed573; font-size: 0.9rem; font-weight: 500;">
+            <span class="pulse-dot"></span>
+            <span>Aguardando leitura do QR Code no WhatsApp...</span>
+          </div>
           <p style="text-align: center; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
-            Abra o WhatsApp no celular > Menu > Aparelhos Conectados > Conectar um aparelho
+            Abra o WhatsApp no seu celular &gt; Menu (três pontos) &gt; Aparelhos conectados &gt; Conectar um aparelho
           </p>
         </div>
 
         <div id="boxPairingCode" class="hidden" style="text-align: center;">
           <p style="color: var(--text-muted); font-size: 0.85rem;">Ou digite o código de pareamento no celular:</p>
           <div class="pairing-code" id="txtPairingCode">----</div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; color: #2ed573; font-size: 0.9rem; font-weight: 500;">
+            <span class="pulse-dot"></span>
+            <span>Aguardando confirmação no celular...</span>
+          </div>
         </div>
 
         <button type="button" class="btn" id="btnIniciarWhatsapp">
-          <span>Gerar Conexão WhatsApp</span>
+          <span id="btnIniciarWhatsappTxt">Gerar Conexão WhatsApp</span>
           <span>🔄</span>
         </button>
       </div>
@@ -827,6 +851,9 @@
     }
 
     function mostrarPasso(passoNum) {
+      if (passoNum !== 4) {
+        pararPollingConexao();
+      }
       [step1View, step2View, step3View, step4View, step5View].forEach(v => v.classList.add('hidden'));
       for (let i = 1; i <= 5; i++) {
         const ind = document.getElementById(`stepIndicator${i}`);
@@ -839,7 +866,12 @@
       if (passoNum === 2) step2View.classList.remove('hidden');
       if (passoNum === 3) step3View.classList.remove('hidden');
       if (passoNum === 4) step4View.classList.remove('hidden');
-      if (passoNum === 5) step5View.classList.remove('hidden');
+      if (passoNum === 5) {
+        step5View.classList.remove('hidden');
+        if (sessaoAtual?.usuario?.nome) {
+          document.getElementById('resumoNomeMedico').textContent = sessaoAtual.usuario.nome;
+        }
+      }
     }
 
     // --- PASSO 1: SALVAR NOME ---
@@ -984,10 +1016,54 @@
     });
 
     // --- PASSO 4: CONEXÃO WHATSAPP ---
+    let pollingConexaoId = null;
+
+    function pararPollingConexao() {
+      if (pollingConexaoId) {
+        clearInterval(pollingConexaoId);
+        pollingConexaoId = null;
+      }
+    }
+
+    async function verificarStatusWhatsapp(medicoId) {
+      try {
+        const res = await fetch(`/api/onboarding/whatsapp/status?medicoId=${medicoId}`);
+        const data = await res.json();
+        if (data.ok && data.conectado) {
+          pararPollingConexao();
+          const statusDiv = document.getElementById('statusEsperandoQr');
+          if (statusDiv) {
+            statusDiv.innerHTML = '<span style="color: #2ed573;">✓ WhatsApp Conectado com Sucesso!</span>';
+          }
+          showAlert('WhatsApp do consultório conectado com sucesso!', false, alertOnboarding);
+          setTimeout(() => mostrarPasso(5), 1200);
+        }
+      } catch (err) {
+        // Ignora erro transitório de polling
+      }
+    }
+
+    function iniciarPollingConexao(medicoId) {
+      pararPollingConexao();
+      pollingConexaoId = setInterval(() => {
+        verificarStatusWhatsapp(medicoId);
+      }, 2500);
+    }
+
     document.getElementById('btnIniciarWhatsapp').addEventListener('click', async () => {
       hideAlert(alertOnboarding);
-      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+      if (!medicoId) {
+        showAlert('Sessão expirada. Faça login novamente.', true, alertOnboarding);
+        return;
+      }
+
+      const btn = document.getElementById('btnIniciarWhatsapp');
+      const btnTxt = document.getElementById('btnIniciarWhatsappTxt');
+      btn.disabled = true;
       document.getElementById('loadingQr').classList.remove('hidden');
+      document.getElementById('boxQrCode').classList.add('hidden');
+      document.getElementById('boxPairingCode').classList.add('hidden');
 
       try {
         const res = await fetch('/api/onboarding/whatsapp/iniciar', {
@@ -997,25 +1073,43 @@
         });
         const data = await res.json();
         document.getElementById('loadingQr').classList.add('hidden');
+        btn.disabled = false;
 
-        if (data.ok && data.qrcodeBase64) {
-          document.getElementById('imgQrCode').src = data.qrcodeBase64;
-          document.getElementById('boxQrCode').classList.remove('hidden');
-          showAlert('Aponte a câmera do WhatsApp para o QR Code!', false, alertOnboarding);
-        } else if (data.ok && data.pairingCode) {
-          document.getElementById('txtPairingCode').textContent = data.pairingCode;
-          document.getElementById('boxPairingCode').classList.remove('hidden');
-          showAlert('Digite o código de pareamento no WhatsApp!', false, alertOnboarding);
-        } else if (data.ok && data.status === 'open') {
+        if (!res.ok || !data.ok) {
+          showAlert(data.detalhe || 'Erro ao comunicar com a Evolution API.', true, alertOnboarding);
+          return;
+        }
+
+        if (data.status === 'open') {
           showAlert('WhatsApp já está conectado!', false, alertOnboarding);
           mostrarPasso(5);
-        } else {
-          showAlert('Instância criada! Escaneie o QR Code ou clique em avançar.', false, alertOnboarding);
-          setTimeout(() => mostrarPasso(5), 2500);
+          return;
         }
+
+        if (data.qrcodeBase64) {
+          document.getElementById('imgQrCode').src = data.qrcodeBase64;
+          document.getElementById('boxQrCode').classList.remove('hidden');
+          if (btnTxt) btnTxt.textContent = 'Recarregar QR Code';
+          showAlert('Aponte a câmera do WhatsApp para o QR Code!', false, alertOnboarding);
+          iniciarPollingConexao(medicoId);
+          return;
+        }
+
+        if (data.pairingCode) {
+          document.getElementById('txtPairingCode').textContent = data.pairingCode;
+          document.getElementById('boxPairingCode').classList.remove('hidden');
+          if (btnTxt) btnTxt.textContent = 'Recarregar Código';
+          showAlert('Digite o código de pareamento no WhatsApp!', false, alertOnboarding);
+          iniciarPollingConexao(medicoId);
+          return;
+        }
+
+        showAlert('Instância pronta na Evolution. Clique em Recarregar QR Code.', false, alertOnboarding);
+        if (btnTxt) btnTxt.textContent = 'Recarregar QR Code';
       } catch (err) {
         document.getElementById('loadingQr').classList.add('hidden');
-        showAlert('Erro ao iniciar conexão com WhatsApp', true, alertOnboarding);
+        btn.disabled = false;
+        showAlert('Erro de conexão ao iniciar WhatsApp.', true, alertOnboarding);
       }
     });
 

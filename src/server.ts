@@ -23,6 +23,7 @@ import { processarOnboardingXml } from './onboarding/fluxos/processar-onboarding
 import { confirmarParametrosFiscais } from './onboarding/fluxos/confirmar-parametros-fiscais.js';
 import { salvarCertificadoMedico } from './onboarding/fluxos/salvar-certificado-medico.js';
 import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instancia-whatsapp-medico.js';
+import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-status-instancia-whatsapp.js';
 import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -231,6 +232,38 @@ export function criarAppExpress() {
     } catch (err: any) {
       console.error('Erro ao iniciar conexão WhatsApp:', err);
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao conectar WhatsApp' });
+    }
+  });
+
+  // Consulta status de conexão do WhatsApp na Evolution API em tempo real
+  app.get('/api/onboarding/whatsapp/status', async (req: Request, res: Response) => {
+    try {
+      const medicoId = (req.query['medicoId'] as string)?.trim();
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      const resultado = await consultarStatusInstanciaWhatsapp(pool, {
+        medicoId,
+        evolutionUrl: config.evolutionApiUrl,
+        evolutionApiKey: config.evolutionGlobalApiKey
+      });
+      return res.json(resultado);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do WhatsApp' });
+    }
+  });
+
+  // Consulta status consolidado do checklist de onboarding do médico
+  app.get('/api/onboarding/status', async (req: Request, res: Response) => {
+    try {
+      const medicoId = (req.query['medicoId'] as string)?.trim();
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      const status = await consultarStatusOnboarding(pool, medicoId);
+      return res.json({ ok: true, status });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do onboarding' });
     }
   });
 

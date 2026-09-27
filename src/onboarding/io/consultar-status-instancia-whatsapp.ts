@@ -1,0 +1,58 @@
+/**
+ * Consulta em tempo real o status de conexão da instância do médico na Evolution API.
+ * Quando o médico lê o QR Code no celular, a Evolution transiciona o estado para 'open'.
+ * Este módulo sincroniza o banco local (whatsapp_instancias) e avisa a UI para concluir o onboarding.
+ */
+
+import type pg from 'pg';
+
+export type ConsultarStatusWhatsappInput = {
+  medicoId: string;
+  evolutionUrl: string;
+  evolutionApiKey: string;
+};
+
+export type ResultadoStatusWhatsapp = {
+  ok: boolean;
+  conectado: boolean;
+  status: 'conectado' | 'pendente' | 'desconectado' | 'erro';
+  state?: string;
+  detalhe?: string;
+};
+
+export async function consultarStatusInstanciaWhatsapp(
+  pool: pg.Pool,
+  input: ConsultarStatusWhatsappInput
+): Promise<ResultadoStatusWhatsapp> {
+  const { medicoId, evolutionUrl, evolutionApiKey } = input;
+  const baseUrl = evolutionUrl.replace(/\/+$/, '');
+  const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
+
+  try {
+    const res = await fetch(`${baseUrl}/instance/connectionState/${nomeInstancia}`, {
+      method: 'GET',
+      headers: { apikey: evolutionApiKey }
+    });
+
+    if (!res.ok) {
+      return { ok: false, conectado: false, status: 'pendente', detalhe: `Status HTTP ${res.status}` };
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const state = data?.instance?.state || 'connecting';
+
+    if (state === 'open') {
+      await pool.query(
+        `update whatsapp_instancias 
+         set status = 'conectado', conectado_em = coalesce(conectado_em, now()) 
+         where nome_instancia = $1`,
+        [nomeInstancia]
+      );
+      return { ok: true, conectado: true, status: 'conectado', state: 'open' };
+    }
+
+    return { ok: true, conectado: false, status: 'pendente', state };
+  } catch (err: any) {
+    return { ok: false, conectado: false, status: 'erro', detalhe: err?.message || 'Erro ao consultar status' };
+  }
+}
