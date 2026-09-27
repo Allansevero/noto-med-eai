@@ -59,14 +59,18 @@ export interface AtendimentoRepositorio {
     nome?: string | null;
     email?: string | null;
     cpfHash?: string | null;
+    cpf?: string | null;
     origemCadastro?: string;
   }): Promise<PacienteRegistro>;
+
   atualizarCpfPaciente(params: {
     pacienteId: string;
     cpfHash: string;
+    cpf?: string | null;
     nome?: string | null;
     dataNascimento?: Date | null;
   }): Promise<void>;
+
   vincularPacienteConversa(conversaId: string, pacienteId: string): Promise<void>;
   marcarAguardandoCpf(conversaId: string, aguardandoDesde: Date | null): Promise<void>;
   criarAgendamento(params: {

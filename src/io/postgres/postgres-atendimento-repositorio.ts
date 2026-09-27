@@ -132,15 +132,17 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     nome?: string | null;
     email?: string | null;
     cpfHash?: string | null;
+    cpf?: string | null;
     origemCadastro?: string;
   }): Promise<PacienteRegistro> {
     const sql = `
-      insert into pacientes (medico_id, telefone, nome, email, cpf_cnpj_hash, origem_cadastro)
-      values ($1, $2, $3, $4, $5, coalesce($6, 'conversa'))
+      insert into pacientes (medico_id, telefone, nome, email, cpf_cnpj_hash, cpf_cnpj_encriptado, origem_cadastro)
+      values ($1, $2, $3, $4, $5, case when $7::text is not null then pgp_sym_encrypt($7, $8) else null end, coalesce($6, 'conversa'))
       on conflict (medico_id, telefone) do update set
         nome = coalesce(excluded.nome, pacientes.nome),
         email = coalesce(excluded.email, pacientes.email),
-        cpf_cnpj_hash = coalesce(excluded.cpf_cnpj_hash, pacientes.cpf_cnpj_hash)
+        cpf_cnpj_hash = coalesce(excluded.cpf_cnpj_hash, pacientes.cpf_cnpj_hash),
+        cpf_cnpj_encriptado = coalesce(excluded.cpf_cnpj_encriptado, pacientes.cpf_cnpj_encriptado)
       returning id, medico_id, telefone, nome, cpf_cnpj_hash, email
     `;
     const values = [
@@ -149,7 +151,9 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       params.nome,
       params.email,
       params.cpfHash,
-      params.origemCadastro
+      params.origemCadastro,
+      params.cpf ?? null,
+      this.chaveCriptografia
     ];
     const { rows } = await this.pool.query(sql, values);
     return {
@@ -162,21 +166,32 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     };
   }
 
+
   async atualizarCpfPaciente(params: {
     pacienteId: string;
     cpfHash: string;
+    cpf?: string | null;
     nome?: string | null;
     dataNascimento?: Date | null;
   }): Promise<void> {
     const sql = `
       update pacientes
       set cpf_cnpj_hash = $2,
+          cpf_cnpj_encriptado = case when $5::text is not null then pgp_sym_encrypt($5, $6) else cpf_cnpj_encriptado end,
           nome = coalesce($3, nome),
           data_nascimento = coalesce($4, data_nascimento)
       where id = $1
     `;
-    await this.pool.query(sql, [params.pacienteId, params.cpfHash, params.nome, params.dataNascimento]);
+    await this.pool.query(sql, [
+      params.pacienteId,
+      params.cpfHash,
+      params.nome,
+      params.dataNascimento,
+      params.cpf ?? null,
+      this.chaveCriptografia
+    ]);
   }
+
 
   async vincularPacienteConversa(conversaId: string, pacienteId: string): Promise<void> {
     const sql = `update whatsapp_conversas set paciente_id = $2 where id = $1`;

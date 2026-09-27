@@ -37,9 +37,11 @@ export async function processarRespostaCpf(
   await deps.repositorio.atualizarCpfPaciente({
     pacienteId: conversa.pacienteId,
     cpfHash,
+    cpf: cpfValido,
     nome: dadosConsulta?.nome,
     dataNascimento: dadosConsulta?.dataNascimento
   });
+
 
   await deps.repositorio.marcarAguardandoCpf(conversa.id, null);
   const solicitacoesLiberadas = await deps.repositorio.liberarSolicitacoesPendentesCpf(

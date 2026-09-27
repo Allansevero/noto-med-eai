@@ -122,7 +122,8 @@ export async function conectarInstanciaWhatsappMedico(
           enabled: true,
           url: `${appWebhookUrl.replace(/\/+$/, '')}/webhook/evolution`,
           headers: {
-            'x-webhook-secret': webhookSecret
+            'apikey': evolutionApiKey,
+            'x-webhook-secret': webhookSecret || evolutionApiKey
           },
           webhookByEvents: false,
           events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']

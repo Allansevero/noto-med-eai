@@ -47,6 +47,14 @@ export class EvolutionApiClient
       const telNormalizado =
         telLimpo.length === 10 || telLimpo.length === 11 ? `55${telLimpo}` : telLimpo;
 
+      let mediaPayload = params.pdfPathOuUrl;
+      if (mediaPayload.startsWith('data:')) {
+        const idx = mediaPayload.indexOf('base64,');
+        if (idx !== -1) {
+          mediaPayload = mediaPayload.slice(idx + 7);
+        }
+      }
+
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -57,11 +65,12 @@ export class EvolutionApiClient
           number: telNormalizado,
           mediatype: 'document',
           mimetype: 'application/pdf',
-          media: params.pdfPathOuUrl,
+          media: mediaPayload,
           fileName: params.nomeArquivo,
           caption: params.legenda || 'Segue sua Nota Fiscal de Serviços (NFS-e).'
         })
       });
+
 
       if (!resp.ok) {
         const txt = await resp.text();
