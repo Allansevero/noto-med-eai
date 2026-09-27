@@ -26,11 +26,8 @@ describe('MeuDanfeClient', () => {
       globalThis.fetch = async (url: any, init: any) => {
         assert.match(String(url), /\/fd\/convert\/xml-to-da$/);
         assert.equal(init?.headers?.['Api-Key'], 'minha_chave_123');
-        assert.equal(init?.headers?.['Content-Type'], 'application/json');
-        
-        const bodyObj = JSON.parse(init?.body as string);
-        assert.equal(bodyObj.type, 'NFSE');
-        assert.ok(bodyObj.data);
+        assert.equal(init?.headers?.['Content-Type'], 'application/xml');
+        assert.equal(init?.body, '<NFSe><infNFSe></infNFSe></NFSe>');
 
         return {
           ok: true,

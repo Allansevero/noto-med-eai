@@ -13,6 +13,8 @@ import type {
 import { montarDps, type ConfigPrestador, type EmissaoInput } from './montar-dps.js';
 import { generateDanfsePdf } from '../../fiscal/danfse/gerar-danfse-pdf.js';
 import { comporChaveAcessoNacional } from '../../fiscal/danfse/formatadores-fiscais.js';
+import { montarXmlNfse } from '../../fiscal/danfse/montar-xml-nfse.js';
+import type { MeuDanfeClient } from '../meudanfe/meu-danfe-client.js';
 
 export type ConfigPrestadorCompleto = ConfigPrestador & {
   serie: string;
@@ -26,7 +28,8 @@ export type ConfigPrestadorCompleto = ConfigPrestador & {
 export class PostgresEmissorDpsService implements EmissorDpsService {
   constructor(
     private readonly pool: pg.Pool,
-    private readonly chaveCriptografia: string
+    private readonly chaveCriptografia: string,
+    private readonly meuDanfeClient?: MeuDanfeClient
   ) {}
 
   async emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps> {
@@ -74,14 +77,13 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const aliquotaIss = prestadorConfig.regTrib.opSimpNac === 1 ? 2.0 : 2.0;
     const issApurado = (valorServico * aliquotaIss) / 100;
 
-    // Gera o PDF oficial do DANFSe v2.0 (NT 008/2026 e RTC 2026)
-    const pdfBytes = await generateDanfsePdf({
+    const dadosDanfse = {
       chaveAcesso,
       numero: String(ndps),
       serie: prestadorConfig.serie || '00001',
       competencia: anoMes,
       dataEmissao: new Date().toISOString(),
-      ambiente: prestadorConfig.ambiente === 1 ? 'producao' : 'homologacao',
+      ambiente: (prestadorConfig.ambiente === 1 ? 'producao' : 'homologacao') as 'producao' | 'homologacao',
       prestador: {
         razaoSocial: prestadorConfig.razaoSocial,
         nomeFantasia: prestadorConfig.nomeFantasia,
@@ -114,7 +116,36 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         aliquotaIbs: 0.00,
         valorIbs: 0.00
       }
-    });
+    };
+
+    let pdfBytes: Uint8Array | Buffer | undefined;
+
+    if (this.meuDanfeClient) {
+      try {
+        const xmlString = montarXmlNfse({
+          chaveAcesso,
+          numero: String(ndps),
+          serie: prestadorConfig.serie || '00001',
+          competencia: anoMes,
+          dataEmissao: dadosDanfse.dataEmissao,
+          codigoMunicipio: prestadorConfig.codMunicipio,
+          prestador: dadosDanfse.prestador,
+          tomador: dadosDanfse.tomador,
+          servico: dadosDanfse.servico
+        });
+
+        const resMeuDanfe = await this.meuDanfeClient.converterXmlParaPdf(xmlString);
+        if (resMeuDanfe.sucesso && resMeuDanfe.pdfBytes) {
+          pdfBytes = resMeuDanfe.pdfBytes;
+        }
+      } catch {
+        // Fallback silencioso para o gerador vetorial nativo
+      }
+    }
+
+    if (!pdfBytes) {
+      pdfBytes = await generateDanfsePdf(dadosDanfse);
+    }
 
     const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
 

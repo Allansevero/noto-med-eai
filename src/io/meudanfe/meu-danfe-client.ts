@@ -32,19 +32,15 @@ export class MeuDanfeClient {
     }
 
     const url = `${this.baseUrl}/fd/convert/xml-to-da`;
-    const xmlBase64 = Buffer.from(xmlString).toString('base64');
 
     try {
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/xml',
           'Api-Key': this.apiKey.trim()
         },
-        body: JSON.stringify({
-          data: xmlBase64,
-          type: 'NFSE'
-        })
+        body: xmlString
       });
 
       if (!resp.ok) {
