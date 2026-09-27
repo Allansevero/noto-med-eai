@@ -69,7 +69,7 @@ export async function salvarCertificadoMedico(
 
   // 4. Desativa certificados anteriores do mesmo médico (para respeitar o índice único)
   await pool.query(
-    `update medico_certificados set status = 'expirado' where medico_id = $1 and status = 'ativo'`,
+    `update medico_certificados set status = 'vencido' where medico_id = $1 and status = 'ativo'`,
     [medicoId]
   );
 
