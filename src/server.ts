@@ -52,42 +52,52 @@ export function criarAppExpress() {
 
   // Rota de Solicitação de OTP (WhatsApp)
   app.post('/api/auth/otp/solicitar', async (req: Request, res: Response) => {
-    const { telefone } = req.body || {};
-    if (!telefone) {
-      return res.status(400).json({ ok: false, detalhe: 'Telefone é obrigatório' });
+    try {
+      const { telefone } = req.body || {};
+      if (!telefone) {
+        return res.status(400).json({ ok: false, detalhe: 'Telefone é obrigatório' });
+      }
+
+      const resultado = await solicitarOtp(telefone, {
+        repositorio: otpRepo,
+        enviador: evolutionClient,
+        pepper: config.appPepper
+      });
+
+      if (!resultado.ok) {
+        return res.status(400).json(resultado);
+      }
+
+      return res.json(resultado);
+    } catch (err: any) {
+      console.error('Erro na solicitação de OTP:', err);
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro interno do servidor' });
     }
-
-    const resultado = await solicitarOtp(telefone, {
-      repositorio: otpRepo,
-      enviador: evolutionClient,
-      pepper: config.appPepper
-    });
-
-    if (!resultado.ok) {
-      return res.status(400).json(resultado);
-    }
-
-    return res.json(resultado);
   });
 
   // Rota de Verificação de OTP e Sessão Supabase
   app.post('/api/auth/otp/verificar', async (req: Request, res: Response) => {
-    const { telefone, codigo } = req.body || {};
-    if (!telefone || !codigo) {
-      return res.status(400).json({ ok: false, detalhe: 'Telefone e código são obrigatórios' });
+    try {
+      const { telefone, codigo } = req.body || {};
+      if (!telefone || !codigo) {
+        return res.status(400).json({ ok: false, detalhe: 'Telefone e código são obrigatórios' });
+      }
+
+      const resultado = await autenticarComOtp(telefone, codigo, {
+        otpRepositorio: otpRepo,
+        authAdminService,
+        pepper: config.appPepper
+      });
+
+      if (!resultado.ok) {
+        return res.status(401).json(resultado);
+      }
+
+      return res.json(resultado);
+    } catch (err: any) {
+      console.error('Erro na verificação de OTP:', err);
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro interno do servidor' });
     }
-
-    const resultado = await autenticarComOtp(telefone, codigo, {
-      otpRepositorio: otpRepo,
-      authAdminService,
-      pepper: config.appPepper
-    });
-
-    if (!resultado.ok) {
-      return res.status(401).json(resultado);
-    }
-
-    return res.json(resultado);
   });
 
   // Rota Webhook da Evolution API (suporta rota direta e subrotas com eventos)

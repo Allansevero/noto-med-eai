@@ -43,6 +43,10 @@ export class EvolutionApiClient
   async enviarPdf(params: EnviarPdfDanfseParams): Promise<ResultadoEnvioPdf> {
     const url = `${this.baseUrl.replace(/\/$/, '')}/message/sendMedia/${params.instanciaNome}`;
     try {
+      const telLimpo = params.contatoTelefone.replace(/\D/g, '');
+      const telNormalizado =
+        telLimpo.length === 10 || telLimpo.length === 11 ? `55${telLimpo}` : telLimpo;
+
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -50,7 +54,7 @@ export class EvolutionApiClient
           apikey: this.apiKey
         },
         body: JSON.stringify({
-          number: params.contatoTelefone,
+          number: telNormalizado,
           mediatype: 'document',
           mimetype: 'application/pdf',
           media: params.pdfPathOuUrl,
@@ -78,6 +82,10 @@ export class EvolutionApiClient
   ): Promise<ResultadoEnvioMensagemPaciente> {
     const url = `${this.baseUrl.replace(/\/$/, '')}/message/sendText/${instancia}`;
     try {
+      const telLimpo = telefone.replace(/\D/g, '');
+      const telNormalizado =
+        telLimpo.length === 10 || telLimpo.length === 11 ? `55${telLimpo}` : telLimpo;
+
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -85,7 +93,7 @@ export class EvolutionApiClient
           apikey: this.apiKey
         },
         body: JSON.stringify({
-          number: telefone,
+          number: telNormalizado,
           text: texto
         })
       });
