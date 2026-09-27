@@ -22,6 +22,7 @@ export interface AppConfig {
   devEmailAlerta?: string;
   groqApiKey: string;
   groqModel: string;
+  meuDanfeApiKey?: string;
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -40,7 +41,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     resendApiKey: env['RESEND_API_KEY'],
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
     groqApiKey: env['GROQ_API_KEY'] || '',
-    groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b'
+    groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
+    meuDanfeApiKey: env['MEU_DANFE_API_KEY']
   };
 }
 
