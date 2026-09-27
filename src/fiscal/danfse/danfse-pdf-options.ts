@@ -1,11 +1,12 @@
 /**
  * Tipos e opções de dados para a geração do DANFSe v2.0 em PDF.
  * Define o contrato independente de fonte de dados (banco, SEFIN ou simulação),
- * permitindo gerar o PDF oficial em qualquer camada sem acoplamento a I/O.
+ * cobrindo integralmente as especificações da NT 008/2026 e RTC 2026 (IBS/CBS).
  */
 
 export interface DanfsePrestador {
   razaoSocial?: string;
+  nomeFantasia?: string;
   cnpj?: string;
   inscricaoMunicipal?: string;
   endereco?: string;
@@ -39,6 +40,13 @@ export interface DanfseServico {
   desconto?: number;
   retencoes?: number;
   deducoes?: number;
+  cstIbsCbs?: string;
+  cClassTrib?: string;
+  cIndOp?: string;
+  aliquotaCbs?: number;
+  valorCbs?: number;
+  aliquotaIbs?: number;
+  valorIbs?: number;
 }
 
 export interface DanfsePdfOptions {
@@ -47,6 +55,7 @@ export interface DanfsePdfOptions {
   serie?: string;
   dataEmissao?: string;
   competencia?: string;
+  codigoVerificacao?: string;
   ambiente?: 'producao' | 'homologacao';
   cancelada?: boolean;
   prestador?: DanfsePrestador;
