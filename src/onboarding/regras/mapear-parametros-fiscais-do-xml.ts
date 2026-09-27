@@ -33,15 +33,19 @@ function extrairNosPrincipais(xmlObj: any): { infNfse: any; infDps: any } {
 }
 
 function mapearOpcaoSimples(val?: string | number): 'nao_optante' | 'mei' | 'me_epp' {
-  const s = String(val ?? '3');
+  if (val === undefined || val === null || String(val).trim() === '') {
+    throw new Error('O XML não contém a opção do Simples Nacional do prestador (opSimpNac).');
+  }
+  const s = String(val).trim();
   if (s === '1') return 'nao_optante';
   if (s === '2') return 'mei';
-  return 'me_epp';
+  if (s === '3') return 'me_epp';
+  throw new Error(`Opção do Simples Nacional não reconhecida no XML: ${s}`);
 }
 
 function mapearRegimeApuracao(val?: string | number): 'regime_1' | 'regime_2' | 'regime_3' | null {
   if (!val) return null;
-  const s = String(val);
+  const s = String(val).trim();
   if (s === '1') return 'regime_1';
   if (s === '2') return 'regime_2';
   if (s === '3') return 'regime_3';
@@ -63,7 +67,14 @@ export function mapearParametrosFiscaisDoXml(xmlObj: any): ParametrosFiscaisExtr
   const nomeFantasia = emit.xFant ? String(emit.xFant).trim() : null;
 
   const codMunicipioIbge = String(infDps.cLocEmi || infNfse.cLocIncid || '').trim();
-  const uf = emit.enderNac?.UF || inferirUfDeMunicipioIbge(codMunicipioIbge) || 'RS';
+  if (!codMunicipioIbge) {
+    throw new Error('O XML não contém o código IBGE do município emissor (cLocEmi / cLocIncid).');
+  }
+
+  const uf = emit.enderNac?.UF || inferirUfDeMunicipioIbge(codMunicipioIbge);
+  if (!uf) {
+    throw new Error(`Não foi possível determinar a UF do prestador para o município IBGE: ${codMunicipioIbge}.`);
+  }
 
   const serieDps = String(infDps.serie || '00001').trim();
   const nDpsNum = Number(infDps.nDPS || infNfse.nNFSe || infNfse.nDFSe || 0);

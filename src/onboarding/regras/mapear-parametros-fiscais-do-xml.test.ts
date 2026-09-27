@@ -4,6 +4,7 @@ import { mapearParametrosFiscaisDoXml } from './mapear-parametros-fiscais-do-xml
 import { mapearServicoFiscalDoXml } from './mapear-servico-fiscal-do-xml.js';
 
 describe('Mapeamento de XML da NFS-e Nacional', () => {
+  // Fixture 1: Psiquiatra em Alegrete/RS
   const xmlExemploPlan = {
     NFSe: {
       infNFSe: {
@@ -52,7 +53,55 @@ describe('Mapeamento de XML da NFS-e Nacional', () => {
     }
   };
 
-  it('deve extrair os parâmetros fiscais duradouros do médico corretamente', () => {
+  // Fixture 2: Cardiologista em São Paulo/SP (totalmente diferente)
+  const xmlOutroMedicoSp = {
+    NFSe: {
+      infNFSe: {
+        emit: {
+          CNPJ: '12345678000199',
+          IM: '987654',
+          xNome: 'DR CARLOS SILVA CARDIOLOGIA LTDA',
+          xFant: 'CLINICA DO CORACAO'
+        },
+        cLocIncid: '3550308',
+        nNFSe: 42,
+        DPS: {
+          infDPS: {
+            tpAmb: 1,
+            serie: '00002',
+            nDPS: 42,
+            cLocEmi: '3550308',
+            prest: {
+              CNPJ: '12345678000199',
+              regTrib: {
+                opSimpNac: '2',
+                regEspTrib: '1'
+              }
+            },
+            serv: {
+              cServ: {
+                cTribNac: '040101',
+                cTribMun: '012',
+                cIntContrib: '8630501',
+                xDescServ: 'CONSULTA CARDIOLOGICA COM ELETROCARDIOGRAMA'
+              }
+            },
+            valores: {
+              vServPrest: { vServ: '650.00' },
+              trib: {
+                tribMun: {
+                  tribISSQN: 1,
+                  pAliq: '5.00'
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+
+  it('deve extrair os parâmetros fiscais duradouros da Fixture 1 (RS) corretamente', () => {
     const params = mapearParametrosFiscaisDoXml(xmlExemploPlan);
 
     assert.equal(params.cnpj, '54969416000141');
@@ -70,19 +119,48 @@ describe('Mapeamento de XML da NFS-e Nacional', () => {
     assert.equal(params.proximoNumeroSequencialSugerido, 216);
   });
 
-  it('deve extrair os parâmetros do serviço fiscal e inferir a especialidade', () => {
-    const servico = mapearServicoFiscalDoXml(xmlExemploPlan);
+  it('deve extrair os parâmetros da Fixture 2 (SP - Cardiologia) comprovando ausência de dados fixos', () => {
+    const params = mapearParametrosFiscaisDoXml(xmlOutroMedicoSp);
+    const servico = mapearServicoFiscalDoXml(xmlOutroMedicoSp);
 
-    assert.equal(servico.nomeServico, 'Consulta Médica');
-    assert.equal(servico.ctribNac, '040303');
-    assert.equal(servico.ctribMun, '004');
-    assert.equal(servico.aliquotaIss, 2.72);
-    assert.equal(servico.valorPadraoCentavos, 38000);
-    assert.equal(servico.especialidadeSugerida, 'Psiquiatria');
+    assert.equal(params.cnpj, '12345678000199');
+    assert.equal(params.inscricaoMunicipal, '987654');
+    assert.equal(params.razaoSocial, 'DR CARLOS SILVA CARDIOLOGIA LTDA');
+    assert.equal(params.nomeFantasia, 'CLINICA DO CORACAO');
+    assert.equal(params.codMunicipioIbge, '3550308');
+    assert.equal(params.uf, 'SP');
+    assert.equal(params.serieDps, '00002');
+    assert.equal(params.opcaoSimplesNacional, 'mei');
+    assert.equal(params.regimeApuracaoSn, null);
+    assert.equal(params.regimeEspecialTributacao, 1);
+    assert.equal(params.cnae, '8630501');
+    assert.equal(params.proximoNumeroSequencialSugerido, 43);
+
+    assert.equal(servico.ctribNac, '040101');
+    assert.equal(servico.ctribMun, '012');
+    assert.equal(servico.aliquotaIss, 5.0);
+    assert.equal(servico.valorPadraoCentavos, 65000);
+    assert.equal(servico.especialidadeSugerida, 'Cardiologia');
+    assert.equal(servico.nomeServico, 'Consulta - Cardiologia');
   });
 
   it('deve lançar erro se o XML não contiver CNPJ/CPF', () => {
     const xmlInvalido = { NFSe: { infNFSe: {} } };
     assert.throws(() => mapearParametrosFiscaisDoXml(xmlInvalido), /CNPJ\/CPF/);
+  });
+
+  it('deve lançar erro se o XML não contiver cTribNac', () => {
+    const xmlSemCtrib = {
+      NFSe: {
+        infNFSe: {
+          DPS: {
+            infDPS: {
+              serv: { cServ: {} }
+            }
+          }
+        }
+      }
+    };
+    assert.throws(() => mapearServicoFiscalDoXml(xmlSemCtrib), /cTribNac/);
   });
 });

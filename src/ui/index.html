@@ -904,8 +904,10 @@
         document.getElementById('txtCnpj').textContent = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
         document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
         document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
-        document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'Clínica Geral';
-        document.getElementById('txtAliquota').textContent = s.aliquotaIss ? `${s.aliquotaIss}%` : '2.72%';
+        document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
+        document.getElementById('txtAliquota').textContent = (s.aliquotaIss !== null && s.aliquotaIss !== undefined)
+          ? `${s.aliquotaIss}%`
+          : 'Não especificada no XML';
 
         document.getElementById('previewFiscal').classList.remove('hidden');
         showAlert('Parâmetros fiscais extraídos com sucesso! Revise e confirme.', false, alertOnboarding);

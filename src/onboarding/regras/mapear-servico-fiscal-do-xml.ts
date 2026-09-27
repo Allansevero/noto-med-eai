@@ -25,22 +25,30 @@ export function mapearServicoFiscalDoXml(xmlObj: any): ServicoFiscalExtraido {
   const tribMun = infDps.valores?.trib?.tribMun || infNfse.valores?.tribMun || {};
   const vServ = infDps.valores?.vServPrest?.vServ || infNfse.valores?.vServPrest?.vServ;
 
-  const rawCtribNac = String(cServ.cTribNac || '040303').trim();
+  if (!cServ.cTribNac) {
+    throw new Error('O XML não contém o código de tributação nacional do serviço (cTribNac).');
+  }
+
+  const rawCtribNac = String(cServ.cTribNac).trim();
   const ctribNac = rawCtribNac.length < 6 ? rawCtribNac.padStart(6, '0') : rawCtribNac;
   const ctribMun = cServ.cTribMun ? String(cServ.cTribMun).trim().padStart(3, '0') : null;
   const cnbs = cServ.cNBS ? String(cServ.cNBS).trim() : null;
-  const rawXDesc = cServ.xDescServ ? String(cServ.xDescServ) : null;
+  const rawXDesc = cServ.xDescServ ? String(cServ.xDescServ).trim() : null;
   const especialidadeSugerida = inferirEspecialidadeDeXdescserv(rawXDesc);
 
-  const aliquotaIss = tribMun.pAliq !== undefined ? Number(tribMun.pAliq) : null;
-  const valorPadraoCentavos = vServ !== undefined ? Math.round(Number(vServ) * 100) : null;
+  const aliquotaIss = tribMun.pAliq !== undefined && tribMun.pAliq !== null && tribMun.pAliq !== ''
+    ? Number(tribMun.pAliq)
+    : null;
+  const valorPadraoCentavos = vServ !== undefined && vServ !== null && vServ !== ''
+    ? Math.round(Number(vServ) * 100)
+    : null;
 
   return {
-    nomeServico: 'Consulta Médica',
+    nomeServico: especialidadeSugerida ? `Consulta - ${especialidadeSugerida}` : 'Consulta Médica',
     ctribNac,
     ctribMun,
     cnbs,
-    xdescServ: 'Consulta médica e atendimento clínico especializado',
+    xdescServ: rawXDesc || 'Consulta médica e atendimento clínico especializado',
     aliquotaIss,
     valorPadraoCentavos,
     especialidadeSugerida
