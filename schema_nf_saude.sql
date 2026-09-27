@@ -135,7 +135,8 @@ create table medicos (
   crm               text,      -- Conselho Regional de Medicina
   rqe               text,      -- Registro de Qualificação de Especialista (se especialista)
   especialidade     text,
-  criado_em         timestamptz not null default now()
+  criado_em         timestamptz not null default now(),
+  atualizado_em     timestamptz not null default now()
 );
 create index idx_medicos_conta on medicos(conta_id);
 

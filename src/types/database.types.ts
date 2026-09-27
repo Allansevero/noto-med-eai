@@ -642,6 +642,7 @@ export type Database = {
       }
       medicos: {
         Row: {
+          atualizado_em: string
           conta_id: string
           criado_em: string
           crm: string | null
@@ -652,6 +653,7 @@ export type Database = {
           usuario_id: string
         }
         Insert: {
+          atualizado_em?: string
           conta_id: string
           criado_em?: string
           crm?: string | null
@@ -662,6 +664,7 @@ export type Database = {
           usuario_id: string
         }
         Update: {
+          atualizado_em?: string
           conta_id?: string
           criado_em?: string
           crm?: string | null
