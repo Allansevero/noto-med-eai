@@ -11,7 +11,8 @@ import type {
   ConversaRegistro,
   PacienteRegistro,
   MedicoDadosRegistro,
-  ConsultaEmAbertoRegistro
+  ConsultaEmAbertoRegistro,
+  SolicitacaoAguardandoDataRegistro
 } from '../../atendimento/atendimento-repositorio.js';
 import type { RespostaRapidaModelo } from '../../whatsapp/casar-resposta-rapida.js';
 

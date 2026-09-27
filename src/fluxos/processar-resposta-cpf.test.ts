@@ -40,6 +40,9 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   async criarAgendamento(): Promise<{ id: string }> { return { id: 'ag-1' }; }
   async buscarConsultasEmAberto(): Promise<ConsultaEmAbertoRegistro[]> { return []; }
   async buscarDadosMedico(): Promise<MedicoDadosRegistro | null> { return null; }
+  async buscarMedicoPorTelefone(): Promise<MedicoDadosRegistro | null> { return null; }
+  async buscarSolicitacaoAguardandoData(): Promise<any> { return null; }
+  async atualizarDataDescricaoSolicitacao(): Promise<void> {}
   async criarSolicitacaoNota(): Promise<{ id: string }> { return { id: 'sol-1' }; }
   async liberarSolicitacoesPendentesCpf(): Promise<number> {
     return this.solicitacoesLiberadasCount;

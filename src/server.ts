@@ -64,7 +64,8 @@ export function criarAppExpress() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // UI Web de Entrada
+  // UI Web de Entrada e Assets Estáticos
+  app.use('/assets', express.static(join(__dirname, 'assets')));
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, 'ui', 'index.html'));
   });

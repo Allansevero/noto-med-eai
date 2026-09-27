@@ -3,330 +3,445 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Notomed Whats — Onboarding & Emissão de NFS-e via WhatsApp</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <title>Noto — Login</title>
   <style>
+    @font-face {
+      font-family: 'WhatsApp Sans';
+      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'WhatsApp Sans';
+      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
+      font-weight: 600;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'WhatsApp Sans';
+      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
     :root {
-      --bg: #070c14;
-      --card-bg: rgba(15, 23, 38, 0.88);
-      --card-border: rgba(45, 62, 94, 0.55);
-      --primary: #00d285;
-      --primary-hover: #00ba75;
-      --primary-glow: rgba(0, 210, 133, 0.28);
-      --accent: #00a8ff;
-      --text: #f0f4f8;
-      --text-muted: #8fa0b5;
-      --danger: #ff4757;
-      --success: #2ed573;
-      --warning: #ffa502;
+      --bg: #FCF5EB;
+      --text: #121C22;
+      --text-secondary: rgba(18, 28, 34, 0.72);
+      --text-muted: rgba(18, 28, 34, 0.45);
+      --primary: #25D366;
+      --primary-hover: #20ba5a;
+      --border-line: #121C22;
+      --font-family: 'WhatsApp Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-size-base: 15px;
+      --title-size: clamp(38px, 6vw, 60px);
+      --gap: 2.5rem;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Outfit', sans-serif;
+      font-family: var(--font-family);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     body {
-      background: radial-gradient(circle at 15% 15%, #15253d 0%, var(--bg) 75%);
+      background-color: var(--bg);
       color: var(--text);
+      font-size: var(--font-size-base);
+      line-height: 1.5;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
-      padding: 2rem 1rem;
+      justify-content: center;
+      padding: 2.5rem 1.5rem;
     }
 
-    .container {
+    .page-wrapper {
       width: 100%;
-      max-width: 600px;
-    }
-
-    .brand-header {
-      text-align: center;
-      margin-bottom: 1.75rem;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: rgba(0, 210, 133, 0.12);
-      border: 1px solid rgba(0, 210, 133, 0.3);
-      color: var(--primary);
-      padding: 0.35rem 0.85rem;
-      border-radius: 999px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      margin-bottom: 0.75rem;
-      letter-spacing: 0.5px;
-    }
-
-    .brand-header h1 {
-      font-size: 2.15rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      background: linear-gradient(135deg, #ffffff 30%, var(--primary) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 0.35rem;
-    }
-
-    .brand-header p {
-      color: var(--text-muted);
-      font-size: 0.95rem;
-      line-height: 1.4;
-    }
-
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 20px;
-      padding: 2rem;
-      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5), 0 0 25px var(--primary-glow);
-      backdrop-filter: blur(20px);
-      transition: all 0.3s ease;
-      margin-bottom: 1.5rem;
-    }
-
-    /* Stepper Navigation */
-    .stepper {
       display: flex;
-      justify-content: space-between;
-      position: relative;
-      margin-bottom: 2rem;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
-    .stepper::before {
-      content: '';
-      position: absolute;
-      top: 15px;
-      left: 10%;
-      right: 10%;
-      height: 2px;
-      background: rgba(255, 255, 255, 0.1);
-      z-index: 1;
-    }
-
-    .step-item {
-      position: relative;
-      z-index: 2;
+    /* Container de Acesso / Login */
+    .access-container {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       text-align: center;
-      flex: 1;
+      gap: var(--gap);
+      margin: auto;
     }
 
-    .step-circle {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: #0f1826;
-      border: 2px solid var(--card-border);
-      color: var(--text-muted);
+    .access-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+    }
+
+    .access-title {
+      font-size: var(--title-size);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.025em;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .access-subtitle {
+      font-size: var(--font-size-base);
+      color: var(--text-secondary);
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .access-form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--gap);
+    }
+
+    .field-wrapper {
+      width: 100%;
+    }
+
+    /* Input com Bandeira do Brasil e +55 */
+    .phone-input-wrapper {
+      width: 100%;
+      height: 56px;
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      padding: 0 1.25rem;
+      gap: 0.75rem;
+      box-sizing: border-box;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .phone-input-wrapper:focus-within {
+      box-shadow: 0 0 0 3px rgba(18, 28, 34, 0.1);
+    }
+
+    .flag-icon-container {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.85rem;
-      font-weight: 600;
-      margin: 0 auto 0.4rem;
-      transition: all 0.3s ease;
+      flex-shrink: 0;
     }
 
-    .step-label {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .step-item.active .step-circle {
-      border-color: var(--primary);
-      background: var(--primary);
-      color: #061019;
-      box-shadow: 0 0 15px var(--primary-glow);
-    }
-
-    .step-item.active .step-label {
-      color: var(--primary);
-      font-weight: 600;
-    }
-
-    .step-item.completed .step-circle {
-      border-color: var(--primary);
-      background: rgba(0, 210, 133, 0.2);
-      color: var(--primary);
-    }
-
-    .form-group {
-      margin-bottom: 1.25rem;
-    }
-
-    .form-group label {
+    .flag-img {
+      width: 26px;
+      height: 18px;
+      border-radius: 2px;
+      object-fit: cover;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
       display: block;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
     }
 
-    input[type="tel"],
-    input[type="text"],
-    input[type="number"],
-    input[type="password"] {
-      width: 100%;
-      background: rgba(10, 16, 26, 0.75);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 0.85rem 1rem;
-      color: var(--text);
-      font-size: 1.05rem;
+    .phone-input {
+      border: none;
+      background: transparent;
       outline: none;
-      transition: all 0.2s ease;
+      font-family: inherit;
+      font-size: 16px;
+      color: var(--text);
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      font-weight: 500;
     }
 
-    input:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px var(--primary-glow);
-      background: rgba(10, 16, 26, 0.95);
+    .phone-input::placeholder {
+      color: var(--text-muted);
+      font-weight: 400;
     }
 
-    .btn {
+    /* Texto de Termos e Políticas */
+    .legal-disclaimer {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text);
+      opacity: 0.85;
+      text-align: center;
+      margin: 0;
+      padding: 0 0.5rem;
+    }
+
+    .legal-disclaimer a {
+      color: var(--text);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .legal-disclaimer a:hover {
+      opacity: 0.6;
+    }
+
+    /* Botão de Ação Primário */
+    .btn-action {
       width: 100%;
       background: var(--primary);
-      color: #061019;
-      border: none;
-      border-radius: 12px;
-      padding: 0.9rem;
-      font-size: 1rem;
+      border: 1px solid var(--border-line);
+      border-radius: 9999px; /* radium 100% */
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--font-size-base);
       font-weight: 600;
+      padding: 1.05rem 1.75rem;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
-      transition: all 0.2s ease;
-      box-shadow: 0 4px 15px var(--primary-glow);
+      transition: background-color 0.15s ease, transform 0.1s ease;
+      line-height: 1;
+      box-sizing: border-box;
     }
 
-    .btn:hover {
+    .btn-action:hover {
       background: var(--primary-hover);
       transform: translateY(-1px);
     }
 
-    .btn:disabled {
-      opacity: 0.5;
+    .btn-action:active {
+      transform: translateY(0);
+    }
+
+    .btn-action:disabled {
+      opacity: 0.55;
       cursor: not-allowed;
       transform: none;
     }
 
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text);
-      box-shadow: none;
-      border: 1px solid var(--card-border);
+    /* Alertas */
+    .alert {
+      width: 100%;
+      padding: 0.85rem 1.25rem;
+      border-radius: 9999px;
+      font-size: 14px;
+      font-weight: 500;
+      text-align: center;
+      box-sizing: border-box;
     }
 
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.14);
-      color: #fff;
+    .alert-error {
+      background: #FFEBEB;
+      border: 1px solid #FF4757;
+      color: #D63031;
+    }
+
+    .alert-success {
+      background: #E8F8EE;
+      border: 1px solid #25D366;
+      color: #121C22;
     }
 
     .hidden {
       display: none !important;
     }
 
-    .alert {
-      padding: 0.75rem 1rem;
-      border-radius: 10px;
-      font-size: 0.875rem;
-      margin-bottom: 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .alert-error {
-      background: rgba(255, 71, 87, 0.15);
-      border: 1px solid rgba(255, 71, 87, 0.3);
-      color: var(--danger);
-    }
-
-    .alert-success {
-      background: rgba(46, 213, 115, 0.15);
-      border: 1px solid rgba(46, 213, 115, 0.3);
-      color: var(--success);
-    }
-
+    /* Inputs de OTP */
     .otp-inputs {
       display: flex;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin-bottom: 1.25rem;
+      justify-content: center;
+      gap: 0.65rem;
+      width: 100%;
     }
 
     .otp-inputs input {
+      width: 48px;
+      height: 58px;
       text-align: center;
-      font-size: 1.5rem;
+      font-size: 24px;
       font-weight: 700;
-      padding: 0.75rem 0;
+      color: var(--text);
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
       border-radius: 12px;
+      outline: none;
+      transition: box-shadow 0.15s ease;
     }
 
-    /* File Drop Zone */
-    .drop-zone {
-      border: 2px dashed var(--card-border);
-      border-radius: 14px;
-      padding: 2rem 1.5rem;
-      text-align: center;
+    .otp-inputs input:focus {
+      box-shadow: 0 0 0 3px rgba(18, 28, 34, 0.12);
+    }
+
+    .btn-link {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
       cursor: pointer;
-      background: rgba(10, 16, 26, 0.4);
-      transition: all 0.2s ease;
-      margin-bottom: 1.25rem;
+      opacity: 0.75;
+      transition: opacity 0.2s;
     }
 
-    .drop-zone:hover, .drop-zone.dragover {
+    .btn-link:hover {
+      opacity: 1;
+    }
+
+    /* --- CARDS E FLUXO DO ONBOARDING / PAINEL --- */
+    .onboarding-card {
+      width: 100%;
+      max-width: 620px;
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
+      border-radius: 28px;
+      padding: 2.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+      box-sizing: border-box;
+      box-shadow: 0 10px 30px rgba(18, 28, 34, 0.04);
+    }
+
+    .stepper {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      width: 100%;
+    }
+
+    .stepper::before {
+      content: '';
+      position: absolute;
+      top: 18px;
+      left: 20px;
+      right: 20px;
+      height: 2px;
+      background: rgba(18, 28, 34, 0.12);
+      z-index: 1;
+    }
+
+    .step-item {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .step-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      border: 2px solid rgba(18, 28, 34, 0.2);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      transition: all 0.25s ease;
+    }
+
+    .step-item.active .step-circle {
+      border-color: var(--border-line);
+      background: var(--primary);
+      color: var(--text);
+    }
+
+    .step-item.completed .step-circle {
       border-color: var(--primary);
-      background: rgba(0, 210, 133, 0.05);
+      background: var(--primary);
+      color: var(--text);
     }
 
-    .drop-zone .icon {
-      font-size: 2.25rem;
-      margin-bottom: 0.5rem;
-      color: var(--primary);
-    }
-
-    .drop-zone p {
-      font-size: 0.9rem;
+    .step-label {
+      font-size: 12px;
+      font-weight: 600;
       color: var(--text-muted);
     }
 
-    .drop-zone .file-name {
+    .step-item.active .step-label,
+    .step-item.completed .step-label {
       color: var(--text);
-      font-weight: 600;
-      margin-top: 0.5rem;
     }
 
-    /* Param preview table */
+    .input-text {
+      width: 100%;
+      height: 52px;
+      padding: 0 1.25rem;
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
+      border-radius: 9999px;
+      font-family: inherit;
+      font-size: var(--font-size-base);
+      color: var(--text);
+      outline: none;
+      box-sizing: border-box;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .input-text:focus {
+      box-shadow: 0 0 0 3px rgba(18, 28, 34, 0.1);
+    }
+
+    .drop-zone {
+      border: 2px dashed rgba(18, 28, 34, 0.3);
+      border-radius: 20px;
+      padding: 2.25rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      background: #FAF8F5;
+      transition: all 0.2s ease;
+      margin-bottom: 1rem;
+    }
+
+    .drop-zone:hover {
+      border-color: var(--border-line);
+      background: #F4EFE6;
+    }
+
+    .drop-zone .icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
     .params-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-      background: rgba(10, 16, 26, 0.6);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 1rem;
-      margin-bottom: 1.25rem;
-      font-size: 0.85rem;
+      gap: 0.85rem;
+      background: #FAF8F5;
+      border: 1px solid rgba(18, 28, 34, 0.12);
+      border-radius: 16px;
+      padding: 1.25rem;
+      font-size: 13px;
+      margin-bottom: 1.5rem;
+      text-align: left;
     }
 
     .param-item span:first-child {
       display: block;
       color: var(--text-muted);
-      font-size: 0.75rem;
-      margin-bottom: 0.15rem;
+      font-size: 11px;
+      text-transform: uppercase;
+      margin-bottom: 0.2rem;
+      font-weight: 600;
     }
 
     .param-item span:last-child {
@@ -334,49 +449,17 @@
       color: var(--text);
     }
 
-    .code-box {
-      background: #080d16;
-      border: 1px solid rgba(255,255,255,0.06);
-      padding: 0.85rem;
-      border-radius: 10px;
-      font-family: monospace;
-      font-size: 0.85rem;
-      color: #00d285;
-      margin-top: 0.5rem;
-    }
-
-    .stat-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.75rem 0;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .stat-row:last-child {
-      border-bottom: none;
-    }
-
-    .tag-active {
-      color: var(--success);
-      background: rgba(46, 213, 115, 0.15);
-      padding: 0.25rem 0.5rem;
-      border-radius: 6px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
     .qr-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 1.25rem;
-      background: #fff;
-      border-radius: 16px;
       width: 240px;
       height: 240px;
-      margin: 1rem auto;
+      margin: 1.5rem auto;
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
+      border-radius: 16px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .qr-container img {
@@ -386,88 +469,132 @@
     }
 
     .pairing-code {
-      font-size: 2rem;
+      font-size: 2.5rem;
       font-weight: 700;
-      letter-spacing: 4px;
-      color: var(--primary);
+      letter-spacing: 6px;
+      color: var(--text);
       text-align: center;
-      margin: 1rem 0;
+      margin: 1.5rem 0;
     }
 
-    @keyframes pulse {
-      0% { transform: scale(0.95); opacity: 0.7; }
-      50% { transform: scale(1.15); opacity: 1; }
-      100% { transform: scale(0.95); opacity: 0.7; }
+    .code-box {
+      background: #FAF8F5;
+      border: 1px solid rgba(18, 28, 34, 0.12);
+      padding: 0.9rem 1.25rem;
+      border-radius: 12px;
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--text);
+      margin-top: 0.5rem;
+      text-align: left;
     }
 
-    .pulse-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #2ed573;
-      animation: pulse 1.5s infinite ease-in-out;
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid rgba(18, 28, 34, 0.08);
+      font-size: 14px;
     }
 
-    .footer-links {
-      text-align: center;
-      font-size: 0.8rem;
-      color: var(--text-muted);
+    .tag-active {
+      background: rgba(37, 211, 102, 0.2);
+      border: 1px solid var(--primary);
+      color: #0b7330;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="brand-header">
-      <div class="badge">● SISTEMA OFICIAL DE EMISSÃO</div>
-      <h1>Notomed Whats</h1>
-      <p>Emissão de NFS-e para médicos diretamente pelo WhatsApp, sem formulários ou fricção.</p>
-    </div>
+  <div class="page-wrapper">
 
-    <!-- CARD PRINCIPAL DE AUTENTICAÇÃO -->
-    <div class="card" id="cardAuth">
+    <!-- ÁREA DE ACESSO / LOGIN MINIMALISTA -->
+    <main class="access-container" id="cardAuth">
+      <div class="access-header">
+        <h1 class="access-title">Faça login no Noto</h1>
+        <p class="access-subtitle">Enviaremos um código para você fazer login.</p>
+      </div>
+
       <div id="alertBox" class="alert alert-error hidden"></div>
 
-      <!-- ETAPA 1: DIGITAR TELEFONE -->
-      <form id="formTelefone">
-        <div class="form-group">
-          <label for="inputTelefone">WhatsApp do Médico ou Consultório</label>
-          <input type="tel" id="inputTelefone" placeholder="(11) 98765-4321" required autofocus maxlength="15">
-        </div>
-        <button type="submit" class="btn" id="btnEnviarOtp">
-          <span>Receber código no WhatsApp</span>
-          <span>→</span>
-        </button>
-      </form>
-
-      <!-- ETAPA 2: DIGITAR OTP -->
-      <form id="formOtp" class="hidden">
-        <div class="form-group">
-          <label>Código de 6 dígitos enviado ao seu WhatsApp</label>
-          <div class="otp-inputs">
-            <input type="text" maxlength="1" class="otp-digit" autofocus>
-            <input type="text" maxlength="1" class="otp-digit">
-            <input type="text" maxlength="1" class="otp-digit">
-            <input type="text" maxlength="1" class="otp-digit">
-            <input type="text" maxlength="1" class="otp-digit">
-            <input type="text" maxlength="1" class="otp-digit">
+      <!-- ETAPA 1: DIGITAR TELEFONE COM BANDEIRA E +55 AUTOMÁTICO -->
+      <form id="formTelefone" class="access-form">
+        <div class="field-wrapper">
+          <div class="phone-input-wrapper">
+            <div class="flag-icon-container" title="Brasil (+55)">
+              <img 
+                src="https://flagcdn.com/br.svg" 
+                alt="Bandeira do Brasil" 
+                class="flag-img" 
+                width="26" 
+                height="18" 
+                loading="eager"
+              />
+            </div>
+            <input 
+              type="tel" 
+              id="inputTelefone" 
+              class="phone-input"
+              placeholder="+55 (11) 98765-4321" 
+              autocomplete="tel" 
+              required 
+              autofocus 
+            />
           </div>
         </div>
-        <button type="submit" class="btn" id="btnValidarOtp">
-          <span>Acessar Consultório</span>
-          <span>✓</span>
+
+        <p class="legal-disclaimer">
+          Ao clicar no botão "Enviar código", desejo emitir notas via Noto pelo WhatsApp e concordo com 
+          <a href="#" target="_blank" rel="noopener">os Termos de Serviço</a> e 
+          <a href="#" target="_blank" rel="noopener">os Termos de SMS da Instinct</a> e reconheço a 
+          <a href="#" target="_blank" rel="noopener">Política de Privacidade</a>.
+        </p>
+
+        <button type="submit" class="btn-action" id="btnEnviarOtp">
+          Enviar código
         </button>
-        <div style="text-align: center; margin-top: 1rem;">
-          <a href="#" id="linkVoltar" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">← Voltar e alterar número</a>
+      </form>
+
+      <!-- ETAPA 2: DIGITAR O CÓDIGO DE 6 DÍGITOS -->
+      <form id="formOtp" class="access-form hidden">
+        <div class="access-header" style="gap: 0.5rem;">
+          <h2 style="font-size: 28px; font-weight: 700; color: var(--text);">Código de confirmação</h2>
+          <p class="access-subtitle">
+            Digite o código de 6 dígitos que enviamos para o seu WhatsApp no número <strong id="lblTelefoneDestino"></strong>:
+          </p>
+        </div>
+
+        <div class="otp-inputs">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-digit" autofocus />
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-digit" />
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-digit" />
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-digit" />
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-digit" />
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp-digit" />
+        </div>
+
+        <button type="submit" class="btn-action" id="btnValidarOtp">
+          Entrar no Noto
+        </button>
+
+        <div>
+          <button type="button" class="btn-link" id="linkVoltar">
+            ← Voltar e alterar número
+          </button>
         </div>
       </form>
-    </div>
+    </main>
 
-    <!-- CARD DO ONBOARDING (5 PASSOS) -->
-    <div class="card hidden" id="cardOnboarding">
+    <!-- CARD DO ONBOARDING / PAINEL (APÓS LOGIN) -->
+    <section class="onboarding-card hidden" id="cardOnboarding">
       <div id="alertOnboarding" class="alert alert-error hidden"></div>
 
-      <!-- BARRA DE PROGRESSO DO STEPPER -->
+      <!-- STEPPER PROGRESS BAR -->
       <div class="stepper" id="stepperNav">
         <div class="step-item active" id="stepIndicator1">
           <div class="step-circle">1</div>
@@ -491,38 +618,41 @@
         </div>
       </div>
 
-      <!-- PASSO 1: NOME E SOBRENOME -->
-      <div id="step1View">
-        <h3 style="margin-bottom: 0.5rem;">Identificação do Médico</h3>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
-          Como você gostaria de ser identificado nos atendimentos e mensagens aos pacientes?
-        </p>
-        <div class="form-group">
-          <label>Nome Completo do Médico</label>
-          <input type="text" id="inputNomeMedico" placeholder="Ex: Dra. Martina Becker" required>
+      <!-- PASSO 1: NOME DO MÉDICO -->
+      <div id="step1View" style="display: flex; flex-direction: column; gap: var(--gap);">
+        <div style="text-align: center;">
+          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Identificação do Médico</h2>
+          <p style="color: var(--text-secondary); font-size: 14px;">
+            Como você gostaria de ser identificado nos atendimentos e mensagens aos pacientes?
+          </p>
         </div>
-        <button type="button" class="btn" id="btnSalvarPasso1">
-          <span>Avançar para Importação Fiscal</span>
-          <span>→</span>
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 0.5rem;">Nome Completo</label>
+          <input type="text" id="inputNomeMedico" class="input-text" placeholder="Ex: Dr. Allan Severo" required />
+        </div>
+        <button type="button" class="btn-action" id="btnSalvarPasso1">
+          Avançar para Importação Fiscal
         </button>
       </div>
 
-      <!-- PASSO 2: UPLOAD DO XML DA ÚLTIMA NOTA -->
-      <div id="step2View" class="hidden">
-        <h3 style="margin-bottom: 0.5rem;">Importação de Parâmetros Fiscais</h3>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
-          Envie o XML da última NFS-e emitida pelo seu consultório (Padrão Nacional). O Notomed extrairá automaticamente seu regime tributário, CNAE, IM e alíquota de ISS sem preenchimento manual!
-        </p>
-        <div class="drop-zone" id="dropZoneXml" onclick="document.getElementById('fileXmlInput').click()">
-          <div class="icon">📄</div>
-          <p>Arraste o arquivo <strong>.xml</strong> da última nota aqui ou clique para selecionar</p>
-          <div class="file-name" id="labelXmlName"></div>
-          <input type="file" id="fileXmlInput" accept=".xml" class="hidden">
+      <!-- PASSO 2: UPLOAD DO XML FISCAL -->
+      <div id="step2View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
+        <div style="text-align: center;">
+          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Importação Fiscal</h2>
+          <p style="color: var(--text-secondary); font-size: 14px;">
+            Envie o XML da última NFS-e emitida pelo seu consultório. O Noto extrairá automaticamente seu regime e dados fiscais.
+          </p>
         </div>
 
-        <!-- PRÉ-VISUALIZAÇÃO DOS PARÂMETROS EXTRAÍDOS -->
+        <div class="drop-zone" id="dropZoneXml" onclick="document.getElementById('fileXmlInput').click()">
+          <div class="icon">📄</div>
+          <p style="font-size: 14px; color: var(--text); font-weight: 600;">Selecione o arquivo .xml da última nota fiscal</p>
+          <p style="font-size: 12px; color: var(--text-muted); margin-top: 0.25rem;">ou arraste o arquivo aqui</p>
+          <div style="font-weight: 700; color: var(--text); margin-top: 0.75rem;" id="labelXmlName"></div>
+          <input type="file" id="fileXmlInput" accept=".xml" class="hidden" />
+        </div>
+
         <div id="previewFiscal" class="hidden">
-          <h4 style="margin-bottom: 0.75rem; color: var(--primary);">Parâmetros Extraídos com Sucesso:</h4>
           <div class="params-grid">
             <div class="param-item">
               <span>Razão Social / Nome</span>
@@ -541,140 +671,123 @@
               <span id="txtMunUf">—</span>
             </div>
             <div class="param-item">
-              <span>Especialidade Sugerida</span>
+              <span>Especialidade</span>
               <span id="txtEspecialidade">—</span>
             </div>
             <div class="param-item">
-              <span>Alíquota ISS Estimada</span>
+              <span>Alíquota ISS</span>
               <span id="txtAliquota">—</span>
             </div>
           </div>
 
-          <button type="button" class="btn" id="btnConfirmarFiscal">
-            <span>Confirmar Dados Fiscais</span>
-            <span>✓</span>
+          <button type="button" class="btn-action" id="btnConfirmarFiscal">
+            Confirmar Dados Fiscais
           </button>
         </div>
       </div>
 
-      <!-- PASSO 3: CERTIFICADO DIGITAL A1 (.pfx/.p12) -->
-      <div id="step3View" class="hidden">
-        <h3 style="margin-bottom: 0.5rem;">Certificado Digital A1</h3>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
-          Necessário para assinar digitalmente a DPS junto ao Ambiente Nacional da Receita Federal.
-        </p>
+      <!-- PASSO 3: CERTIFICADO A1 -->
+      <div id="step3View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
+        <div style="text-align: center;">
+          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Certificado Digital A1</h2>
+          <p style="color: var(--text-secondary); font-size: 14px;">
+            Necessário para assinar a NFS-e junto ao Ambiente Nacional da Receita Federal.
+          </p>
+        </div>
+
         <div class="drop-zone" id="dropZoneCert" onclick="document.getElementById('fileCertInput').click()">
           <div class="icon">🔐</div>
-          <p>Selecione seu arquivo <strong>.pfx</strong> ou <strong>.p12</strong></p>
-          <div class="file-name" id="labelCertName"></div>
-          <input type="file" id="fileCertInput" accept=".pfx,.p12" class="hidden">
+          <p style="font-size: 14px; color: var(--text); font-weight: 600;">Selecione o arquivo .pfx ou .p12</p>
+          <div style="font-weight: 700; color: var(--text); margin-top: 0.75rem;" id="labelCertName"></div>
+          <input type="file" id="fileCertInput" accept=".pfx,.p12" class="hidden" />
         </div>
-        <div class="form-group">
-          <label>Senha do Certificado Digital</label>
-          <input type="password" id="inputSenhaCert" placeholder="Digite a senha do certificado A1">
+
+        <div>
+          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 0.5rem;">Senha do Certificado Digital</label>
+          <input type="password" id="inputSenhaCert" class="input-text" placeholder="Digite a senha do certificado A1" />
         </div>
-        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1.25rem;">
-          🛡️ Sua senha é gravada com criptografia de ponta e nunca é armazenada em texto puro.
-        </p>
-        <button type="button" class="btn" id="btnSalvarCertificado">
-          <span>Salvar Certificado Seguro</span>
-          <span>→</span>
+
+        <button type="button" class="btn-action" id="btnSalvarCertificado">
+          Salvar Certificado Seguro
         </button>
       </div>
 
-      <!-- PASSO 4: CONEXÃO WHATSAPP DO CONSULTÓRIO -->
-      <div id="step4View" class="hidden">
-        <h3 style="margin-bottom: 0.5rem;">Conectar WhatsApp do Consultório</h3>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
-          Conecte o WhatsApp do seu consultório para ativar as respostas rápidas <code>/agendado</code> e <code>/emissao</code>.
-        </p>
-
-        <div id="loadingQr" class="hidden" style="text-align: center; padding: 2rem;">
-          <div class="pulse-dot" style="margin-bottom: 0.75rem;"></div>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">Gerando QR Code de conexão segura...</p>
+      <!-- PASSO 4: WHATSAPP DO CONSULTÓRIO -->
+      <div id="step4View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
+        <div style="text-align: center;">
+          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Conectar WhatsApp</h2>
+          <p style="color: var(--text-secondary); font-size: 14px;">
+            Conecte o número do seu consultório para ativar o disparo automático de notas.
+          </p>
         </div>
 
-        <div id="boxQrCode" class="hidden">
-          <div class="qr-container">
-            <img id="imgQrCode" alt="QR Code WhatsApp">
-          </div>
-          <div id="statusEsperandoQr" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; color: #2ed573; font-size: 0.9rem; font-weight: 500;">
-            <span class="pulse-dot"></span>
-            <span>Aguardando leitura do QR Code no WhatsApp...</span>
-          </div>
-          <p style="text-align: center; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-            Abra o WhatsApp no seu celular &gt; Menu (três pontos) &gt; Aparelhos conectados &gt; Conectar um aparelho
-          </p>
+        <div id="loadingQr" class="hidden" style="text-align: center; padding: 2rem;">
+          <p style="color: var(--text-secondary); font-size: 14px;">Gerando conexão segura com a Evolution API...</p>
+        </div>
 
-          <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.8rem; color: var(--text-muted); text-align: left;">
-            <div style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">💡 Dicas para conectar sem erro:</div>
-            <ul style="margin: 0; padding-left: 1.2rem; line-height: 1.4;">
-              <li>Certifique-se de que não atingiu o limite de 4 aparelhos conectados no seu WhatsApp.</li>
-              <li>Aponte a câmera com boa iluminação e estabilidade para escanear.</li>
-              <li>Se demorar para abrir o aplicativo no celular, clique em <strong>Recarregar QR Code</strong> para obter um código novo.</li>
-            </ul>
+        <div id="boxQrCode" class="hidden" style="text-align: center;">
+          <div class="qr-container">
+            <img id="imgQrCode" alt="QR Code WhatsApp" />
           </div>
+          <p id="statusEsperandoQr" style="color: #0b7330; font-weight: 600; font-size: 14px; margin-bottom: 0.5rem;">
+            Aguardando leitura do QR Code no WhatsApp...
+          </p>
+          <p style="font-size: 13px; color: var(--text-muted);">
+            Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho
+          </p>
         </div>
 
         <div id="boxPairingCode" class="hidden" style="text-align: center;">
-          <p style="color: var(--text-muted); font-size: 0.85rem;">Ou digite o código de pareamento no celular:</p>
+          <p style="font-size: 13px; color: var(--text-secondary);">Ou digite o código de pareamento no celular:</p>
           <div class="pairing-code" id="txtPairingCode">----</div>
-          <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; color: #2ed573; font-size: 0.9rem; font-weight: 500;">
-            <span class="pulse-dot"></span>
-            <span>Aguardando confirmação no celular...</span>
-          </div>
         </div>
 
-        <button type="button" class="btn" id="btnIniciarWhatsapp">
+        <button type="button" class="btn-action" id="btnIniciarWhatsapp">
           <span id="btnIniciarWhatsappTxt">Gerar Conexão WhatsApp</span>
-          <span>🔄</span>
         </button>
       </div>
 
-      <!-- PASSO 5: LIBERADO PARA EMISSÃO -->
-      <div id="step5View" class="hidden">
-        <div style="text-align: center; margin-bottom: 1.5rem;">
-          <div class="badge" style="background: rgba(46, 213, 115, 0.2); color: var(--success); font-size: 0.9rem;">
-            ● ONBOARDING CONCLUÍDO COM SUCESSO
-          </div>
-          <h2 style="margin: 0.75rem 0 0.5rem; color: #fff;">Consultório Pronto e Ativo!</h2>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">
+      <!-- PASSO 5: LIBERADO -->
+      <div id="step5View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
+        <div style="text-align: center;">
+          <span class="tag-active" style="display: inline-block; margin-bottom: 1rem;">ATIVO &amp; LIBERADO</span>
+          <h2 style="font-size: 28px; font-weight: 700; margin-bottom: 0.5rem;">Consultório Pronto!</h2>
+          <p style="color: var(--text-secondary); font-size: 14px;">
             Você já pode emitir notas fiscais pelo WhatsApp. O sistema opera de forma invisível.
           </p>
         </div>
 
-        <div class="stat-row">
-          <span>Médico Responsável</span>
-          <span id="resumoNomeMedico" style="font-weight: 600;">—</span>
-        </div>
-        <div class="stat-row">
-          <span>Regime & Dados Fiscais</span>
-          <span class="tag-active">CONFIRMADO</span>
-        </div>
-        <div class="stat-row">
-          <span>Certificado Digital A1</span>
-          <span class="tag-active">ATIVO</span>
-        </div>
-        <div class="stat-row">
-          <span>WhatsApp do Consultório</span>
-          <span class="tag-active">CONECTADO</span>
+        <div>
+          <div class="stat-row">
+            <span style="color: var(--text-secondary);">Médico Responsável</span>
+            <span id="resumoNomeMedico" style="font-weight: 700;">—</span>
+          </div>
+          <div class="stat-row">
+            <span style="color: var(--text-secondary);">Parâmetros Fiscais</span>
+            <span class="tag-active">CONFIRMADO</span>
+          </div>
+          <div class="stat-row">
+            <span style="color: var(--text-secondary);">Certificado Digital A1</span>
+            <span class="tag-active">ATIVO</span>
+          </div>
+          <div class="stat-row">
+            <span style="color: var(--text-secondary);">WhatsApp do Consultório</span>
+            <span class="tag-active">CONECTADO</span>
+          </div>
         </div>
 
-        <div style="margin-top: 1.5rem;">
-          <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Comandos Prontos no seu WhatsApp:</label>
-          <div class="code-box">/agendado → Cadastra o paciente e confirma a consulta</div>
+        <div>
+          <p style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; text-align: left;">Comandos no seu WhatsApp:</p>
+          <div class="code-box">/agendado → Cadastra paciente e agenda consulta</div>
           <div class="code-box">/emissao → Emite a NFS-e e envia o PDF na conversa</div>
         </div>
 
-        <button type="button" class="btn btn-secondary" style="margin-top: 1.75rem;" onclick="location.reload()">
+        <button type="button" class="btn-action" style="background: transparent;" onclick="location.reload()">
           Atualizar Painel
         </button>
       </div>
-    </div>
+    </section>
 
-    <div class="footer-links">
-      Protegido por criptografia pgcrypto & Supabase Auth. Hospedado na Hostinger VPS.
-    </div>
   </div>
 
   <script>
@@ -683,6 +796,7 @@
     let xmlConteudoBruto = '';
     let certArquivoBase64 = '';
     let certNomeArquivo = '';
+    let telefoneAtual = '';
 
     // Elementos Auth
     const cardAuth = document.getElementById('cardAuth');
@@ -692,7 +806,7 @@
     const alertBox = document.getElementById('alertBox');
     const otpDigits = document.querySelectorAll('.otp-digit');
     const linkVoltar = document.getElementById('linkVoltar');
-    let telefoneAtual = '';
+    const lblTelefoneDestino = document.getElementById('lblTelefoneDestino');
 
     // Elementos Onboarding
     const cardOnboarding = document.getElementById('cardOnboarding');
@@ -713,20 +827,59 @@
       targetBox.classList.add('hidden');
     }
 
-    // Máscara de telefone
+    // Formatação automática com +55 e máscara
+    function formatarCom55(valor) {
+      let digits = valor.replace(/\D/g, '');
+
+      // Se colou ou digitou começando com 55 e possui mais de 11 dígitos, remove o 55 do início
+      if (digits.startsWith('55') && digits.length > 11) {
+        digits = digits.slice(2);
+      }
+
+      // Limita a 11 dígitos (DDD + 9 dígitos)
+      if (digits.length > 11) {
+        digits = digits.slice(0, 11);
+      }
+
+      if (digits.length === 0) {
+        return '';
+      }
+
+      let res = '+55 ';
+      if (digits.length <= 2) {
+        res += `(${digits}`;
+      } else if (digits.length <= 7) {
+        res += `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+      } else if (digits.length <= 10) {
+        res += `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      } else {
+        res += `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      }
+      return res;
+    }
+
     inputTelefone.addEventListener('input', (e) => {
-      let v = e.target.value.replace(/\D/g, '');
-      if (v.length > 11) v = v.slice(0, 11);
-      if (v.length > 6) {
-        e.target.value = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
-      } else if (v.length > 2) {
-        e.target.value = `(${v.slice(0,2)}) ${v.slice(2)}`;
-      } else if (v.length > 0) {
-        e.target.value = `(${v}`;
+      const formatado = formatarCom55(e.target.value);
+      e.target.value = formatado;
+    });
+
+    inputTelefone.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace') {
+        const digitos = e.target.value.replace(/\D/g, '');
+        // Se só sobrou o prefixo ou 1 dígito do DDD, limpa o campo
+        if (digitos.length <= 1 || (digitos.startsWith('55') && digitos.length <= 3)) {
+          e.target.value = '';
+        }
       }
     });
 
-    // Auto-avanço no OTP
+    inputTelefone.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const colado = (e.clipboardData || window.clipboardData).getData('text');
+      inputTelefone.value = formatarCom55(colado);
+    });
+
+    // Auto-avanço e retorno entre os dígitos do OTP
     otpDigits.forEach((input, index) => {
       input.addEventListener('input', () => {
         if (input.value.length === 1 && index < otpDigits.length - 1) {
@@ -744,12 +897,20 @@
     formTelefone.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
-      const digitos = inputTelefone.value.replace(/\D/g, '');
-      if (digitos.length < 10) {
+
+      const digitosCompletos = inputTelefone.value.replace(/\D/g, '');
+      // Extrai apenas DDD + número (remove 55 inicial se presente)
+      let numeroLocal = digitosCompletos;
+      if (numeroLocal.startsWith('55') && numeroLocal.length > 11) {
+        numeroLocal = numeroLocal.slice(2);
+      }
+
+      if (numeroLocal.length < 10) {
         showAlert('Digite um WhatsApp válido com DDD.');
         return;
       }
-      telefoneAtual = digitos;
+
+      telefoneAtual = numeroLocal;
       const btn = document.getElementById('btnEnviarOtp');
       btn.disabled = true;
       btn.textContent = 'Enviando código...';
@@ -758,28 +919,41 @@
         const res = await fetch('/api/auth/otp/solicitar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telefone: digitos })
+          body: JSON.stringify({ telefone: numeroLocal })
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
           showAlert(data.detalhe || 'Erro ao enviar código.');
           btn.disabled = false;
-          btn.innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
+          btn.textContent = 'Enviar código';
           return;
         }
 
-        showAlert('Código enviado com sucesso para o seu WhatsApp!', false);
+        showAlert('Código enviado para o seu WhatsApp!', false);
+        lblTelefoneDestino.textContent = inputTelefone.value;
         formTelefone.classList.add('hidden');
         formOtp.classList.remove('hidden');
         otpDigits[0].focus();
       } catch (err) {
         showAlert('Erro de conexão com o servidor.');
         btn.disabled = false;
-        btn.innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
+        btn.textContent = 'Enviar código';
       }
     });
 
-    // Validar OTP
+    // Voltar da tela de OTP para digitar telefone
+    linkVoltar.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideAlert();
+      formOtp.classList.add('hidden');
+      formTelefone.classList.remove('hidden');
+      const btn = document.getElementById('btnEnviarOtp');
+      btn.disabled = false;
+      btn.textContent = 'Enviar código';
+      inputTelefone.focus();
+    });
+
+    // Validar código OTP
     formOtp.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
@@ -803,7 +977,7 @@
         if (!res.ok || !data.ok) {
           showAlert(data.detalhe || 'Código incorreto ou expirado.');
           btn.disabled = false;
-          btn.innerHTML = '<span>Acessar Consultório</span><span>✓</span>';
+          btn.textContent = 'Entrar no Noto';
           return;
         }
 
@@ -813,11 +987,11 @@
       } catch (err) {
         showAlert('Erro ao autenticar.');
         btn.disabled = false;
-        btn.innerHTML = '<span>Acessar Consultório</span><span>✓</span>';
+        btn.textContent = 'Entrar no Noto';
       }
     });
 
-    // Carregar Onboarding e Status
+    // --- CARREGAR ONBOARDING / PAINEL ---
     async function carregarFluxoOnboarding() {
       if (!sessaoAtual?.usuario) return;
       cardAuth.classList.add('hidden');
@@ -830,7 +1004,6 @@
         if (data.ok && data.status) {
           renderizarPassos(data.status);
         } else {
-          // Se novo, começa no passo 1
           mostrarPasso(1);
         }
       } catch (err) {
@@ -910,7 +1083,7 @@
       }
     });
 
-    // --- PASSO 2: UPLOAD XML E CONFIRMAÇÃO FISCAL ---
+    // --- PASSO 2: UPLOAD XML ---
     const fileXmlInput = document.getElementById('fileXmlInput');
     fileXmlInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -935,7 +1108,7 @@
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
-          showAlert(data.detalhe || 'Falha ao processar XML de referência.', true, alertOnboarding);
+          showAlert(data.detalhe || 'Falha ao processar XML.', true, alertOnboarding);
           return;
         }
 
@@ -948,7 +1121,7 @@
         document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
         document.getElementById('txtAliquota').textContent = (s.aliquotaIss !== null && s.aliquotaIss !== undefined)
           ? `${s.aliquotaIss}%`
-          : 'Não especificada no XML';
+          : 'Não especificada';
 
         document.getElementById('previewFiscal').classList.remove('hidden');
         showAlert('Parâmetros fiscais extraídos com sucesso! Revise e confirme.', false, alertOnboarding);
@@ -1014,7 +1187,7 @@
         });
         const data = await res.json();
         if (data.ok) {
-          showAlert('Certificado digital A1 salvo e validado com sucesso!', false, alertOnboarding);
+          showAlert('Certificado digital A1 salvo com sucesso!', false, alertOnboarding);
           mostrarPasso(4);
         } else {
           showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);
@@ -1042,13 +1215,13 @@
           pararPollingConexao();
           const statusDiv = document.getElementById('statusEsperandoQr');
           if (statusDiv) {
-            statusDiv.innerHTML = '<span style="color: #2ed573;">✓ WhatsApp Conectado com Sucesso!</span>';
+            statusDiv.innerHTML = '<span>✓ WhatsApp Conectado com Sucesso!</span>';
           }
           showAlert('WhatsApp do consultório conectado com sucesso!', false, alertOnboarding);
           setTimeout(() => mostrarPasso(5), 1200);
         }
-      } catch (err) {
-        // Ignora erro transitório de polling
+      } catch {
+        // Ignora transitório
       }
     }
 
@@ -1065,9 +1238,7 @@
         if (data.ok && data.qrcodeBase64) {
           document.getElementById('imgQrCode').src = data.qrcodeBase64;
         }
-      } catch {
-        // Ignora falha silenciosa de renovação
-      }
+      } catch {}
     }
 
     function iniciarPollingConexao(medicoId) {
@@ -1109,7 +1280,7 @@
         btn.disabled = false;
 
         if (!res.ok || !data.ok) {
-          showAlert(data.detalhe || 'Erro ao comunicar com a Evolution API.', true, alertOnboarding);
+          showAlert(data.detalhe || 'Erro na conexão WhatsApp.', true, alertOnboarding);
           return;
         }
 
@@ -1146,7 +1317,7 @@
       }
     });
 
-    // Inicialização automática se já logado
+    // Auto carregar se logado
     if (sessaoAtual?.usuario) {
       carregarFluxoOnboarding();
     }
