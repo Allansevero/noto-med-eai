@@ -122,7 +122,7 @@ export function criarAppExpress() {
   };
 
   app.post('/webhook/evolution', webhookHandler);
-  app.post('/webhook/evolution/*', webhookHandler);
+  app.post('/webhook/evolution/:evento', webhookHandler);
 
   return app;
 }
