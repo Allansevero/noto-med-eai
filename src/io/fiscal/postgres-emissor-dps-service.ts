@@ -11,6 +11,7 @@ import type {
   ResultadoEmissaoDps
 } from '../../worker/emissor-dps-service.js';
 import { montarDps, type ConfigPrestador, type EmissaoInput } from './montar-dps.js';
+import { generateDanfsePdf } from '../../fiscal/danfse/gerar-danfse-pdf.js';
 
 export class PostgresEmissorDpsService implements EmissorDpsService {
   constructor(
@@ -50,6 +51,34 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const anoMes = layoutDps.infDps.dCompet.slice(0, 7);
     const chaveAcesso = `DPS-${item.medicoId.slice(0, 8)}-${ndps}-${Date.now()}`;
 
+    // Gera o PDF oficial do DANFSe v2.0
+    const pdfBytes = await generateDanfsePdf({
+      chaveAcesso,
+      numero: String(ndps),
+      serie: prestadorConfig.serie || '00001',
+      competencia: anoMes,
+      dataEmissao: new Date().toISOString(),
+      ambiente: prestadorConfig.ambiente === 1 ? 'producao' : 'homologacao',
+      prestador: {
+        cnpj: prestadorConfig.cnpj,
+        inscricaoMunicipal: prestadorConfig.im,
+        municipio: String(prestadorConfig.codMunicipio),
+        simplesNacional: prestadorConfig.regTrib.opSimpNac !== 1
+      },
+      tomador: {
+        nome: tomador.nome || 'PACIENTE',
+        cpf: tomador.cpf
+      },
+      servico: {
+        cTribNac: item.ctribNac,
+        cNBS: item.cnbs || '122051900',
+        discriminacao: item.xdescServ,
+        valor: item.valorServicoCentavos / 100
+      }
+    });
+
+    const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
+
     return {
       sucesso: true,
       chaveAcesso,
@@ -59,7 +88,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       dataEmissao: new Date(),
       valorServicosCentavos: item.valorServicoCentavos,
       xmlStoragePath: `notas/${item.medicoId}/${anoMes}/${chaveAcesso}.xml`,
-      pdfStoragePath: `notas/${item.medicoId}/${anoMes}/${chaveAcesso}.pdf`,
+      pdfStoragePath: pdfBase64,
       respostaSefinRaw: { layoutDps }
     };
   }

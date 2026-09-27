@@ -30,3 +30,5 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+scratch/
+

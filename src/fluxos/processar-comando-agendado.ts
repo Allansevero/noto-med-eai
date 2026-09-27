@@ -4,13 +4,15 @@
  * a consulta na agenda com data/hora e valores extraídos opportunisticamente (seção 3.1).
  */
 
-import { consolidarDadosAgendamento } from '../agendamento/extrair-dados-agendamento.js';
+import { extrairDadosAgendamentoComIa } from '../agendamento/extrair-dados-agendamento-ia.js';
 import { gerarHashCpf } from '../paciente/hash-cpf.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
+import type { ExtratorIaService } from '../ia/extrator-ia-service.js';
 
 export interface ProcessarAgendadoDeps {
   repositorio: AtendimentoRepositorio;
   pepper: string;
+  iaService?: ExtratorIaService;
   agora?: () => Date;
 }
 
@@ -27,7 +29,10 @@ export async function processarComandoAgendado(
   deps: ProcessarAgendadoDeps
 ): Promise<ResultadoProcessarAgendado> {
   const dataAtual = deps.agora ? deps.agora() : new Date();
-  const dados = consolidarDadosAgendamento(mensagensRecentes, dataAtual);
+  const dados = await extrairDadosAgendamentoComIa(mensagensRecentes, {
+    iaService: deps.iaService,
+    agora: dataAtual
+  });
 
   let pacienteId = conversa.pacienteId;
   if (!pacienteId) {
@@ -42,6 +47,7 @@ export async function processarComandoAgendado(
       const novo = await deps.repositorio.criarPacienteMinimo({
         medicoId: conversa.medicoId,
         telefone: conversa.contatoTelefone,
+        nome: dados.nomePaciente,
         email: dados.emailPaciente,
         cpfHash,
         origemCadastro: 'conversa'

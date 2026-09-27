@@ -20,11 +20,13 @@ import { processarComandoEmissao } from './processar-comando-emissao.js';
 import type { AtendimentoRepositorio } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
+import type { ExtratorIaService } from '../ia/extrator-ia-service.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
   enviarMensagemPaciente: EnviarMensagemPaciente;
   consultaCpfProvider?: ConsultaCpfProvider;
+  iaService?: ExtratorIaService;
   segredoConfigurado: string;
   pepper: string;
 }
@@ -86,7 +88,8 @@ async function rotearMensagem(
   if (casamento.tipo === 'agendado') {
     const res = await processarComandoAgendado(conversa, [texto], {
       repositorio: deps.repositorio,
-      pepper: deps.pepper
+      pepper: deps.pepper,
+      iaService: deps.iaService
     });
     return { ok: true, acao: 'comando_agendado', detalhe: res };
   }

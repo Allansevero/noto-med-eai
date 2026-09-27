@@ -20,6 +20,8 @@ export interface AppConfig {
   evolutionOfficialInstanceName: string;
   resendApiKey?: string;
   devEmailAlerta?: string;
+  groqApiKey: string;
+  groqModel: string;
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -36,7 +38,9 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     evolutionWebhookSecret: env['EVOLUTION_WEBHOOK_SECRET'] || '',
     evolutionOfficialInstanceName: env['EVOLUTION_OFFICIAL_INSTANCE_NAME'] || 'notomed_oficial',
     resendApiKey: env['RESEND_API_KEY'],
-    devEmailAlerta: env['DEV_EMAIL_ALERTA']
+    devEmailAlerta: env['DEV_EMAIL_ALERTA'],
+    groqApiKey: env['GROQ_API_KEY'] || '',
+    groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b'
   };
 }
 

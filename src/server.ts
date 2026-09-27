@@ -25,6 +25,8 @@ import { salvarCertificadoMedico } from './onboarding/fluxos/salvar-certificado-
 import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instancia-whatsapp-medico.js';
 import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-status-instancia-whatsapp.js';
 import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
+import { GroqApiClient } from './io/groq/groq-api-client.js';
+import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,6 +49,11 @@ export function criarAppExpress() {
     config.supabaseServiceRoleKey,
     pool
   );
+  const groqClient = new GroqApiClient({
+    apiKey: config.groqApiKey,
+    modeloPrincipal: config.groqModel,
+    modeloFallback: 'openai/gpt-oss-20b'
+  });
 
   // Healthcheck para o Easypanel
   app.get('/health', (_req: Request, res: Response) => {
@@ -286,6 +293,7 @@ export function criarAppExpress() {
     const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
       repositorio: atendimentoRepo,
       enviarMensagemPaciente: evolutionClient,
+      iaService: groqClient,
       segredoConfigurado: segredoEsperado,
       pepper: config.appPepper
     });
@@ -300,6 +308,69 @@ export function criarAppExpress() {
 
   app.post('/webhook/evolution', webhookHandler);
   app.post('/webhook/evolution/:evento', webhookHandler);
+
+  // Rota de Extração Inteligente de Dados com Groq AI
+  app.post('/api/ia/extrair-dados', async (req: Request, res: Response) => {
+    try {
+      const { texto, mensagens, dataReferencia } = req.body || {};
+      const textoConsulta = texto || (Array.isArray(mensagens) ? mensagens.join('\n') : '');
+      if (!textoConsulta) {
+        return res.status(400).json({ ok: false, detalhe: 'Texto ou mensagens são obrigatórios' });
+      }
+      const dataRef = dataReferencia ? new Date(dataReferencia) : new Date();
+      const resultado = await groqClient.extrairDados(textoConsulta, dataRef);
+      return res.json({ ok: true, dados: resultado });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro na extração de IA' });
+    }
+  });
+
+  // Rota de Pré-visualização ou Download do DANFSe v2.0 em PDF
+  app.get('/api/danfse/preview', async (_req: Request, res: Response) => {
+    try {
+      const pdfBytes = await generateDanfsePdf({
+        ambiente: 'producao',
+        numero: '1',
+        serie: '00001',
+        prestador: {
+          razaoSocial: 'CLÍNICA MÉDICA DEMO LTDA',
+          cnpj: '12.345.678/0001-90',
+          inscricaoMunicipal: '99887766',
+          endereco: 'Av. Ipiranga, 6681 - Partenon',
+          municipio: 'Porto Alegre',
+          uf: 'RS',
+          cep: '90619-900',
+          telefone: '51999998888',
+          email: 'financeiro@clinicademo.com.br',
+          simplesNacional: true
+        },
+        tomador: {
+          nome: 'PACIENTE EXEMPLO SILVA',
+          cpf: '529.982.247-25',
+          endereco: 'Rua dos Andradas, 1000 - Centro',
+          municipio: 'Porto Alegre',
+          uf: 'RS',
+          cep: '90020-006',
+          telefone: '51988887777',
+          email: 'paciente@exemplo.com'
+        },
+        servico: {
+          cTribNac: '041601',
+          cNBS: '123011300',
+          valor: 350.00,
+          aliquota: 2.00,
+          issApurado: 7.00,
+          discriminacao: 'REFERENTE A 1 CONSULTA MÉDICA REALIZADA COM DR. EXEMPLO (CRM: 12345/RS) EM 27 DE SETEMBRO DE 2026.'
+        }
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename="DANFSe-preview.pdf"');
+      return res.send(Buffer.from(pdfBytes));
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao gerar PDF do DANFSe' });
+    }
+  });
 
   return app;
 }
