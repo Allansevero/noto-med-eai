@@ -3,23 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Notomed Whats — Emissão de NFS-e para Médicos via WhatsApp</title>
+  <title>Notomed Whats — Onboarding & Emissão de NFS-e via WhatsApp</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090e17;
-      --card-bg: rgba(18, 27, 43, 0.85);
-      --card-border: rgba(45, 62, 94, 0.5);
+      --bg: #070c14;
+      --card-bg: rgba(15, 23, 38, 0.88);
+      --card-border: rgba(45, 62, 94, 0.55);
       --primary: #00d285;
       --primary-hover: #00ba75;
-      --primary-glow: rgba(0, 210, 133, 0.25);
+      --primary-glow: rgba(0, 210, 133, 0.28);
       --accent: #00a8ff;
       --text: #f0f4f8;
       --text-muted: #8fa0b5;
       --danger: #ff4757;
       --success: #2ed573;
+      --warning: #ffa502;
     }
 
     * {
@@ -30,25 +31,24 @@
     }
 
     body {
-      background: radial-gradient(circle at 20% 20%, #152238 0%, var(--bg) 70%);
+      background: radial-gradient(circle at 15% 15%, #15253d 0%, var(--bg) 75%);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 1.5rem;
+      justify-content: flex-start;
+      padding: 2rem 1rem;
     }
 
     .container {
       width: 100%;
-      max-width: 480px;
-      perspective: 1000px;
+      max-width: 600px;
     }
 
     .brand-header {
       text-align: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1.75rem;
     }
 
     .badge {
@@ -62,34 +62,102 @@
       border-radius: 999px;
       font-size: 0.8rem;
       font-weight: 600;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
       letter-spacing: 0.5px;
     }
 
     .brand-header h1 {
-      font-size: 2.25rem;
+      font-size: 2.15rem;
       font-weight: 700;
       letter-spacing: -0.5px;
-      background: linear-gradient(135deg, #ffffff 40%, var(--primary) 100%);
+      background: linear-gradient(135deg, #ffffff 30%, var(--primary) 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.35rem;
     }
 
     .brand-header p {
       color: var(--text-muted);
       font-size: 0.95rem;
-      line-height: 1.5;
+      line-height: 1.4;
     }
 
     .card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 20px;
-      padding: 2.25rem;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 25px var(--primary-glow);
-      backdrop-filter: blur(16px);
-      transition: transform 0.3s ease, border-color 0.3s ease;
+      padding: 2rem;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5), 0 0 25px var(--primary-glow);
+      backdrop-filter: blur(20px);
+      transition: all 0.3s ease;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Stepper Navigation */
+    .stepper {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      margin-bottom: 2rem;
+    }
+
+    .stepper::before {
+      content: '';
+      position: absolute;
+      top: 15px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      z-index: 1;
+    }
+
+    .step-item {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      flex: 1;
+    }
+
+    .step-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #0f1826;
+      border: 2px solid var(--card-border);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin: 0 auto 0.4rem;
+      transition: all 0.3s ease;
+    }
+
+    .step-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .step-item.active .step-circle {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #061019;
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    .step-item.active .step-label {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .step-item.completed .step-circle {
+      border-color: var(--primary);
+      background: rgba(0, 210, 133, 0.2);
+      color: var(--primary);
     }
 
     .form-group {
@@ -104,20 +172,17 @@
       margin-bottom: 0.5rem;
     }
 
-    .input-wrapper {
-      position: relative;
-    }
-
     input[type="tel"],
-    input[type="text"] {
+    input[type="text"],
+    input[type="number"],
+    input[type="password"] {
       width: 100%;
-      background: rgba(10, 16, 26, 0.7);
+      background: rgba(10, 16, 26, 0.75);
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 0.85rem 1rem;
       color: var(--text);
-      font-size: 1.1rem;
-      letter-spacing: 0.5px;
+      font-size: 1.05rem;
       outline: none;
       transition: all 0.2s ease;
     }
@@ -155,6 +220,18 @@
       opacity: 0.5;
       cursor: not-allowed;
       transform: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      box-shadow: none;
+      border: 1px solid var(--card-border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
     }
 
     .hidden {
@@ -198,29 +275,82 @@
       border-radius: 12px;
     }
 
-    .footer-links {
+    /* File Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--card-border);
+      border-radius: 14px;
+      padding: 2rem 1.5rem;
       text-align: center;
-      margin-top: 1.5rem;
-      font-size: 0.825rem;
+      cursor: pointer;
+      background: rgba(10, 16, 26, 0.4);
+      transition: all 0.2s ease;
+      margin-bottom: 1.25rem;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary);
+      background: rgba(0, 210, 133, 0.05);
+    }
+
+    .drop-zone .icon {
+      font-size: 2.25rem;
+      margin-bottom: 0.5rem;
+      color: var(--primary);
+    }
+
+    .drop-zone p {
+      font-size: 0.9rem;
       color: var(--text-muted);
     }
 
-    .footer-links a {
-      color: var(--primary);
-      text-decoration: none;
+    .drop-zone .file-name {
+      color: var(--text);
+      font-weight: 600;
+      margin-top: 0.5rem;
     }
 
-    /* Dashboard preview */
-    .dashboard-panel {
-      text-align: left;
+    /* Param preview table */
+    .params-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      background: rgba(10, 16, 26, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.85rem;
+    }
+
+    .param-item span:first-child {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      margin-bottom: 0.15rem;
+    }
+
+    .param-item span:last-child {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .code-box {
+      background: #080d16;
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 0.85rem;
+      border-radius: 10px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #00d285;
+      margin-top: 0.5rem;
     }
 
     .stat-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.85rem 0;
-      border-bottom: 1px solid var(--card-border);
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
 
     .stat-row:last-child {
@@ -236,15 +366,38 @@
       font-weight: 600;
     }
 
-    .code-box {
-      background: #080d16;
-      border: 1px solid rgba(255,255,255,0.06);
-      padding: 0.85rem;
-      border-radius: 10px;
-      font-family: monospace;
-      font-size: 0.85rem;
-      color: #00d285;
-      margin-top: 0.5rem;
+    .qr-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      background: #fff;
+      border-radius: 16px;
+      width: 240px;
+      height: 240px;
+      margin: 1rem auto;
+    }
+
+    .qr-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .pairing-code {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: var(--primary);
+      text-align: center;
+      margin: 1rem 0;
+    }
+
+    .footer-links {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
   </style>
 </head>
@@ -293,30 +446,195 @@
           <a href="#" id="linkVoltar" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">← Voltar e alterar número</a>
         </div>
       </form>
+    </div>
 
-      <!-- ETAPA 3: PAINEL APÓS LOGIN -->
-      <div id="painelConectado" class="dashboard-panel hidden">
+    <!-- CARD DO ONBOARDING (5 PASSOS) -->
+    <div class="card hidden" id="cardOnboarding">
+      <div id="alertOnboarding" class="alert alert-error hidden"></div>
+
+      <!-- BARRA DE PROGRESSO DO STEPPER -->
+      <div class="stepper" id="stepperNav">
+        <div class="step-item active" id="stepIndicator1">
+          <div class="step-circle">1</div>
+          <div class="step-label">Identificação</div>
+        </div>
+        <div class="step-item" id="stepIndicator2">
+          <div class="step-circle">2</div>
+          <div class="step-label">Dados Fiscais</div>
+        </div>
+        <div class="step-item" id="stepIndicator3">
+          <div class="step-circle">3</div>
+          <div class="step-label">Certificado A1</div>
+        </div>
+        <div class="step-item" id="stepIndicator4">
+          <div class="step-circle">4</div>
+          <div class="step-label">WhatsApp</div>
+        </div>
+        <div class="step-item" id="stepIndicator5">
+          <div class="step-circle">✓</div>
+          <div class="step-label">Liberado</div>
+        </div>
+      </div>
+
+      <!-- PASSO 1: NOME E SOBRENOME -->
+      <div id="step1View">
+        <h3 style="margin-bottom: 0.5rem;">Identificação do Médico</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+          Como você gostaria de ser identificado nos atendimentos e mensagens aos pacientes?
+        </p>
+        <div class="form-group">
+          <label>Nome Completo do Médico</label>
+          <input type="text" id="inputNomeMedico" placeholder="Ex: Dra. Martina Becker" required>
+        </div>
+        <button type="button" class="btn" id="btnSalvarPasso1">
+          <span>Avançar para Importação Fiscal</span>
+          <span>→</span>
+        </button>
+      </div>
+
+      <!-- PASSO 2: UPLOAD DO XML DA ÚLTIMA NOTA -->
+      <div id="step2View" class="hidden">
+        <h3 style="margin-bottom: 0.5rem;">Importação de Parâmetros Fiscais</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
+          Envie o XML da última NFS-e emitida pelo seu consultório (Padrão Nacional). O Notomed extrairá automaticamente seu regime tributário, CNAE, IM e alíquota de ISS sem preenchimento manual!
+        </p>
+        <div class="drop-zone" id="dropZoneXml" onclick="document.getElementById('fileXmlInput').click()">
+          <div class="icon">📄</div>
+          <p>Arraste o arquivo <strong>.xml</strong> da última nota aqui ou clique para selecionar</p>
+          <div class="file-name" id="labelXmlName"></div>
+          <input type="file" id="fileXmlInput" accept=".xml" class="hidden">
+        </div>
+
+        <!-- PRÉ-VISUALIZAÇÃO DOS PARÂMETROS EXTRAÍDOS -->
+        <div id="previewFiscal" class="hidden">
+          <h4 style="margin-bottom: 0.75rem; color: var(--primary);">Parâmetros Extraídos com Sucesso:</h4>
+          <div class="params-grid">
+            <div class="param-item">
+              <span>Razão Social / Nome</span>
+              <span id="txtRazaoSocial">—</span>
+            </div>
+            <div class="param-item">
+              <span>CNPJ / CPF</span>
+              <span id="txtCnpj">—</span>
+            </div>
+            <div class="param-item">
+              <span>Inscrição Municipal</span>
+              <span id="txtIm">—</span>
+            </div>
+            <div class="param-item">
+              <span>Município / UF</span>
+              <span id="txtMunUf">—</span>
+            </div>
+            <div class="param-item">
+              <span>Especialidade Sugerida</span>
+              <span id="txtEspecialidade">—</span>
+            </div>
+            <div class="param-item">
+              <span>Alíquota ISS Estimada</span>
+              <span id="txtAliquota">—</span>
+            </div>
+          </div>
+
+          <button type="button" class="btn" id="btnConfirmarFiscal">
+            <span>Confirmar Dados Fiscais</span>
+            <span>✓</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- PASSO 3: CERTIFICADO DIGITAL A1 (.pfx/.p12) -->
+      <div id="step3View" class="hidden">
+        <h3 style="margin-bottom: 0.5rem;">Certificado Digital A1</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
+          Necessário para assinar digitalmente a DPS junto ao Ambiente Nacional da Receita Federal.
+        </p>
+        <div class="drop-zone" id="dropZoneCert" onclick="document.getElementById('fileCertInput').click()">
+          <div class="icon">🔐</div>
+          <p>Selecione seu arquivo <strong>.pfx</strong> ou <strong>.p12</strong></p>
+          <div class="file-name" id="labelCertName"></div>
+          <input type="file" id="fileCertInput" accept=".pfx,.p12" class="hidden">
+        </div>
+        <div class="form-group">
+          <label>Senha do Certificado Digital</label>
+          <input type="password" id="inputSenhaCert" placeholder="Digite a senha do certificado A1">
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+          🛡️ Sua senha é gravada com criptografia de ponta e nunca é armazenada em texto puro.
+        </p>
+        <button type="button" class="btn" id="btnSalvarCertificado">
+          <span>Salvar Certificado Seguro</span>
+          <span>→</span>
+        </button>
+      </div>
+
+      <!-- PASSO 4: CONEXÃO WHATSAPP DO CONSULTÓRIO -->
+      <div id="step4View" class="hidden">
+        <h3 style="margin-bottom: 0.5rem;">Conectar WhatsApp do Consultório</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
+          Conecte o WhatsApp do seu consultório para ativar as respostas rápidas <code>/agendado</code> e <code>/emissao</code>.
+        </p>
+
+        <div id="loadingQr" class="hidden" style="text-align: center; padding: 2rem;">
+          <p>Gerando QR Code de conexão...</p>
+        </div>
+
+        <div id="boxQrCode" class="hidden">
+          <div class="qr-container">
+            <img id="imgQrCode" alt="QR Code WhatsApp">
+          </div>
+          <p style="text-align: center; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+            Abra o WhatsApp no celular > Menu > Aparelhos Conectados > Conectar um aparelho
+          </p>
+        </div>
+
+        <div id="boxPairingCode" class="hidden" style="text-align: center;">
+          <p style="color: var(--text-muted); font-size: 0.85rem;">Ou digite o código de pareamento no celular:</p>
+          <div class="pairing-code" id="txtPairingCode">----</div>
+        </div>
+
+        <button type="button" class="btn" id="btnIniciarWhatsapp">
+          <span>Gerar Conexão WhatsApp</span>
+          <span>🔄</span>
+        </button>
+      </div>
+
+      <!-- PASSO 5: LIBERADO PARA EMISSÃO -->
+      <div id="step5View" class="hidden">
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+          <div class="badge" style="background: rgba(46, 213, 115, 0.2); color: var(--success); font-size: 0.9rem;">
+            ● ONBOARDING CONCLUÍDO COM SUCESSO
+          </div>
+          <h2 style="margin: 0.75rem 0 0.5rem; color: #fff;">Consultório Pronto e Ativo!</h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">
+            Você já pode emitir notas fiscais pelo WhatsApp. O sistema opera de forma invisível.
+          </p>
+        </div>
+
         <div class="stat-row">
-          <span>Médico Autenticado</span>
-          <span id="nomeMedicoLogado" style="font-weight: 600;">Dr(a). Médico</span>
+          <span>Médico Responsável</span>
+          <span id="resumoNomeMedico" style="font-weight: 600;">—</span>
         </div>
         <div class="stat-row">
-          <span>Instância WhatsApp</span>
+          <span>Regime & Dados Fiscais</span>
+          <span class="tag-active">CONFIRMADO</span>
+        </div>
+        <div class="stat-row">
+          <span>Certificado Digital A1</span>
+          <span class="tag-active">ATIVO</span>
+        </div>
+        <div class="stat-row">
+          <span>WhatsApp do Consultório</span>
           <span class="tag-active">CONECTADO</span>
-        </div>
-        <div class="stat-row">
-          <span>Regime Fiscal</span>
-          <span style="color: var(--text-muted);">Simples Nacional / SEFIN</span>
         </div>
 
         <div style="margin-top: 1.5rem;">
-          <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Comandos Rápidos Ativos no WhatsApp:</label>
-          <div class="code-box">/agendado → "Consulta agendada!"</div>
-          <div class="code-box">/emissao → "Vou enviar em instantes sua NF no valor de R$"</div>
+          <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Comandos Prontos no seu WhatsApp:</label>
+          <div class="code-box">/agendado → Cadastra o paciente e confirma a consulta</div>
+          <div class="code-box">/emissao → Emite a NFS-e e envia o PDF na conversa</div>
         </div>
 
-        <button class="btn" style="margin-top: 1.5rem; background: rgba(255, 71, 87, 0.2); color: var(--danger); border: 1px solid rgba(255, 71, 87, 0.4);" onclick="location.reload()">
-          Sair da Conta
+        <button type="button" class="btn btn-secondary" style="margin-top: 1.75rem;" onclick="location.reload()">
+          Atualizar Painel
         </button>
       </div>
     </div>
@@ -327,16 +645,42 @@
   </div>
 
   <script>
+    // Gerenciador de estado local
+    let sessaoAtual = JSON.parse(localStorage.getItem('notomed_sessao') || 'null');
+    let xmlConteudoBruto = '';
+    let certArquivoBase64 = '';
+    let certNomeArquivo = '';
+
+    // Elementos Auth
+    const cardAuth = document.getElementById('cardAuth');
     const formTelefone = document.getElementById('formTelefone');
     const formOtp = document.getElementById('formOtp');
-    const painelConectado = document.getElementById('painelConectado');
     const inputTelefone = document.getElementById('inputTelefone');
     const alertBox = document.getElementById('alertBox');
     const otpDigits = document.querySelectorAll('.otp-digit');
     const linkVoltar = document.getElementById('linkVoltar');
     let telefoneAtual = '';
 
-    // Máscara de telefone brasileiro (XX) XXXXX-XXXX
+    // Elementos Onboarding
+    const cardOnboarding = document.getElementById('cardOnboarding');
+    const alertOnboarding = document.getElementById('alertOnboarding');
+    const step1View = document.getElementById('step1View');
+    const step2View = document.getElementById('step2View');
+    const step3View = document.getElementById('step3View');
+    const step4View = document.getElementById('step4View');
+    const step5View = document.getElementById('step5View');
+
+    function showAlert(msg, isError = true, targetBox = alertBox) {
+      targetBox.textContent = msg;
+      targetBox.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
+      targetBox.classList.remove('hidden');
+    }
+
+    function hideAlert(targetBox = alertBox) {
+      targetBox.classList.add('hidden');
+    }
+
+    // Máscara de telefone
     inputTelefone.addEventListener('input', (e) => {
       let v = e.target.value.replace(/\D/g, '');
       if (v.length > 11) v = v.slice(0, 11);
@@ -349,26 +693,29 @@
       }
     });
 
-    function showAlert(msg, isError = true) {
-      alertBox.textContent = msg;
-      alertBox.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
-      alertBox.classList.remove('hidden');
-    }
+    // Auto-avanço no OTP
+    otpDigits.forEach((input, index) => {
+      input.addEventListener('input', () => {
+        if (input.value.length === 1 && index < otpDigits.length - 1) {
+          otpDigits[index + 1].focus();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && index > 0) {
+          otpDigits[index - 1].focus();
+        }
+      });
+    });
 
-    function hideAlert() {
-      alertBox.classList.add('hidden');
-    }
-
-    // Enviar OTP
+    // Enviar código OTP
     formTelefone.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
       const digitos = inputTelefone.value.replace(/\D/g, '');
       if (digitos.length < 10) {
-        showAlert('Digite um número de WhatsApp válido com DDD.');
+        showAlert('Digite um WhatsApp válido com DDD.');
         return;
       }
-
       telefoneAtual = digitos;
       const btn = document.getElementById('btnEnviarOtp');
       btn.disabled = true;
@@ -382,7 +729,7 @@
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
-          showAlert(data.detalhe || 'Erro ao enviar código. Tente novamente.');
+          showAlert(data.detalhe || 'Erro ao enviar código.');
           btn.disabled = false;
           btn.innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
           return;
@@ -399,21 +746,7 @@
       }
     });
 
-    // Auto-avanço nos inputs do OTP
-    otpDigits.forEach((input, index) => {
-      input.addEventListener('input', () => {
-        if (input.value.length === 1 && index < otpDigits.length - 1) {
-          otpDigits[index + 1].focus();
-        }
-      });
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && !input.value && index > 0) {
-          otpDigits[index - 1].focus();
-        }
-      });
-    });
-
-    // Confirmar OTP
+    // Validar OTP
     formOtp.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
@@ -425,7 +758,7 @@
 
       const btn = document.getElementById('btnValidarOtp');
       btn.disabled = true;
-      btn.textContent = 'Validando...';
+      btn.textContent = 'Autenticando...';
 
       try {
         const res = await fetch('/api/auth/otp/verificar', {
@@ -441,10 +774,9 @@
           return;
         }
 
-        formOtp.classList.add('hidden');
-        painelConectado.classList.remove('hidden');
-        document.getElementById('nomeMedicoLogado').textContent = data.sessao.usuario.nome || 'Médico Autenticado';
-        showAlert('Autenticado com sucesso via Supabase Auth!', false);
+        sessaoAtual = data.sessao;
+        localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
+        carregarFluxoOnboarding();
       } catch (err) {
         showAlert('Erro ao autenticar.');
         btn.disabled = false;
@@ -452,14 +784,243 @@
       }
     });
 
-    linkVoltar.addEventListener('click', (e) => {
-      e.preventDefault();
-      hideAlert();
-      formOtp.classList.add('hidden');
-      formTelefone.classList.remove('hidden');
-      document.getElementById('btnEnviarOtp').disabled = false;
-      document.getElementById('btnEnviarOtp').innerHTML = '<span>Receber código no WhatsApp</span><span>→</span>';
+    // Carregar Onboarding e Status
+    async function carregarFluxoOnboarding() {
+      if (!sessaoAtual?.usuario) return;
+      cardAuth.classList.add('hidden');
+      cardOnboarding.classList.remove('hidden');
+
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      try {
+        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+        const data = await res.json();
+        if (data.ok && data.status) {
+          renderizarPassos(data.status);
+        } else {
+          // Se novo, começa no passo 1
+          mostrarPasso(1);
+        }
+      } catch (err) {
+        mostrarPasso(1);
+      }
+    }
+
+    function renderizarPassos(status) {
+      const p = status.passos;
+      if (status.liberadoParaEmitir) {
+        document.getElementById('resumoNomeMedico').textContent = status.nomeUsuario;
+        mostrarPasso(5);
+        return;
+      }
+
+      if (!p.passo1Nome) {
+        mostrarPasso(1);
+      } else if (!p.passo2XmlEnviado || !p.passo2FiscalConfirmado) {
+        mostrarPasso(2);
+      } else if (!p.passo3CertificadoValido) {
+        mostrarPasso(3);
+      } else if (!p.passo4WhatsappConectado) {
+        mostrarPasso(4);
+      } else {
+        mostrarPasso(5);
+      }
+    }
+
+    function mostrarPasso(passoNum) {
+      [step1View, step2View, step3View, step4View, step5View].forEach(v => v.classList.add('hidden'));
+      for (let i = 1; i <= 5; i++) {
+        const ind = document.getElementById(`stepIndicator${i}`);
+        ind.className = 'step-item';
+        if (i < passoNum) ind.classList.add('completed');
+        if (i === passoNum) ind.classList.add('active');
+      }
+
+      if (passoNum === 1) step1View.classList.remove('hidden');
+      if (passoNum === 2) step2View.classList.remove('hidden');
+      if (passoNum === 3) step3View.classList.remove('hidden');
+      if (passoNum === 4) step4View.classList.remove('hidden');
+      if (passoNum === 5) step5View.classList.remove('hidden');
+    }
+
+    // --- PASSO 1: SALVAR NOME ---
+    document.getElementById('btnSalvarPasso1').addEventListener('click', async () => {
+      hideAlert(alertOnboarding);
+      const nome = document.getElementById('inputNomeMedico').value.trim();
+      if (nome.length < 3) {
+        showAlert('Digite o nome completo do médico.', true, alertOnboarding);
+        return;
+      }
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      try {
+        const res = await fetch('/api/onboarding/nome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuarioId: sessaoAtual.usuario.usuarioId, medicoId, nome })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showAlert('Identificação salva com sucesso!', false, alertOnboarding);
+          mostrarPasso(2);
+        } else {
+          showAlert(data.detalhe || 'Erro ao salvar nome', true, alertOnboarding);
+        }
+      } catch (err) {
+        showAlert('Falha de conexão', true, alertOnboarding);
+      }
     });
+
+    // --- PASSO 2: UPLOAD XML E CONFIRMAÇÃO FISCAL ---
+    const fileXmlInput = document.getElementById('fileXmlInput');
+    fileXmlInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      document.getElementById('labelXmlName').textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        xmlConteudoBruto = evt.target.result;
+        await processarXml(xmlConteudoBruto);
+      };
+      reader.readAsText(file);
+    });
+
+    async function processarXml(conteudoXml) {
+      hideAlert(alertOnboarding);
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      try {
+        const res = await fetch('/api/onboarding/xml', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicoId, xmlString: conteudoXml })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showAlert(data.detalhe || 'Falha ao processar XML de referência.', true, alertOnboarding);
+          return;
+        }
+
+        const p = data.parametros;
+        const s = data.servico;
+        document.getElementById('txtRazaoSocial').textContent = p.razaoSocial || '—';
+        document.getElementById('txtCnpj').textContent = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+        document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
+        document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
+        document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'Clínica Geral';
+        document.getElementById('txtAliquota').textContent = s.aliquotaIss ? `${s.aliquotaIss}%` : '2.72%';
+
+        document.getElementById('previewFiscal').classList.remove('hidden');
+        showAlert('Parâmetros fiscais extraídos com sucesso! Revise e confirme.', false, alertOnboarding);
+      } catch (err) {
+        showAlert('Erro ao enviar XML.', true, alertOnboarding);
+      }
+    }
+
+    document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
+      hideAlert(alertOnboarding);
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      try {
+        const res = await fetch('/api/onboarding/confirmar-fiscal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicoId })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showAlert('Parâmetros fiscais confirmados com sucesso!', false, alertOnboarding);
+          mostrarPasso(3);
+        } else {
+          showAlert(data.detalhe || 'Erro ao confirmar', true, alertOnboarding);
+        }
+      } catch (err) {
+        showAlert('Erro de conexão ao confirmar dados fiscais', true, alertOnboarding);
+      }
+    });
+
+    // --- PASSO 3: UPLOAD CERTIFICADO A1 ---
+    const fileCertInput = document.getElementById('fileCertInput');
+    fileCertInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      certNomeArquivo = file.name;
+      document.getElementById('labelCertName').textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const binary = evt.target.result;
+        certArquivoBase64 = btoa(new Uint8Array(binary).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById('btnSalvarCertificado').addEventListener('click', async () => {
+      hideAlert(alertOnboarding);
+      const senha = document.getElementById('inputSenhaCert').value;
+      if (!certArquivoBase64 || !senha) {
+        showAlert('Selecione o arquivo do certificado e digite a senha.', true, alertOnboarding);
+        return;
+      }
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      try {
+        const res = await fetch('/api/onboarding/certificado', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            medicoId,
+            arquivoBase64: certArquivoBase64,
+            nomeArquivo: certNomeArquivo,
+            senha
+          })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showAlert('Certificado digital A1 salvo e validado com sucesso!', false, alertOnboarding);
+          mostrarPasso(4);
+        } else {
+          showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);
+        }
+      } catch (err) {
+        showAlert('Erro de conexão ao enviar certificado', true, alertOnboarding);
+      }
+    });
+
+    // --- PASSO 4: CONEXÃO WHATSAPP ---
+    document.getElementById('btnIniciarWhatsapp').addEventListener('click', async () => {
+      hideAlert(alertOnboarding);
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      document.getElementById('loadingQr').classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/onboarding/whatsapp/iniciar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicoId })
+        });
+        const data = await res.json();
+        document.getElementById('loadingQr').classList.add('hidden');
+
+        if (data.ok && data.qrcodeBase64) {
+          document.getElementById('imgQrCode').src = data.qrcodeBase64;
+          document.getElementById('boxQrCode').classList.remove('hidden');
+          showAlert('Aponte a câmera do WhatsApp para o QR Code!', false, alertOnboarding);
+        } else if (data.ok && data.pairingCode) {
+          document.getElementById('txtPairingCode').textContent = data.pairingCode;
+          document.getElementById('boxPairingCode').classList.remove('hidden');
+          showAlert('Digite o código de pareamento no WhatsApp!', false, alertOnboarding);
+        } else if (data.ok && data.status === 'open') {
+          showAlert('WhatsApp já está conectado!', false, alertOnboarding);
+          mostrarPasso(5);
+        } else {
+          showAlert('Instância criada! Escaneie o QR Code ou clique em avançar.', false, alertOnboarding);
+          setTimeout(() => mostrarPasso(5), 2500);
+        }
+      } catch (err) {
+        document.getElementById('loadingQr').classList.add('hidden');
+        showAlert('Erro ao iniciar conexão com WhatsApp', true, alertOnboarding);
+      }
+    });
+
+    // Inicialização automática se já logado
+    if (sessaoAtual?.usuario) {
+      carregarFluxoOnboarding();
+    }
   </script>
 </body>
 </html>

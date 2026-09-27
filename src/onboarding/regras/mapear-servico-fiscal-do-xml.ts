@@ -1,0 +1,48 @@
+/**
+ * Mapeamento puro de serviço fiscal inicial do médico a partir do XML.
+ * Extrai cTribNac, cTribMun, alíquota de ISS e gera sugestão de especialidade
+ * para a confirmação manual no onboarding (seções 3.2 e 5.1 do plano).
+ */
+
+import { inferirEspecialidadeDeXdescserv } from './inferir-especialidade-de-xdescserv.js';
+
+export type ServicoFiscalExtraido = {
+  nomeServico: string;
+  ctribNac: string;
+  ctribMun: string | null;
+  cnbs: string | null;
+  xdescServ: string;
+  aliquotaIss: number | null;
+  valorPadraoCentavos: number | null;
+  especialidadeSugerida: string | null;
+};
+
+export function mapearServicoFiscalDoXml(xmlObj: any): ServicoFiscalExtraido {
+  const raiz = xmlObj.NFSe || xmlObj.compNFSe || xmlObj.nfse || xmlObj;
+  const infNfse = raiz.infNFSe || raiz;
+  const infDps = infNfse.DPS?.infDPS || infNfse.infDPS || raiz.DPS?.infDPS || raiz.infDPS || {};
+  const cServ = infDps.serv?.cServ || {};
+  const tribMun = infDps.valores?.trib?.tribMun || infNfse.valores?.tribMun || {};
+  const vServ = infDps.valores?.vServPrest?.vServ || infNfse.valores?.vServPrest?.vServ;
+
+  const rawCtribNac = String(cServ.cTribNac || '040303').trim();
+  const ctribNac = rawCtribNac.length < 6 ? rawCtribNac.padStart(6, '0') : rawCtribNac;
+  const ctribMun = cServ.cTribMun ? String(cServ.cTribMun).trim().padStart(3, '0') : null;
+  const cnbs = cServ.cNBS ? String(cServ.cNBS).trim() : null;
+  const rawXDesc = cServ.xDescServ ? String(cServ.xDescServ) : null;
+  const especialidadeSugerida = inferirEspecialidadeDeXdescserv(rawXDesc);
+
+  const aliquotaIss = tribMun.pAliq !== undefined ? Number(tribMun.pAliq) : null;
+  const valorPadraoCentavos = vServ !== undefined ? Math.round(Number(vServ) * 100) : null;
+
+  return {
+    nomeServico: 'Consulta Médica',
+    ctribNac,
+    ctribMun,
+    cnbs,
+    xdescServ: 'Consulta médica e atendimento clínico especializado',
+    aliquotaIss,
+    valorPadraoCentavos,
+    especialidadeSugerida
+  };
+}

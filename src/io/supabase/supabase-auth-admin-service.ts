@@ -27,10 +27,15 @@ export class SupabaseAuthAdminService implements AuthAdminService {
     });
   }
 
+  get supabaseClient(): SupabaseClient {
+    return this.supabase;
+  }
+
   async buscarPorTelefone(telefone: string): Promise<UsuarioAutenticadoInfo | null> {
     const sql = `
-      select u.id, u.auth_user_id, u.papel
+      select u.id as usuario_id, u.auth_user_id, u.papel, u.nome, m.id as medico_id
       from usuarios u
+      left join medicos m on m.usuario_id = u.id
       where u.telefone = $1 and u.ativo = true
       limit 1
     `;
@@ -38,7 +43,9 @@ export class SupabaseAuthAdminService implements AuthAdminService {
     if (rows.length === 0) return null;
 
     return {
-      usuarioId: rows[0].id,
+      usuarioId: rows[0].usuario_id,
+      medicoId: rows[0].medico_id || undefined,
+      nome: rows[0].nome || undefined,
       authUserId: rows[0].auth_user_id,
       papel: rows[0].papel,
       ehNovoUsuario: false
@@ -82,14 +89,17 @@ export class SupabaseAuthAdminService implements AuthAdminService {
       );
       const usuarioId = userRows[0].id;
 
-      await client.query(
-        `insert into medicos (usuario_id, conta_id, nome_completo) values ($1, $2, $3)`,
+      const { rows: medicoRows } = await client.query(
+        `insert into medicos (usuario_id, conta_id, nome_completo) values ($1, $2, $3) returning id`,
         [usuarioId, contaId, nome]
       );
+      const medicoId = medicoRows[0].id;
 
       await client.query('commit');
       return {
         usuarioId,
+        medicoId,
+        nome,
         authUserId,
         papel: 'medico',
         ehNovoUsuario: true

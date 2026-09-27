@@ -19,12 +19,19 @@ import { solicitarOtp } from './otp/solicitar-otp.js';
 import { autenticarComOtp } from './auth/autenticar-com-otp.js';
 import { processarMensagemWebhook } from './fluxos/processar-mensagem-webhook.js';
 
+import { processarOnboardingXml } from './onboarding/fluxos/processar-onboarding-xml.js';
+import { confirmarParametrosFiscais } from './onboarding/fluxos/confirmar-parametros-fiscais.js';
+import { salvarCertificadoMedico } from './onboarding/fluxos/salvar-certificado-medico.js';
+import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instancia-whatsapp-medico.js';
+import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function criarAppExpress() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.text({ limit: '10mb', type: ['text/*', 'application/xml'] }));
 
   // Instanciação dos adaptadores de infraestrutura
   const otpRepo = new PostgresOtpRepositorio(pool);
@@ -97,6 +104,133 @@ export function criarAppExpress() {
     } catch (err: any) {
       console.error('Erro na verificação de OTP:', err);
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro interno do servidor' });
+    }
+  });
+
+  // --- ROTAS DO ONBOARDING MÉDICO (5 PASSOS) ---
+
+  // Passo 0: Status Geral do Onboarding
+  app.get('/api/onboarding/status', async (req: Request, res: Response) => {
+    try {
+      const medicoId = String(req.query['medicoId'] || '');
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      const status = await consultarStatusOnboarding(pool, medicoId);
+      return res.json({ ok: true, status });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status' });
+    }
+  });
+
+  // Passo 1: Nome do Médico / Usuário
+  app.post('/api/onboarding/nome', async (req: Request, res: Response) => {
+    try {
+      const { usuarioId, medicoId, nome } = req.body || {};
+      if (!nome || typeof nome !== 'string' || nome.trim().length < 2) {
+        return res.status(400).json({ ok: false, detalhe: 'Nome completo é obrigatório' });
+      }
+      const nomeLimpo = nome.trim();
+      if (usuarioId) {
+        await pool.query('update usuarios set nome = $2, atualizado_em = now() where id = $1', [usuarioId, nomeLimpo]);
+      }
+      if (medicoId) {
+        await pool.query('update medicos set nome_completo = $2, atualizado_em = now() where id = $1', [medicoId, nomeLimpo]);
+      }
+      return res.json({ ok: true, nome: nomeLimpo });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao salvar nome' });
+    }
+  });
+
+  // Passo 2: Upload e Extração do XML de Referência
+  app.post('/api/onboarding/xml', async (req: Request, res: Response) => {
+    try {
+      const { medicoId, xmlString } = req.body || {};
+      if (!medicoId || !xmlString) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId e xmlString são obrigatórios' });
+      }
+      const resultado = await processarOnboardingXml(
+        {
+          pool,
+          supabase: authAdminService.supabaseClient,
+          chaveCriptografia: config.encryptionKey,
+          pepperCpf: config.appPepper
+        },
+        medicoId,
+        xmlString
+      );
+      return res.json(resultado);
+    } catch (err: any) {
+      console.error('Erro na extração do XML:', err);
+      return res.status(400).json({ ok: false, detalhe: err?.message || 'Falha ao processar XML' });
+    }
+  });
+
+  // Passo 2: Confirmação Manual dos Parâmetros Fiscais
+  app.post('/api/onboarding/confirmar-fiscal', async (req: Request, res: Response) => {
+    try {
+      const { medicoId, razaoSocial, especialidade, aliquotaIss, serieDps, proximoNumeroDps } = req.body || {};
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      await confirmarParametrosFiscais(pool, {
+        medicoId,
+        razaoSocial,
+        especialidade,
+        aliquotaIss: aliquotaIss !== undefined ? Number(aliquotaIss) : undefined,
+        serieDps,
+        proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined
+      });
+      return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso' });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao confirmar parâmetros fiscais' });
+    }
+  });
+
+  // Passo 3: Certificado Digital A1 (.pfx/.p12) + Senha
+  app.post('/api/onboarding/certificado', async (req: Request, res: Response) => {
+    try {
+      const { medicoId, arquivoBase64, nomeArquivo, senha } = req.body || {};
+      if (!medicoId || !arquivoBase64 || !senha) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId, arquivo e senha são obrigatórios' });
+      }
+      const resultado = await salvarCertificadoMedico(pool, authAdminService.supabaseClient, {
+        medicoId,
+        arquivoBuffer: Buffer.from(arquivoBase64, 'base64'),
+        nomeArquivoOriginal: nomeArquivo || 'certificado.pfx',
+        senhaCertificado: senha
+      });
+      return res.json(resultado);
+    } catch (err: any) {
+      console.error('Erro ao salvar certificado:', err);
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao processar certificado digital' });
+    }
+  });
+
+  // Passo 4: Conectar WhatsApp do Consultório (Evolution API)
+  app.post('/api/onboarding/whatsapp/iniciar', async (req: Request, res: Response) => {
+    try {
+      const { medicoId, telefoneConsultorio } = req.body || {};
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      const appUrl = config.host === '0.0.0.0'
+        ? 'https://notomed-web.6t32my.easypanel.host'
+        : `http://${config.host}:${config.porta}`;
+
+      const resultado = await conectarInstanciaWhatsappMedico(pool, {
+        medicoId,
+        telefoneConsultorio,
+        evolutionUrl: config.evolutionApiUrl,
+        evolutionApiKey: config.evolutionGlobalApiKey,
+        appWebhookUrl: appUrl,
+        webhookSecret: config.evolutionWebhookSecret
+      });
+      return res.json(resultado);
+    } catch (err: any) {
+      console.error('Erro ao iniciar conexão WhatsApp:', err);
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao conectar WhatsApp' });
     }
   });
 

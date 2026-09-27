@@ -469,6 +469,7 @@ export type Database = {
           atualizado_em: string
           cclass_trib_padrao: string | null
           cind_op_padrao: string | null
+          cnae: string | null
           cod_municipio_ibge: string
           confirmado_pelo_medico: boolean
           cpf_cnpj_encriptado: string
@@ -481,6 +482,7 @@ export type Database = {
           nome_fantasia: string | null
           opcao_simples_nacional: Database["public"]["Enums"]["opcao_simples_nacional"]
           percentual_tot_trib_sn: number
+          proximo_numero_dps: number | null
           razao_social: string | null
           regime_apuracao_sn:
             | Database["public"]["Enums"]["regime_apuracao_sn"]
@@ -496,6 +498,7 @@ export type Database = {
           atualizado_em?: string
           cclass_trib_padrao?: string | null
           cind_op_padrao?: string | null
+          cnae?: string | null
           cod_municipio_ibge: string
           confirmado_pelo_medico?: boolean
           cpf_cnpj_encriptado: string
@@ -508,6 +511,7 @@ export type Database = {
           nome_fantasia?: string | null
           opcao_simples_nacional?: Database["public"]["Enums"]["opcao_simples_nacional"]
           percentual_tot_trib_sn?: number
+          proximo_numero_dps?: number | null
           razao_social?: string | null
           regime_apuracao_sn?:
             | Database["public"]["Enums"]["regime_apuracao_sn"]
@@ -523,6 +527,7 @@ export type Database = {
           atualizado_em?: string
           cclass_trib_padrao?: string | null
           cind_op_padrao?: string | null
+          cnae?: string | null
           cod_municipio_ibge?: string
           confirmado_pelo_medico?: boolean
           cpf_cnpj_encriptado?: string
@@ -535,6 +540,7 @@ export type Database = {
           nome_fantasia?: string | null
           opcao_simples_nacional?: Database["public"]["Enums"]["opcao_simples_nacional"]
           percentual_tot_trib_sn?: number
+          proximo_numero_dps?: number | null
           razao_social?: string | null
           regime_apuracao_sn?:
             | Database["public"]["Enums"]["regime_apuracao_sn"]
@@ -586,8 +592,10 @@ export type Database = {
       }
       medico_servicos_fiscais: {
         Row: {
+          aliquota_iss: number | null
           ativo: boolean
           cnbs: string | null
+          ctrib_mun: string | null
           ctrib_nac: string
           id: string
           medico_id: string
@@ -597,8 +605,10 @@ export type Database = {
           xdesc_serv: string
         }
         Insert: {
+          aliquota_iss?: number | null
           ativo?: boolean
           cnbs?: string | null
+          ctrib_mun?: string | null
           ctrib_nac: string
           id?: string
           medico_id: string
@@ -608,8 +618,10 @@ export type Database = {
           xdesc_serv: string
         }
         Update: {
+          aliquota_iss?: number | null
           ativo?: boolean
           cnbs?: string | null
+          ctrib_mun?: string | null
           ctrib_nac?: string
           id?: string
           medico_id?: string

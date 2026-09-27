@@ -6,6 +6,8 @@
 
 export interface UsuarioAutenticadoInfo {
   usuarioId: string;
+  medicoId?: string;
+  nome?: string;
   authUserId: string;
   papel: 'medico' | 'secretaria' | 'contador' | 'admin';
   ehNovoUsuario: boolean;
