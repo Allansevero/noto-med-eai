@@ -26,10 +26,25 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   async buscarPacientePorId(id: string): Promise<PacienteRegistro | null> {
     return this.pacientes.find((p) => p.id === id) ?? null;
   }
-  async buscarPacientePorTelefone(): Promise<PacienteRegistro | null> { return null; }
-  async criarPacienteMinimo(): Promise<PacienteRegistro> { throw new Error('Not implemented'); }
+  async buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null> {
+    return this.pacientes.find((p) => p.medicoId === medicoId && p.telefone === telefone) ?? null;
+  }
+  async criarPacienteMinimo(params: any): Promise<PacienteRegistro> {
+    const novo: PacienteRegistro = {
+      id: `pac-${this.pacientes.length + 1}`,
+      medicoId: params.medicoId,
+      telefone: params.telefone,
+      nome: params.nome ?? null,
+      cpfHash: params.cpfHash ?? null
+    };
+    this.pacientes.push(novo);
+    return novo;
+  }
   async atualizarCpfPaciente(): Promise<void> {}
-  async vincularPacienteConversa(): Promise<void> {}
+  async vincularPacienteConversa(conversaId: string, pacienteId: string): Promise<void> {
+    const conv = this.conversas.find((c) => c.id === conversaId);
+    if (conv) conv.pacienteId = pacienteId;
+  }
   async marcarAguardandoCpf(conversaId: string, aguardandoDesde: Date | null): Promise<void> {
     const conv = this.conversas.find((c) => c.id === conversaId);
     if (conv) conv.aguardandoCpfDesde = aguardandoDesde;
@@ -47,6 +62,7 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   }
   async liberarSolicitacoesPendentesCpf(): Promise<number> { return 0; }
 }
+
 
 class EnviarMensagemPacienteFake implements EnviarMensagemPaciente {
   public envios: EnviarMensagemPacienteParams[] = [];
@@ -158,4 +174,38 @@ describe('processarComandoEmissao', () => {
     assert.strictEqual(enviador.envios[0].texto, MENSAGEM_PEDIDO_CPF);
     assert.ok(conversa.aguardandoCpfDesde !== null);
   });
+
+  it('deve criar paciente mínimo e pedir CPF se o médico emite diretamente para contato novo', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const enviador = new EnviarMensagemPacienteFake();
+    repo.medico = medicoPadrao;
+
+    const conversaSemPaciente: ConversaRegistro = {
+      id: 'conv-novo-contato',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5551988887777',
+      pacienteId: null,
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversaSemPaciente);
+
+    const res = await processarComandoEmissao(conversaSemPaciente, 20000, {
+      repositorio: repo,
+      enviarMensagemPaciente: enviador,
+      instanciaNome: 'dr_roberto'
+    });
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.fila, 'pendente_cadastro');
+      assert.strictEqual(res.aguardandoCpf, true);
+    }
+    assert.strictEqual(repo.pacientes.length, 1);
+    assert.strictEqual(repo.pacientes[0].telefone, '5551988887777');
+    assert.strictEqual(conversaSemPaciente.pacienteId, repo.pacientes[0].id);
+    assert.strictEqual(enviador.envios.length, 1);
+    assert.strictEqual(enviador.envios[0].texto, MENSAGEM_PEDIDO_CPF);
+  });
 });
+

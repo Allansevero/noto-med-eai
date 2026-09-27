@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 export const mensagemKeySchema = z.object({
   remoteJid: z.string().min(1),
+  remoteJidAlt: z.string().optional().nullable(),
   fromMe: z.boolean(),
   id: z.string().min(1)
 });

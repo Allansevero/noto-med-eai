@@ -59,6 +59,16 @@ describe('casarRespostaRapida', () => {
     }
   });
 
+  it('deve casar comando de emissão com saudação anterior e variação natural', () => {
+    const texto = 'Obrigado. Vou lhe enviar em instante sua NF no valor de R$ 200';
+    const res = casarRespostaRapida(texto, true);
+    assert.strictEqual(res.casou, true);
+    if (res.casou) {
+      assert.strictEqual(res.tipo, 'emissao');
+      assert.strictEqual(res.valorDigitadoCentavos, 20000);
+    }
+  });
+
   it('deve retornar nenhum_modelo_casado para mensagens comuns', () => {
     const res = casarRespostaRapida('Bom dia! Como você está se sentindo hoje?', true);
     assert.strictEqual(res.casou, false);
@@ -67,3 +77,4 @@ describe('casarRespostaRapida', () => {
     }
   });
 });
+

@@ -26,10 +26,28 @@ export async function processarComandoEmissao(
   valorDigitadoCentavos: number | null,
   deps: ProcessarEmissaoDeps
 ): Promise<ResultadoProcessarEmissao> {
-  if (!conversa.pacienteId) return { ok: false, motivo: 'paciente_ausente' };
+  let pacienteId = conversa.pacienteId;
+  if (!pacienteId) {
+    const existente = await deps.repositorio.buscarPacientePorTelefone(
+      conversa.medicoId,
+      conversa.contatoTelefone
+    );
+    if (existente) {
+      pacienteId = existente.id;
+    } else {
+      const novo = await deps.repositorio.criarPacienteMinimo({
+        medicoId: conversa.medicoId,
+        telefone: conversa.contatoTelefone,
+        origemCadastro: 'conversa'
+      });
+      pacienteId = novo.id;
+    }
+    await deps.repositorio.vincularPacienteConversa(conversa.id, pacienteId);
+    conversa.pacienteId = pacienteId;
+  }
 
-  const paciente = await deps.repositorio.buscarPacientePorId(conversa.pacienteId);
-  const consultas = await deps.repositorio.buscarConsultasEmAberto(conversa.medicoId, conversa.pacienteId);
+  const paciente = await deps.repositorio.buscarPacientePorId(pacienteId);
+  const consultas = await deps.repositorio.buscarConsultasEmAberto(conversa.medicoId, pacienteId);
   const calculo = calcularValorEmissao(valorDigitadoCentavos, consultas.map((c) => c.valorConsultaCentavos));
   if (!calculo.ok || !calculo.valorCentavos) return { ok: false, motivo: 'valor_indisponivel' };
 
@@ -42,7 +60,7 @@ export async function processarComandoEmissao(
 
   const solicitacao = await deps.repositorio.criarSolicitacaoNota({
     medicoId: conversa.medicoId,
-    pacienteId: conversa.pacienteId,
+    pacienteId,
     xdescServ,
     valorServicoCentavos: calculo.valorCentavos,
     ctribNac: medico.ctribNacPadrao,

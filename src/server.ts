@@ -375,10 +375,17 @@ export function criarAppExpress() {
   return app;
 }
 
+import { iniciarWorkerEmbutido } from './worker/iniciar-worker-embutido.js';
+
 // Inicia servidor quando executado diretamente
 if (process.env['NODE_ENV'] !== 'test') {
   const app = criarAppExpress();
   app.listen(config.porta, config.host, () => {
     console.log(`[Notomed Whats] Servidor rodando em http://${config.host}:${config.porta}`);
   });
+
+  // Inicia worker da fila em segundo plano no mesmo container
+  iniciarWorkerEmbutido(pool, config);
+  console.log('[Notomed Whats] Worker de fila NFS-e iniciado com sucesso.');
 }
+

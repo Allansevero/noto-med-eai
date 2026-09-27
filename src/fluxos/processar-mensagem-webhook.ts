@@ -48,7 +48,10 @@ export async function processarMensagemWebhook(
   if (!parsed.success) return { ok: false, motivo: 'payload_invalido' };
 
   const payload = parsed.data;
-  const telefone = extrairTelefoneJid(payload.data.key.remoteJid);
+  const jidPrincipal = payload.data.key.remoteJid;
+  const jidAlternativo = payload.data.key.remoteJidAlt;
+  const jidAlvo = (jidPrincipal.includes('@lid') && jidAlternativo) ? jidAlternativo : jidPrincipal;
+  const telefone = extrairTelefoneJid(jidAlvo) || (jidAlternativo ? extrairTelefoneJid(jidAlternativo) : null);
   const texto = extrairTextoMensagem(payload.data);
   if (!telefone || !texto) return { ok: true, acao: 'descartada' };
 

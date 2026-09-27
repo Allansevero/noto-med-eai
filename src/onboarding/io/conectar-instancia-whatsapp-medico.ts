@@ -109,23 +109,27 @@ export async function conectarInstanciaWhatsappMedico(
   }
 
   // 5. Configura o webhook na Evolution para receber os comandos /agendado e /emissao
+  let webhookConfigurado = false;
   try {
-    await fetch(`${baseUrl}/webhook/set/${nomeInstancia}`, {
+    const resWebhook = await fetch(`${baseUrl}/webhook/set/${nomeInstancia}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         apikey: evolutionApiKey
       },
       body: JSON.stringify({
-        enabled: true,
-        url: `${appWebhookUrl.replace(/\/+$/, '')}/webhook/evolution/medico`,
-        headers: {
-          'x-webhook-secret': webhookSecret
-        },
-        webhookByEvents: false,
-        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
+        webhook: {
+          enabled: true,
+          url: `${appWebhookUrl.replace(/\/+$/, '')}/webhook/evolution`,
+          headers: {
+            'x-webhook-secret': webhookSecret
+          },
+          webhookByEvents: false,
+          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
+        }
       })
     });
+    webhookConfigurado = resWebhook.ok || resWebhook.status === 201;
   } catch (err) {
     // Falha silenciosa no setWebhook
   }
@@ -135,18 +139,20 @@ export async function conectarInstanciaWhatsappMedico(
   const conectadoEm = status === 'open' ? new Date() : null;
   const sql = `
     insert into whatsapp_instancias (
-      medico_id, conta_id, nome_instancia, oficial, status, conectado_em
+      medico_id, conta_id, nome_instancia, oficial, status, conectado_em, webhook_configurado
     ) values (
-      $1, (select conta_id from medicos where id = $1), $2, false, $3::status_conexao_whatsapp, $4
+      $1, (select conta_id from medicos where id = $1), $2, false, $3::status_conexao_whatsapp, $4, $5
     )
     on conflict (nome_instancia) do update set
       status = excluded.status,
       medico_id = excluded.medico_id,
       conta_id = coalesce(excluded.conta_id, whatsapp_instancias.conta_id),
-      conectado_em = coalesce(excluded.conectado_em, whatsapp_instancias.conectado_em)
+      conectado_em = coalesce(excluded.conectado_em, whatsapp_instancias.conectado_em),
+      webhook_configurado = excluded.webhook_configurado
     returning id
   `;
-  await pool.query(sql, [medicoId, nomeInstancia, statusDb, conectadoEm]);
+  await pool.query(sql, [medicoId, nomeInstancia, statusDb, conectadoEm, webhookConfigurado]);
+
 
   return {
     ok: true,

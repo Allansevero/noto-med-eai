@@ -29,7 +29,8 @@ export function casarRespostaRapida(
   if (!fromMe) return { casou: false, motivo: 'nao_e_from_me' };
   if (!texto || !texto.trim()) return { casou: false, motivo: 'sem_texto' };
 
-  const textoNormalizado = texto.trim().toLowerCase();
+  const textoLimpo = texto.trim();
+  const textoNormalizado = textoLimpo.toLowerCase();
   const modelos = modelosCadastrados && modelosCadastrados.length > 0
     ? modelosCadastrados
     : [
@@ -37,17 +38,37 @@ export function casarRespostaRapida(
         { tipo: 'emissao' as const, textoModelo: TEXTO_MODELO_PADRAO_EMISSAO }
       ];
 
+  // 1. Checagem de Agendado (modelo cadastrado ou comando /agendado)
   const modeloAgendado = modelos.find((m) => m.tipo === 'agendado');
-  if (modeloAgendado && textoNormalizado.startsWith(modeloAgendado.textoModelo.toLowerCase().trim())) {
-    return { casou: true, tipo: 'agendado' };
+  if (modeloAgendado) {
+    const alvo = modeloAgendado.textoModelo.toLowerCase().trim();
+    if (textoNormalizado.includes(alvo) || textoNormalizado.startsWith('/agendado')) {
+      return { casou: true, tipo: 'agendado' };
+    }
   }
 
+  // 2. Checagem de Emissão por modelo cadastrado
   const modeloEmissao = modelos.find((m) => m.tipo === 'emissao');
-  if (modeloEmissao && textoNormalizado.startsWith(modeloEmissao.textoModelo.toLowerCase().trim())) {
-    const resto = texto.slice(modeloEmissao.textoModelo.length);
+  if (modeloEmissao) {
+    const alvo = modeloEmissao.textoModelo.toLowerCase().trim();
+    const indice = textoNormalizado.indexOf(alvo);
+    if (indice !== -1) {
+      const resto = textoLimpo.slice(indice + alvo.length);
+      const valorDigitadoCentavos = extrairValorMoedaCentavos(resto);
+      return { casou: true, tipo: 'emissao', valorDigitadoCentavos };
+    }
+  }
+
+  // 3. Fallback inteligente para variações naturais de emissão da NF
+  // Ex: "Obrigado. Vou lhe enviar em instante sua NF no valor de R$ 200" ou "/emissao 200"
+  const regexEmissaoNatural = /(?:vou(?:\s+lhe)?\s+enviar\s+em\s+instantes?\s+(?:a\s+)?sua\s+nf(?:\s+no\s+valor\s+de)?|\/emissao)/i;
+  const match = textoLimpo.match(regexEmissaoNatural);
+  if (match && match.index !== undefined) {
+    const resto = textoLimpo.slice(match.index + match[0].length);
     const valorDigitadoCentavos = extrairValorMoedaCentavos(resto);
     return { casou: true, tipo: 'emissao', valorDigitadoCentavos };
   }
 
   return { casou: false, motivo: 'nenhum_modelo_casado' };
 }
+
