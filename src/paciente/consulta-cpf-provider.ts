@@ -7,6 +7,7 @@
 export interface DadosConsultaCpf {
   nome: string;
   dataNascimento?: Date | null;
+  situacaoCadastral?: string | null;
 }
 
 export interface ConsultaCpfProvider {

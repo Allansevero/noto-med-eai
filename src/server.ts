@@ -27,6 +27,7 @@ import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-stat
 import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
 import { GroqApiClient } from './io/groq/groq-api-client.js';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
+import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,6 +55,9 @@ export function criarAppExpress() {
     modeloPrincipal: config.groqModel,
     modeloFallback: 'openai/gpt-oss-20b'
   });
+  const hubCpfClient = config.hubDesenvolvedorToken
+    ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
+    : undefined;
 
   // Healthcheck para o Easypanel
   app.get('/health', (_req: Request, res: Response) => {
@@ -300,6 +304,7 @@ export function criarAppExpress() {
       repositorio: atendimentoRepo,
       enviarMensagemPaciente: evolutionClient,
       iaService: groqClient,
+      consultaCpfProvider: hubCpfClient,
       segredoConfigurado: segredoEsperado,
       pepper: config.appPepper,
       instanciaOficialNome: config.evolutionOfficialInstanceName
@@ -315,6 +320,26 @@ export function criarAppExpress() {
 
   app.post('/webhook/evolution', webhookHandler);
   app.post('/webhook/evolution/:evento', webhookHandler);
+
+  // Rota de Consulta Cadastral de CPF (Hub do Desenvolvedor)
+  app.get('/api/pacientes/consultar-cpf', async (req: Request, res: Response) => {
+    try {
+      const cpf = String(req.query['cpf'] || '');
+      if (!cpf) {
+        return res.status(400).json({ ok: false, detalhe: 'Parâmetro cpf é obrigatório' });
+      }
+      if (!hubCpfClient) {
+        return res.status(503).json({ ok: false, detalhe: 'HUB_DESENVOLVEDOR_TOKEN não configurado no servidor' });
+      }
+      const dados = await hubCpfClient.consultar(cpf);
+      if (!dados) {
+        return res.status(404).json({ ok: false, detalhe: 'CPF não encontrado ou inválido' });
+      }
+      return res.json({ ok: true, dados });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar CPF' });
+    }
+  });
 
   // Rota de Extração Inteligente de Dados com Groq AI
   app.post('/api/ia/extrair-dados', async (req: Request, res: Response) => {
