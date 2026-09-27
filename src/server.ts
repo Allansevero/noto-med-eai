@@ -90,17 +90,26 @@ export function criarAppExpress() {
     return res.json(resultado);
   });
 
-  // Rota Webhook da Evolution API
-  app.post('/webhook/evolution', async (req: Request, res: Response) => {
+  // Rota Webhook da Evolution API (suporta rota direta e subrotas com eventos)
+  const webhookHandler = async (req: Request, res: Response) => {
     const tokenRecebido =
       (req.headers['apikey'] as string) ||
       (req.headers['x-webhook-secret'] as string) ||
-      (req.headers['authorization'] as string);
+      (req.headers['authorization'] as string) ||
+      (req.query['secret'] as string) ||
+      (req.query['apikey'] as string) ||
+      (req.query['token'] as string);
+
+    // Se bater com a API key global da Evolution ou com o segredo do webhook, autentica
+    let segredoEsperado = config.evolutionWebhookSecret;
+    if (tokenRecebido && tokenRecebido === config.evolutionGlobalApiKey) {
+      segredoEsperado = tokenRecebido;
+    }
 
     const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
       repositorio: atendimentoRepo,
       enviarMensagemPaciente: evolutionClient,
-      segredoConfigurado: config.evolutionWebhookSecret,
+      segredoConfigurado: segredoEsperado,
       pepper: config.appPepper
     });
 
@@ -110,7 +119,10 @@ export function criarAppExpress() {
     }
 
     return res.json(resultado);
-  });
+  };
+
+  app.post('/webhook/evolution', webhookHandler);
+  app.post('/webhook/evolution/*', webhookHandler);
 
   return app;
 }

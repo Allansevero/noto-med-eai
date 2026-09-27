@@ -38,7 +38,7 @@ export async function processarMensagemWebhook(
   tokenRecebido: string | undefined | null,
   deps: ProcessarWebhookDeps
 ): Promise<ResultadoProcessarWebhook> {
-  if (!validarWebhookSecret(tokenRecebido, deps.segredoConfigurado)) {
+  if (deps.segredoConfigurado && !validarWebhookSecret(tokenRecebido, deps.segredoConfigurado)) {
     return { ok: false, motivo: 'autenticacao_invalida' };
   }
 
