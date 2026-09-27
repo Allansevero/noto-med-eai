@@ -83,6 +83,34 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     this.solicitacoes.push(params);
     return { id: `sol-${this.solicitacoes.length}` };
   }
+  async buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null> {
+    if (this.medico && (this.medico.telefone === telefone || `55${this.medico.telefone}` === telefone)) {
+      return this.medico;
+    }
+    return null;
+  }
+  async buscarSolicitacaoAguardandoData(): Promise<any> {
+    const pendente = this.solicitacoes.find((s) => s.aguardandoDataConsulta);
+    if (!pendente) return null;
+    return {
+      id: 'sol-1',
+      medicoId: pendente.medicoId,
+      pacienteId: pendente.pacienteId,
+      nomePaciente: 'Paciente João',
+      telefoneMedico: '5551993527271',
+      valorServicoCentavos: pendente.valorServicoCentavos,
+      ctribNac: pendente.ctribNac,
+      criadoEm: new Date()
+    };
+  }
+  async atualizarDataDescricaoSolicitacao(params: any): Promise<void> {
+    const s = this.solicitacoes.find((sol) => sol.id === params.solicitacaoId || true);
+    if (s) {
+      s.xdescServ = params.xdescServ;
+      s.fila = params.fila;
+      s.aguardandoDataConsulta = false;
+    }
+  }
   async liberarSolicitacoesPendentesCpf(): Promise<number> { return 1; }
 }
 
@@ -212,5 +240,66 @@ describe('processarMensagemWebhook', () => {
     }
     assert.strictEqual(repo.conversas[0].aguardandoCpfDesde, null);
     assert.ok(paciente.cpfHash !== null);
+  });
+
+  it('deve processar resposta do médico com a data da consulta e avançar para fila pronta', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.instancias.push({
+      id: 'inst-oficial',
+      medicoId: 'med-1',
+      nomeInstancia: 'notomed_oficial',
+      oficial: true
+    });
+    repo.medico = {
+      id: 'med-1',
+      nomeCompleto: 'Dr. Allan Severo',
+      especialidade: 'Cardiologia',
+      crm: '12345/RS',
+      rqe: null,
+      ctribNacPadrao: '041601',
+      telefone: '5551993527271'
+    };
+
+    const paciente: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '555181936133',
+      nome: 'Paciente João',
+      cpfHash: 'hash-existente'
+    };
+    repo.pacientes.push(paciente);
+
+    // Solicitação aguardando data da consulta
+    repo.solicitacoes.push({
+      id: 'sol-1',
+      medicoId: 'med-1',
+      pacienteId: 'pac-1',
+      valorServicoCentavos: 35000,
+      ctribNac: '041601',
+      fila: null,
+      aguardandoDataConsulta: true,
+      xdescServ: 'REFERENTE A CONSULTAS CARDIOLOGIA COM DR.(A) ALLAN SEVERO NAS DATAS DATA A CONFIRMAR'
+    });
+
+    const payload = {
+      event: 'messages.upsert',
+      instance: 'notomed_oficial',
+      data: {
+        key: {
+          remoteJid: '5551993527271@s.whatsapp.net',
+          fromMe: false,
+          id: 'MSG-RESPOSTA-DATA'
+        },
+        message: { conversation: '27/09/2026' }
+      }
+    };
+
+    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.acao, 'resposta_data_consulta');
+    }
+    assert.strictEqual(repo.solicitacoes[0].fila, 'pronta');
+    assert.ok(repo.solicitacoes[0].xdescServ.includes('NAS DATAS 27/09/2026'));
   });
 });

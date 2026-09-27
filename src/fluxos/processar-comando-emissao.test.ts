@@ -60,6 +60,9 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     this.solicitacoesCriadas.push(params);
     return { id: `sol-${this.solicitacoesCriadas.length}` };
   }
+  async buscarMedicoPorTelefone(): Promise<MedicoDadosRegistro | null> { return this.medico; }
+  async buscarSolicitacaoAguardandoData(): Promise<any> { return null; }
+  async atualizarDataDescricaoSolicitacao(): Promise<void> {}
   async liberarSolicitacoesPendentesCpf(): Promise<number> { return 0; }
 }
 
@@ -190,6 +193,12 @@ describe('processarComandoEmissao', () => {
     };
     repo.conversas.push(conversaSemPaciente);
 
+    repo.consultas.push({
+      id: 'ag-novo',
+      dataHora: new Date(2026, 8, 25),
+      valorConsultaCentavos: 20000
+    });
+
     const res = await processarComandoEmissao(conversaSemPaciente, 20000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
@@ -206,6 +215,62 @@ describe('processarComandoEmissao', () => {
     assert.strictEqual(conversaSemPaciente.pacienteId, repo.pacientes[0].id);
     assert.strictEqual(enviador.envios.length, 1);
     assert.strictEqual(enviador.envios[0].texto, MENSAGEM_PEDIDO_CPF);
+  });
+
+  it('deve enviar pergunta ao médico via notomed_oficial quando não houver data agendada no banco', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const enviador = new EnviarMensagemPacienteFake();
+    repo.medico = {
+      ...medicoPadrao,
+      telefone: '5551993527271'
+    };
+
+    const paciente: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '5511999998888',
+      nome: 'Carlos Souza',
+      cpfHash: 'hash-existente'
+    };
+    repo.pacientes.push(paciente);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-1',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511999998888',
+      pacienteId: 'pac-1',
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversa);
+
+    // Nenhuma consulta em aberto (sem data agendada)
+    repo.consultas = [];
+
+    const res = await processarComandoEmissao(conversa, 35000, {
+      repositorio: repo,
+      enviarMensagemPaciente: enviador,
+      instanciaNome: 'dr_roberto',
+      instanciaOficialNome: 'notomed_oficial'
+    });
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.fila, null);
+      assert.strictEqual(res.aguardandoData, true);
+    }
+    assert.strictEqual(repo.solicitacoesCriadas.length, 1);
+    assert.strictEqual(repo.solicitacoesCriadas[0].aguardandoDataConsulta, true);
+    assert.strictEqual(repo.solicitacoesCriadas[0].fila, null);
+
+    // Mensagem enviada ao médico pelo notomed_oficial
+    assert.strictEqual(enviador.envios.length, 1);
+    assert.strictEqual(enviador.envios[0].instanciaNome, 'notomed_oficial');
+    assert.strictEqual(enviador.envios[0].contatoTelefone, '5551993527271');
+    assert.strictEqual(
+      enviador.envios[0].texto,
+      'Não encontramos a data da consulta paciente Carlos Souza, poderia me informar para emissão?'
+    );
   });
 });
 

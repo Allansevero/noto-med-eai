@@ -15,6 +15,7 @@ import {
 } from '../whatsapp/payload-webhook-schema.js';
 import { casarRespostaRapida } from '../whatsapp/casar-resposta-rapida.js';
 import { processarRespostaCpf } from './processar-resposta-cpf.js';
+import { processarRespostaDataConsulta } from './processar-resposta-data-consulta.js';
 import { processarComandoAgendado } from './processar-comando-agendado.js';
 import { processarComandoEmissao } from './processar-comando-emissao.js';
 import type { AtendimentoRepositorio } from '../atendimento/atendimento-repositorio.js';
@@ -29,10 +30,15 @@ export interface ProcessarWebhookDeps {
   iaService?: ExtratorIaService;
   segredoConfigurado: string;
   pepper: string;
+  instanciaOficialNome?: string;
 }
 
 export type ResultadoProcessarWebhook =
-  | { ok: true; acao: 'resposta_cpf' | 'comando_agendado' | 'comando_emissao' | 'descartada'; detalhe?: any }
+  | {
+      ok: true;
+      acao: 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'descartada';
+      detalhe?: any;
+    }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
 
 export async function processarMensagemWebhook(
@@ -59,14 +65,15 @@ export async function processarMensagemWebhook(
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };
 
   const conversa = await deps.repositorio.buscarOuCriarConversa(instancia.id, instancia.medicoId, telefone);
-  return rotearMensagem(conversa, texto, payload, deps);
+  return rotearMensagem(conversa, texto, payload, deps, telefone);
 }
 
 async function rotearMensagem(
   conversa: any,
   texto: string,
   payload: WebhookEvolutionPayload,
-  deps: ProcessarWebhookDeps
+  deps: ProcessarWebhookDeps,
+  telefone: string
 ): Promise<ResultadoProcessarWebhook> {
   const fromMe = payload.data.key.fromMe;
 
@@ -80,10 +87,28 @@ async function rotearMensagem(
     return { ok: true, acao: 'resposta_cpf', detalhe: res };
   }
 
+  // 2. Resposta do médico à pergunta sobre a data da consulta
+  if (!fromMe) {
+    const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+    if (medico) {
+      const solicitacaoPendente = await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id);
+      if (solicitacaoPendente) {
+        const resData = await processarRespostaDataConsulta(telefone, texto, {
+          repositorio: deps.repositorio,
+          enviarMensagem: deps.enviarMensagemPaciente,
+          instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
+        });
+        if (resData.ok) {
+          return { ok: true, acao: 'resposta_data_consulta', detalhe: resData };
+        }
+      }
+    }
+  }
+
   // Se não for do médico, mensagens comuns do paciente não disparam comandos
   if (!fromMe) return { ok: true, acao: 'descartada' };
 
-  // 2. Comandos rápidos do médico
+  // 3. Comandos rápidos do médico
   const modelos = await deps.repositorio.buscarRespostasRapidasMedico(conversa.medicoId);
   const casamento = casarRespostaRapida(texto, true, modelos);
   if (!casamento.casou) return { ok: true, acao: 'descartada' };
@@ -100,7 +125,8 @@ async function rotearMensagem(
   const res = await processarComandoEmissao(conversa, casamento.valorDigitadoCentavos, {
     repositorio: deps.repositorio,
     enviarMensagemPaciente: deps.enviarMensagemPaciente,
-    instanciaNome: payload.instance
+    instanciaNome: payload.instance,
+    instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
   });
   return { ok: true, acao: 'comando_emissao', detalhe: res };
 }

@@ -45,4 +45,18 @@ describe('montarDescricaoServico', () => {
       'REFERENTE A CONSULTAS CARDIOLOGIA COM DR.(A) JOÃO CARLOS SILVA VINCULADO CRM 12345/SP / RQE 6789 NAS DATAS 20/09/2026'
     );
   });
+
+  it('deve aceitar data informada em string e incluir na descrição', () => {
+    const medico = {
+      nomeCompleto: 'João Carlos Silva',
+      especialidade: 'Cardiologia',
+      crm: '12345/SP',
+      rqe: null
+    };
+    const descricao = montarDescricaoServico(medico, '27/09/2026');
+    assert.strictEqual(
+      descricao,
+      'REFERENTE A CONSULTAS CARDIOLOGIA COM DR.(A) JOÃO CARLOS SILVA VINCULADO CRM 12345/SP NAS DATAS 27/09/2026'
+    );
+  });
 });

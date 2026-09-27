@@ -301,7 +301,8 @@ export function criarAppExpress() {
       enviarMensagemPaciente: evolutionClient,
       iaService: groqClient,
       segredoConfigurado: segredoEsperado,
-      pepper: config.appPepper
+      pepper: config.appPepper,
+      instanciaOficialNome: config.evolutionOfficialInstanceName
     });
 
     if (!resultado.ok) {

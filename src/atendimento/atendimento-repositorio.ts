@@ -39,12 +39,24 @@ export interface MedicoDadosRegistro {
   crm: string | null;
   rqe: string | null;
   ctribNacPadrao: string;
+  telefone?: string;
 }
 
 export interface ConsultaEmAbertoRegistro {
   id: string;
   dataHora: Date;
   valorConsultaCentavos: number | null;
+}
+
+export interface SolicitacaoAguardandoDataRegistro {
+  id: string;
+  medicoId: string;
+  pacienteId: string;
+  nomePaciente: string;
+  telefoneMedico: string;
+  valorServicoCentavos: number;
+  ctribNac: string;
+  criadoEm: Date;
 }
 
 export interface AtendimentoRepositorio {
@@ -82,14 +94,22 @@ export interface AtendimentoRepositorio {
   }): Promise<{ id: string }>;
   buscarConsultasEmAberto(medicoId: string, pacienteId: string): Promise<ConsultaEmAbertoRegistro[]>;
   buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null>;
+  buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null>;
   criarSolicitacaoNota(params: {
     medicoId: string;
     pacienteId: string;
     xdescServ: string;
     valorServicoCentavos: number;
     ctribNac: string;
-    fila: 'pronta' | 'pendente_cadastro';
+    fila: 'pronta' | 'pendente_cadastro' | null;
+    aguardandoDataConsulta?: boolean;
     agendamentoIds: string[];
   }): Promise<{ id: string }>;
+  buscarSolicitacaoAguardandoData(medicoId: string, pacienteId?: string): Promise<SolicitacaoAguardandoDataRegistro | null>;
+  atualizarDataDescricaoSolicitacao(params: {
+    solicitacaoId: string;
+    xdescServ: string;
+    fila: 'pronta' | 'pendente_cadastro';
+  }): Promise<void>;
   liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number>;
 }

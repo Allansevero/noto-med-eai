@@ -14,11 +14,18 @@ export interface ProcessarEmissaoDeps {
   repositorio: AtendimentoRepositorio;
   enviarMensagemPaciente: EnviarMensagemPaciente;
   instanciaNome: string;
+  instanciaOficialNome?: string;
   agora?: () => Date;
 }
 
 export type ResultadoProcessarEmissao =
-  | { ok: true; solicitacaoId: string; fila: 'pronta' | 'pendente_cadastro'; aguardandoCpf: boolean }
+  | {
+      ok: true;
+      solicitacaoId: string;
+      fila: 'pronta' | 'pendente_cadastro' | null;
+      aguardandoCpf: boolean;
+      aguardandoData: boolean;
+    }
   | { ok: false; motivo: 'paciente_ausente' | 'valor_indisponivel' | 'medico_nao_encontrado' };
 
 export async function processarComandoEmissao(
@@ -54,9 +61,12 @@ export async function processarComandoEmissao(
   const medico = await deps.repositorio.buscarDadosMedico(conversa.medicoId);
   if (!medico) return { ok: false, motivo: 'medico_nao_encontrado' };
 
-  const xdescServ = montarDescricaoServico(medico, consultas.map((c) => c.dataHora));
+  const semDataConsulta = consultas.length === 0;
   const possuiCpf = Boolean(paciente?.cpfHash);
-  const fila = possuiCpf ? 'pronta' : 'pendente_cadastro';
+  const fila = semDataConsulta ? null : (possuiCpf ? 'pronta' : 'pendente_cadastro');
+  const xdescServ = semDataConsulta
+    ? montarDescricaoServico(medico, 'DATA A CONFIRMAR')
+    : montarDescricaoServico(medico, consultas.map((c) => c.dataHora));
 
   const solicitacao = await deps.repositorio.criarSolicitacaoNota({
     medicoId: conversa.medicoId,
@@ -65,8 +75,19 @@ export async function processarComandoEmissao(
     valorServicoCentavos: calculo.valorCentavos,
     ctribNac: medico.ctribNacPadrao,
     fila,
+    aguardandoDataConsulta: semDataConsulta,
     agendamentoIds: consultas.map((c) => c.id)
   });
+
+  if (semDataConsulta) {
+    const nomePaciente = paciente?.nome?.trim() ? `paciente ${paciente.nome.trim()}` : 'do paciente';
+    const telMedico = medico.telefone || conversa.contatoTelefone;
+    await deps.enviarMensagemPaciente.enviarTexto({
+      instanciaNome: deps.instanciaOficialNome || 'notomed_oficial',
+      contatoTelefone: telMedico,
+      texto: `Não encontramos a data da consulta ${nomePaciente}, poderia me informar para emissão?`
+    });
+  }
 
   if (!possuiCpf) {
     const dataAtual = deps.agora ? deps.agora() : new Date();
@@ -78,5 +99,11 @@ export async function processarComandoEmissao(
     });
   }
 
-  return { ok: true, solicitacaoId: solicitacao.id, fila, aguardandoCpf: !possuiCpf };
+  return {
+    ok: true,
+    solicitacaoId: solicitacao.id,
+    fila,
+    aguardandoCpf: !possuiCpf,
+    aguardandoData: semDataConsulta
+  };
 }

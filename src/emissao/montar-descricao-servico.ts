@@ -21,7 +21,12 @@ export function formatarRegistroProfissional(crm?: string | null, rqe?: string |
   return '';
 }
 
-export function formatarDatasConsultas(datas: Date[]): string {
+export function formatarDatasConsultas(datas: Date[] | string): string {
+  if (typeof datas === 'string') {
+    const textoLimpo = datas.trim().toUpperCase();
+    return textoLimpo.length > 0 ? textoLimpo : 'DATA A CONFIRMAR';
+  }
+
   if (datas.length === 0) return 'DATA A CONFIRMAR';
 
   return datas
@@ -36,7 +41,7 @@ export function formatarDatasConsultas(datas: Date[]): string {
 
 export function montarDescricaoServico(
   medico: DadosDescricaoMedico,
-  datasConsultas: Date[]
+  datasConsultas: Date[] | string
 ): string {
   const especialidade = medico.especialidade ? medico.especialidade.trim().toUpperCase() : 'MÉDICA';
   const nome = medico.nomeCompleto.trim().toUpperCase();

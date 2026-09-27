@@ -252,8 +252,10 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   async buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null> {
     const sql = `
       select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe,
-             coalesce(msf.ctrib_nac, '080201') as ctrib_nac_padrao
+             coalesce(msf.ctrib_nac, '080201') as ctrib_nac_padrao,
+             u.telefone
       from medicos m
+      join usuarios u on u.id = m.usuario_id
       left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true
       where m.id = $1
       limit 1
@@ -266,7 +268,35 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       especialidade: rows[0].especialidade,
       crm: rows[0].crm,
       rqe: rows[0].rqe,
-      ctribNacPadrao: rows[0].ctrib_nac_padrao
+      ctribNacPadrao: rows[0].ctrib_nac_padrao,
+      telefone: rows[0].telefone
+    };
+  }
+
+  async buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null> {
+    const telLimpo = telefone.replace(/\D/g, '');
+    const telSem55 = telLimpo.startsWith('55') ? telLimpo.slice(2) : telLimpo;
+    const sql = `
+      select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe,
+             coalesce(msf.ctrib_nac, '080201') as ctrib_nac_padrao,
+             u.telefone
+      from medicos m
+      join usuarios u on u.id = m.usuario_id
+      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true
+      where regexp_replace(u.telefone, '\\D', '', 'g') in ($1, $2)
+         or '55' || regexp_replace(u.telefone, '\\D', '', 'g') = $1
+      limit 1
+    `;
+    const { rows } = await this.pool.query(sql, [telLimpo, telSem55]);
+    if (rows.length === 0) return null;
+    return {
+      id: rows[0].id,
+      nomeCompleto: rows[0].nome_completo,
+      especialidade: rows[0].especialidade,
+      crm: rows[0].crm,
+      rqe: rows[0].rqe,
+      ctribNacPadrao: rows[0].ctrib_nac_padrao,
+      telefone: rows[0].telefone
     };
   }
 
@@ -276,15 +306,19 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     xdescServ: string;
     valorServicoCentavos: number;
     ctribNac: string;
-    fila: 'pronta' | 'pendente_cadastro';
-    agendamentoIds: string[];
+    fila: 'pronta' | 'pendente_cadastro' | null;
+    aguardandoDataConsulta?: boolean;
+    agendamentoIds?: string[];
   }): Promise<{ id: string }> {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
       const sqlSolicitacao = `
-        insert into solicitacoes_nota (medico_id, paciente_id, xdesc_serv, valor_servico_centavos, ctrib_nac, fila, status, origem)
-        values ($1, $2, $3, $4, $5, $6, 'pendente', 'whatsapp_comando')
+        insert into solicitacoes_nota (
+          medico_id, paciente_id, xdesc_serv, valor_servico_centavos, ctrib_nac,
+          fila, status, origem, aguardando_data_consulta
+        )
+        values ($1, $2, $3, $4, $5, $6, 'pendente', 'whatsapp_comando', $7)
         returning id
       `;
       const { rows } = await client.query(sqlSolicitacao, [
@@ -293,15 +327,18 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         params.xdescServ,
         params.valorServicoCentavos,
         params.ctribNac,
-        params.fila
+        params.fila,
+        Boolean(params.aguardandoDataConsulta)
       ]);
       const solicitacaoId = rows[0].id;
 
-      for (const agendamentoId of params.agendamentoIds) {
-        await client.query(
-          `insert into solicitacao_nota_agendamentos (solicitacao_id, agendamento_id) values ($1, $2)`,
-          [solicitacaoId, agendamentoId]
-        );
+      if (params.agendamentoIds) {
+        for (const agendamentoId of params.agendamentoIds) {
+          await client.query(
+            `insert into solicitacao_nota_agendamentos (solicitacao_id, agendamento_id) values ($1, $2)`,
+            [solicitacaoId, agendamentoId]
+          );
+        }
       }
 
       await client.query('commit');
@@ -312,6 +349,58 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     } finally {
       client.release();
     }
+  }
+
+  async buscarSolicitacaoAguardandoData(medicoId: string, pacienteId?: string): Promise<SolicitacaoAguardandoDataRegistro | null> {
+    const params: any[] = [medicoId];
+    let filtroPaciente = '';
+    if (pacienteId) {
+      params.push(pacienteId);
+      filtroPaciente = `and sn.paciente_id = $2`;
+    }
+    const sql = `
+      select sn.id, sn.medico_id, sn.paciente_id, sn.valor_servico_centavos, sn.ctrib_nac, sn.criado_em,
+             coalesce(p.nome, 'Paciente') as nome_paciente,
+             u.telefone as telefone_medico
+      from solicitacoes_nota sn
+      join pacientes p on p.id = sn.paciente_id
+      join medicos m on m.id = sn.medico_id
+      join usuarios u on u.id = m.usuario_id
+      where sn.medico_id = $1
+        and sn.aguardando_data_consulta = true
+        and sn.status = 'pendente'
+        ${filtroPaciente}
+      order by sn.criado_em desc
+      limit 1
+    `;
+    const { rows } = await this.pool.query(sql, params);
+    if (rows.length === 0) return null;
+    return {
+      id: rows[0].id,
+      medicoId: rows[0].medico_id,
+      pacienteId: rows[0].paciente_id,
+      nomePaciente: rows[0].nome_paciente,
+      telefoneMedico: rows[0].telefone_medico,
+      valorServicoCentavos: rows[0].valor_servico_centavos,
+      ctribNac: rows[0].ctrib_nac,
+      criadoEm: new Date(rows[0].criado_em)
+    };
+  }
+
+  async atualizarDataDescricaoSolicitacao(params: {
+    solicitacaoId: string;
+    xdescServ: string;
+    fila: 'pronta' | 'pendente_cadastro';
+  }): Promise<void> {
+    const sql = `
+      update solicitacoes_nota
+      set xdesc_serv = $2,
+          fila = $3,
+          aguardando_data_consulta = false,
+          atualizado_em = now()
+      where id = $1
+    `;
+    await this.pool.query(sql, [params.solicitacaoId, params.xdescServ, params.fila]);
   }
 
   async liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number> {
