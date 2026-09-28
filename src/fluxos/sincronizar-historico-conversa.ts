@@ -53,6 +53,7 @@ export async function sincronizarHistoricoConversa(
     await deps.repositorio.atualizarCpfPaciente({
       pacienteId: paciente.id,
       cpfHash,
+      cpf: cpfValido,
       nome: dadosConsulta?.nome,
       dataNascimento: dadosConsulta?.dataNascimento
     });
@@ -62,6 +63,7 @@ export async function sincronizarHistoricoConversa(
       telefone: conversa.contatoTelefone,
       nome: dadosConsulta?.nome ?? null,
       cpfHash,
+      cpf: cpfValido,
       origemCadastro: 'historico_whatsapp'
     });
   }

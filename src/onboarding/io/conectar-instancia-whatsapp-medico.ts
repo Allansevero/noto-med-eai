@@ -5,6 +5,7 @@
  */
 
 import type pg from 'pg';
+import { configurarSincronizacaoHistorico } from './configurar-sincronizacao-historico.js';
 
 export type IniciarConexaoWhatsappInput = {
   medicoId: string;
@@ -34,13 +35,15 @@ export async function conectarInstanciaWhatsappMedico(
   let qrcodeBase64: string | null = null;
   let pairingCode: string | null = null;
   let status = 'connecting';
+  let instanciaCriadaComHistorico = false;
 
   // 1. Tenta criar a instância na Evolution API (ou conectar se já existir)
   try {
     const bodyCreate: Record<string, any> = {
       instanceName: nomeInstancia,
       integration: 'WHATSAPP-BAILEYS',
-      qrcode: true
+      qrcode: true,
+      syncFullHistory: true
     };
     if (telefoneConsultorio) {
       bodyCreate.number = telefoneConsultorio.replace(/\D/g, '');
@@ -56,6 +59,7 @@ export async function conectarInstanciaWhatsappMedico(
     });
 
     const dataCreate = await resCreate.json().catch(() => ({}));
+    instanciaCriadaComHistorico = resCreate.ok;
     if (dataCreate.qrcode?.base64) {
       qrcodeBase64 = dataCreate.qrcode.base64;
     }
@@ -64,6 +68,21 @@ export async function conectarInstanciaWhatsappMedico(
     }
   } catch (err) {
     // Continua para tentar /instance/connect caso já exista
+  }
+
+  // Garante a opção também em instâncias criadas antes desta implementação.
+  let historicoConfigurado = false;
+  try {
+    historicoConfigurado = await configurarSincronizacaoHistorico({
+      baseUrl,
+      nomeInstancia,
+      apiKey: evolutionApiKey
+    });
+  } catch {
+    historicoConfigurado = false;
+  }
+  if (!instanciaCriadaComHistorico && !historicoConfigurado) {
+    throw new Error(`Não foi possível ativar a sincronização de histórico da instância ${nomeInstancia}`);
   }
 
   // 2. Se não veio QR code no create, solicita pelo /instance/connect
@@ -126,7 +145,13 @@ export async function conectarInstanciaWhatsappMedico(
             'x-webhook-secret': webhookSecret || evolutionApiKey
           },
           webhookByEvents: false,
-          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
+          events: [
+            'MESSAGES_SET',
+            'MESSAGES_UPSERT',
+            'CHATS_SET',
+            'CONTACTS_SET',
+            'CONNECTION_UPDATE'
+          ]
         }
       })
     });

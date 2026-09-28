@@ -5,6 +5,10 @@ import {
   extrairTextoMensagem,
   type DadosMensagemEvolution
 } from './payload-webhook-schema.js';
+import {
+  ehEventoSincronizacaoAuxiliar,
+  extrairPayloadHistorico
+} from './payload-historico-webhook-schema.js';
 
 describe('payload-webhook-schema', () => {
   it('deve validar payload completo de webhook com sucesso', () => {
@@ -69,5 +73,34 @@ describe('payload-webhook-schema', () => {
     };
 
     assert.strictEqual(extrairTextoMensagem(dados), null);
+  });
+
+  it('deve normalizar lote de histórico recebido em data.messages', () => {
+    const payload = {
+      event: 'messages.set',
+      instance: 'dr_joao_consultorio',
+      data: {
+        messages: [{
+          key: {
+            remoteJid: '5511999998888@s.whatsapp.net',
+            fromMe: false,
+            id: 'HIST-1'
+          },
+          message: { conversation: 'Meu CPF é 529.982.247-25' }
+        }],
+        isLatest: true,
+        progress: 100
+      }
+    };
+
+    const resultado = extrairPayloadHistorico(payload);
+    assert.strictEqual(resultado?.instance, 'dr_joao_consultorio');
+    assert.strictEqual(resultado?.mensagens.length, 1);
+  });
+
+  it('deve reconhecer eventos auxiliares de contatos e conversas', () => {
+    assert.strictEqual(ehEventoSincronizacaoAuxiliar({ event: 'CHATS_SET' }), true);
+    assert.strictEqual(ehEventoSincronizacaoAuxiliar({ event: 'contacts.set' }), true);
+    assert.strictEqual(ehEventoSincronizacaoAuxiliar({ event: 'messages.upsert' }), false);
   });
 });

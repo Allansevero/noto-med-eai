@@ -23,6 +23,11 @@ import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-pacient
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
 import type { ExtratorIaService } from '../ia/extrator-ia-service.js';
 import type { BillingRepositorio } from '../billing/billing-repositorio.js';
+import {
+  ehEventoHistorico,
+  ehEventoSincronizacaoAuxiliar
+} from '../whatsapp/payload-historico-webhook-schema.js';
+import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
@@ -38,7 +43,7 @@ export interface ProcessarWebhookDeps {
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'descartada';
+      acao: 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'descartada';
       detalhe?: any;
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
@@ -50,6 +55,15 @@ export async function processarMensagemWebhook(
 ): Promise<ResultadoProcessarWebhook> {
   if (deps.segredoConfigurado && !validarWebhookSecret(tokenRecebido, deps.segredoConfigurado)) {
     return { ok: false, motivo: 'autenticacao_invalida' };
+  }
+
+  if (ehEventoHistorico(payloadBruto)) {
+    const resultado = await processarHistoricoWebhook(payloadBruto, deps);
+    if (!resultado.ok) return resultado;
+    return { ok: true, acao: resultado.acao, detalhe: resultado };
+  }
+  if (ehEventoSincronizacaoAuxiliar(payloadBruto)) {
+    return { ok: true, acao: 'descartada' };
   }
 
   const parsed = webhookEvolutionSchema.safeParse(payloadBruto);

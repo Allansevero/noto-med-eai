@@ -167,6 +167,52 @@ describe('processarMensagemWebhook', () => {
     }
   });
 
+  it('deve importar pacientes do lote inicial de histórico da Evolution', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.instancias.push({
+      id: 'inst-1',
+      medicoId: 'med-1',
+      nomeInstancia: 'consultorio_dr_joao',
+      oficial: false
+    });
+
+    const payload = {
+      event: 'messages.set',
+      instance: 'consultorio_dr_joao',
+      data: {
+        messages: [
+          {
+            key: {
+              remoteJid: '5511999998888@s.whatsapp.net',
+              fromMe: false,
+              id: 'HIST-1'
+            },
+            message: { conversation: 'Boa tarde, seguem meus dados.' }
+          },
+          {
+            key: {
+              remoteJid: '5511999998888@s.whatsapp.net',
+              fromMe: false,
+              id: 'HIST-2'
+            },
+            message: { conversation: 'CPF 529.982.247-25' }
+          }
+        ],
+        isLatest: true,
+        progress: 100
+      }
+    };
+
+    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) assert.strictEqual(res.acao, 'historico_sincronizado');
+    assert.strictEqual(repo.conversas.length, 1);
+    assert.strictEqual(repo.pacientes.length, 1);
+    assert.strictEqual(repo.conversas[0].pacienteId, repo.pacientes[0].id);
+    assert.ok(repo.pacientes[0].cpfHash);
+  });
+
   it('deve rotear comando /agendado disparado pelo médico (fromMe: true)', async () => {
     const repo = new AtendimentoRepositorioMemoria();
     repo.instancias.push({
