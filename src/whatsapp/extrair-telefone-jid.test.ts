@@ -9,9 +9,10 @@ describe('extrairTelefoneJid', () => {
     assert.strictEqual(extrairTelefoneJid(''), null);
   });
 
-  it('deve descartar mensagens de grupo e broadcast', () => {
+  it('deve descartar mensagens de grupo, broadcast e lid', () => {
     assert.strictEqual(extrairTelefoneJid('120363023456789@g.us'), null);
     assert.strictEqual(extrairTelefoneJid('status@broadcast'), null);
+    assert.strictEqual(extrairTelefoneJid('236550071779382@lid'), null);
   });
 
   it('deve extrair telefone de JID individual comum', () => {

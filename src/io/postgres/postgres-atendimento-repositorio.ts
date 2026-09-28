@@ -39,7 +39,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     };
   }
 
-  async buscarOuCriarConversa(instanciaId: string, medicoId: string, contatoTelefone: string): Promise<ConversaRegistro> {
+  async buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string): Promise<ConversaRegistro> {
     const sqlBusca = `
       select id, instancia_id, medico_id, contato_telefone, paciente_id, aguardando_cpf_desde
       from whatsapp_conversas
@@ -48,6 +48,10 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     `;
     const { rows: rowsBusca } = await this.pool.query(sqlBusca, [instanciaId, contatoTelefone]);
     if (rowsBusca.length > 0) {
+      if (!rowsBusca[0].medico_id && medicoId) {
+        await this.pool.query(`update whatsapp_conversas set medico_id = $2 where id = $1`, [rowsBusca[0].id, medicoId]);
+        rowsBusca[0].medico_id = medicoId;
+      }
       return {
         id: rowsBusca[0].id,
         instanciaId: rowsBusca[0].instancia_id,
@@ -410,7 +414,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       set fila = 'pronta'
       where medico_id = $1
         and paciente_id = $2
-        and fila = 'pendente_cadastro'
+        and (fila = 'pendente_cadastro' or (fila is null and aguardando_data_consulta = false))
     `;
     const res = await this.pool.query(sql, [medicoId, pacienteId]);
     return res.rowCount ?? 0;

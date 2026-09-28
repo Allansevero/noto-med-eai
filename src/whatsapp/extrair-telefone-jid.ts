@@ -9,8 +9,8 @@ export function extrairTelefoneJid(jid?: string | null): string | null {
     return null;
   }
 
-  // Grupos e broadcasts não são conversas diretas de pacientes
-  if (jid.endsWith('@g.us') || jid.includes('@broadcast')) {
+  // Grupos, broadcasts e identificadores virtuais @lid não são telefones válidos
+  if (jid.endsWith('@g.us') || jid.includes('@broadcast') || jid.endsWith('@lid')) {
     return null;
   }
 

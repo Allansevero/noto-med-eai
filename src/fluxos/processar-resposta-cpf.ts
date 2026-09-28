@@ -25,7 +25,7 @@ export async function processarRespostaCpf(
   deps: ProcessarRespostaCpfDeps
 ): Promise<ResultadoProcessarRespostaCpf> {
   const cpfValido = extrairCpfTexto(textoMensagem);
-  if (!cpfValido || !conversa.pacienteId) {
+  if (!cpfValido || !conversa.pacienteId || !conversa.medicoId) {
     return { ok: false, motivo: 'cpf_invalido_ou_ausente' };
   }
 

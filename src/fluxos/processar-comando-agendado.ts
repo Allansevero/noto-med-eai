@@ -34,10 +34,15 @@ export async function processarComandoAgendado(
     agora: dataAtual
   });
 
+  if (!conversa.medicoId) {
+    throw new Error(`Conversa ${conversa.id} não possui medicoId associado.`);
+  }
+  const medicoId = conversa.medicoId;
+
   let pacienteId = conversa.pacienteId;
   if (!pacienteId) {
     const existente = await deps.repositorio.buscarPacientePorTelefone(
-      conversa.medicoId,
+      medicoId,
       conversa.contatoTelefone
     );
     if (existente) {
@@ -45,7 +50,7 @@ export async function processarComandoAgendado(
     } else {
       const cpfHash = dados.cpfPaciente ? gerarHashCpf(dados.cpfPaciente, deps.pepper) : null;
       const novo = await deps.repositorio.criarPacienteMinimo({
-        medicoId: conversa.medicoId,
+        medicoId,
         telefone: conversa.contatoTelefone,
         nome: dados.nomePaciente,
         email: dados.emailPaciente,
@@ -58,7 +63,7 @@ export async function processarComandoAgendado(
   }
 
   const agendamento = await deps.repositorio.criarAgendamento({
-    medicoId: conversa.medicoId,
+    medicoId,
     pacienteId,
     conversaId: conversa.id,
     dataHora: dados.dataHora,

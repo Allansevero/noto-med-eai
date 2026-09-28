@@ -39,8 +39,13 @@ export async function sincronizarHistoricoConversa(
     ? await deps.consultaCpfProvider.consultar(cpfValido)
     : null;
 
+  if (!conversa.medicoId) {
+    return { ok: true, pacienteVinculado: false };
+  }
+  const medicoId = conversa.medicoId;
+
   let paciente = await deps.repositorio.buscarPacientePorTelefone(
-    conversa.medicoId,
+    medicoId,
     conversa.contatoTelefone
   );
 
@@ -53,7 +58,7 @@ export async function sincronizarHistoricoConversa(
     });
   } else {
     paciente = await deps.repositorio.criarPacienteMinimo({
-      medicoId: conversa.medicoId,
+      medicoId,
       telefone: conversa.contatoTelefone,
       nome: dadosConsulta?.nome ?? null,
       cpfHash,

@@ -8,7 +8,7 @@ import type { RespostaRapidaModelo } from '../whatsapp/casar-resposta-rapida.js'
 
 export interface InstanciaRegistro {
   id: string;
-  medicoId: string;
+  medicoId: string | null;
   nomeInstancia: string;
   oficial: boolean;
 }
@@ -16,7 +16,7 @@ export interface InstanciaRegistro {
 export interface ConversaRegistro {
   id: string;
   instanciaId: string;
-  medicoId: string;
+  medicoId: string | null;
   contatoTelefone: string;
   pacienteId: string | null;
   aguardandoCpfDesde: Date | null;
@@ -61,7 +61,7 @@ export interface SolicitacaoAguardandoDataRegistro {
 
 export interface AtendimentoRepositorio {
   buscarInstanciaPorNome(nomeInstancia: string): Promise<InstanciaRegistro | null>;
-  buscarOuCriarConversa(instanciaId: string, medicoId: string, contatoTelefone: string): Promise<ConversaRegistro>;
+  buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string): Promise<ConversaRegistro>;
   buscarRespostasRapidasMedico(medicoId: string): Promise<RespostaRapidaModelo[]>;
   buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null>;
   buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null>;

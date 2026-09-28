@@ -58,15 +58,19 @@ export async function processarMensagemWebhook(
   const payload = parsed.data;
   const jidPrincipal = payload.data.key.remoteJid;
   const jidAlternativo = payload.data.key.remoteJidAlt;
-  const jidAlvo = (jidPrincipal.includes('@lid') && jidAlternativo) ? jidAlternativo : jidPrincipal;
-  const telefone = extrairTelefoneJid(jidAlvo) || (jidAlternativo ? extrairTelefoneJid(jidAlternativo) : null);
+  const telefone =
+    extrairTelefoneJid(jidAlternativo) ||
+    extrairTelefoneJid(jidPrincipal);
   const texto = extrairTextoMensagem(payload.data);
   if (!telefone || !texto) return { ok: true, acao: 'descartada' };
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };
 
-  const conversa = await deps.repositorio.buscarOuCriarConversa(instancia.id, instancia.medicoId, telefone);
+  const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+  const medicoId = instancia.medicoId || medico?.id || null;
+
+  const conversa = await deps.repositorio.buscarOuCriarConversa(instancia.id, medicoId, telefone);
   return rotearMensagem(conversa, texto, payload, deps, telefone);
 }
 
@@ -79,30 +83,30 @@ async function rotearMensagem(
 ): Promise<ResultadoProcessarWebhook> {
   const fromMe = payload.data.key.fromMe;
 
-  // 1. Resposta do paciente ao pedido de CPF
-  if (!fromMe && conversa.aguardandoCpfDesde) {
+  // 1. Resposta ao pedido de CPF (paciente ou médico fornecendo no chat)
+  if (conversa.aguardandoCpfDesde) {
     const res = await processarRespostaCpf(conversa, texto, {
       repositorio: deps.repositorio,
       consultaCpfProvider: deps.consultaCpfProvider,
       pepper: deps.pepper
     });
-    return { ok: true, acao: 'resposta_cpf', detalhe: res };
+    if (res.ok) {
+      return { ok: true, acao: 'resposta_cpf', detalhe: res };
+    }
   }
 
   // 2. Resposta do médico à pergunta sobre a data da consulta
-  if (!fromMe) {
-    const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
-    if (medico) {
-      const solicitacaoPendente = await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id);
-      if (solicitacaoPendente) {
-        const resData = await processarRespostaDataConsulta(telefone, texto, {
-          repositorio: deps.repositorio,
-          enviarMensagem: deps.enviarMensagemPaciente,
-          instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
-        });
-        if (resData.ok) {
-          return { ok: true, acao: 'resposta_data_consulta', detalhe: resData };
-        }
+  const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+  if (medico) {
+    const solicitacaoPendente = await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id);
+    if (solicitacaoPendente) {
+      const resData = await processarRespostaDataConsulta(telefone, texto, {
+        repositorio: deps.repositorio,
+        enviarMensagem: deps.enviarMensagemPaciente,
+        instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
+      });
+      if (resData.ok) {
+        return { ok: true, acao: 'resposta_data_consulta', detalhe: resData };
       }
     }
   }

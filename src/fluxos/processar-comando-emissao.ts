@@ -45,17 +45,22 @@ export async function processarComandoEmissao(
   valorDigitadoCentavos: number | null,
   deps: ProcessarEmissaoDeps
 ): Promise<ResultadoProcessarEmissao> {
+  if (!conversa.medicoId) {
+    return { ok: false, motivo: 'medico_nao_encontrado' };
+  }
+  const medicoId = conversa.medicoId;
+
   let pacienteId = conversa.pacienteId;
   if (!pacienteId) {
     const existente = await deps.repositorio.buscarPacientePorTelefone(
-      conversa.medicoId,
+      medicoId,
       conversa.contatoTelefone
     );
     if (existente) {
       pacienteId = existente.id;
     } else {
       const novo = await deps.repositorio.criarPacienteMinimo({
-        medicoId: conversa.medicoId,
+        medicoId,
         telefone: conversa.contatoTelefone,
         origemCadastro: 'conversa'
       });
@@ -66,15 +71,15 @@ export async function processarComandoEmissao(
   }
 
   const paciente = await deps.repositorio.buscarPacientePorId(pacienteId);
-  const consultas = await deps.repositorio.buscarConsultasEmAberto(conversa.medicoId, pacienteId);
+  const consultas = await deps.repositorio.buscarConsultasEmAberto(medicoId, pacienteId);
   const calculo = calcularValorEmissao(valorDigitadoCentavos, consultas.map((c) => c.valorConsultaCentavos));
   if (!calculo.ok || !calculo.valorCentavos) return { ok: false, motivo: 'valor_indisponivel' };
 
-  const medico = await deps.repositorio.buscarDadosMedico(conversa.medicoId);
+  const medico = await deps.repositorio.buscarDadosMedico(medicoId);
   if (!medico) return { ok: false, motivo: 'medico_nao_encontrado' };
 
   if (deps.billingRepositorio) {
-    const uso = await deps.billingRepositorio.buscarUsoELimiteMedico(conversa.medicoId);
+    const uso = await deps.billingRepositorio.buscarUsoELimiteMedico(medicoId);
     const verificacao = verificarLimiteEmissao(uso);
     if (!verificacao.permitido) {
       const telMedico = medico.telefone || conversa.contatoTelefone;
@@ -95,7 +100,7 @@ export async function processarComandoEmissao(
     : montarDescricaoServico(medico, consultas.map((c) => c.dataHora));
 
   const solicitacao = await deps.repositorio.criarSolicitacaoNota({
-    medicoId: conversa.medicoId,
+    medicoId,
     pacienteId,
     xdescServ,
     valorServicoCentavos: calculo.valorCentavos,

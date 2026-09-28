@@ -56,7 +56,13 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
 
   async buscarContextoEnvio(solicitacaoId: string): Promise<ContextoEnvioNota | null> {
     const sql = `
-      select wi.nome_instancia, p.telefone as contato_telefone,
+      select coalesce(wi.nome_instancia, (
+               select w2.nome_instancia 
+               from whatsapp_instancias w2 
+               where w2.medico_id = m.id and w2.status = 'conectado' 
+               order by w2.criado_em desc limit 1
+             ), 'notomed_oficial') as nome_instancia,
+             p.telefone as contato_telefone,
              u.telefone as telefone_medico, p.nome as nome_paciente
       from solicitacoes_nota sn
       join pacientes p on p.id = sn.paciente_id
@@ -71,7 +77,7 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
     if (rows.length === 0) return null;
 
     return {
-      instanciaNome: rows[0].nome_instancia || 'instancia_padrao',
+      instanciaNome: rows[0].nome_instancia,
       contatoTelefone: rows[0].contato_telefone,
       telefoneMedico: rows[0].telefone_medico,
       nomePaciente: rows[0].nome_paciente
