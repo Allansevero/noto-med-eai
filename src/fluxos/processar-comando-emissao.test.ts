@@ -272,5 +272,63 @@ describe('processarComandoEmissao', () => {
       'Não encontramos a data da consulta paciente Carlos Souza, poderia me informar para emissão?'
     );
   });
+
+  it('deve bloquear emissão e notificar o médico se o limite de notas for atingido', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const enviador = new EnviarMensagemPacienteFake();
+    repo.medico = { ...medicoPadrao, telefone: '5551993527271' };
+
+    const paciente: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '5511999998888',
+      nome: 'Carlos Souza',
+      cpfHash: 'hash-existente'
+    };
+    repo.pacientes.push(paciente);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-1',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511999998888',
+      pacienteId: 'pac-1',
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversa);
+
+    const mockBillingRepo = {
+      buscarUsoELimiteMedico: async () => ({
+        planoNome: 'Gratuito',
+        limiteNotasDia: 5,
+        notasHoje: 5, // Limite atingido!
+        notasMes: 15,
+        travaEmissao: false,
+        assinaturaStatus: 'trial'
+      }),
+      buscarContaPorMedico: async () => null,
+      buscarAssinaturaPorStripeSub: async () => null,
+      atualizarAssinaturaStripe: async () => {},
+      registrarFatura: async () => {}
+    };
+
+    const res = await processarComandoEmissao(conversa, 20000, {
+      repositorio: repo,
+      enviarMensagemPaciente: enviador,
+      billingRepositorio: mockBillingRepo,
+      instanciaNome: 'dr_roberto',
+      instanciaOficialNome: 'notomed_oficial'
+    });
+
+    assert.strictEqual(res.ok, false);
+    if (!res.ok) {
+      assert.strictEqual(res.motivo, 'limite_atingido');
+    }
+    // Nenhuma solicitação deve ser criada no banco
+    assert.strictEqual(repo.solicitacoesCriadas.length, 0);
+    // Notificação de bloqueio enviada ao médico
+    assert.strictEqual(enviador.envios.length, 1);
+    assert.match(enviador.envios[0].texto, /limite de 5 notas fiscais gratuitas de hoje/);
+  });
 });
 

@@ -28,13 +28,23 @@ import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onbo
 import { GroqApiClient } from './io/groq/groq-api-client.js';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
+import { PostgresBillingRepositorio } from './io/postgres/postgres-billing-repositorio.js';
+import { StripeService } from './billing/stripe-service.js';
+import { processarWebhookStripe } from './billing/processar-webhook-stripe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function criarAppExpress() {
   const app = express();
-  app.use(express.json({ limit: '10mb' }));
+  app.use(
+    express.json({
+      limit: '10mb',
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      }
+    })
+  );
   app.use(express.text({ limit: '10mb', type: ['text/*', 'application/xml'] }));
 
   // Instanciação dos adaptadores de infraestrutura
@@ -57,6 +67,14 @@ export function criarAppExpress() {
   });
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
+    : undefined;
+  const billingRepo = new PostgresBillingRepositorio(pool);
+  const stripeService = config.stripeSecretKey
+    ? new StripeService({
+        secretKey: config.stripeSecretKey,
+        priceId: config.stripePriceId || 'price_1UFaloBMqkVPUWioDTWXIPv6',
+        webhookSecret: config.stripeWebhookSecret
+      })
     : undefined;
 
   // Healthcheck para o Easypanel
@@ -303,6 +321,7 @@ export function criarAppExpress() {
 
     const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
       repositorio: atendimentoRepo,
+      billingRepositorio: billingRepo,
       enviarMensagemPaciente: evolutionClient,
       iaService: groqClient,
       consultaCpfProvider: hubCpfClient,
@@ -402,6 +421,103 @@ export function criarAppExpress() {
       return res.send(Buffer.from(pdfBytes));
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao gerar PDF do DANFSe' });
+    }
+  });
+
+  // --- ROTAS DO STRIPE BILLING E LIMITES ---
+
+  // Webhook da Stripe (ativa plano Mensal, sincroniza faturas e cancelamentos)
+  app.post('/api/stripe/webhook', async (req: Request, res: Response) => {
+    try {
+      if (!stripeService) {
+        return res.status(503).json({ ok: false, detalhe: 'Stripe não configurado no servidor' });
+      }
+      const sig = (req.headers['stripe-signature'] as string) || '';
+      const rawBody = (req as any).rawBody || req.body;
+      const evento = stripeService.construirEventoWebhook(rawBody, sig);
+      const resultado = await processarWebhookStripe(evento, { repositorio: billingRepo });
+      return res.json(resultado);
+    } catch (err: any) {
+      console.error('Erro no webhook da Stripe:', err?.message);
+      return res.status(400).send(`Webhook Error: ${err?.message}`);
+    }
+  });
+
+  // Criar sessão de Checkout para assinatura do Plano Mensal (R$ 100/mês, 100 notas/mês)
+  app.post('/api/billing/checkout', async (req: Request, res: Response) => {
+    try {
+      const { medicoId } = req.body || {};
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      if (!stripeService) {
+        return res.status(503).json({ ok: false, detalhe: 'Stripe não configurado' });
+      }
+
+      const info = await billingRepo.buscarContaPorMedico(medicoId);
+      if (!info) {
+        return res.status(404).json({ ok: false, detalhe: 'Médico não encontrado' });
+      }
+
+      const host = req.get('host') || 'localhost:3000';
+      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      const baseUrl = `${protocol}://${host}`;
+
+      const checkoutUrl = await stripeService.criarSessaoCheckout({
+        medicoId: info.medicoId,
+        contaId: info.contaId,
+        customerEmail: info.email,
+        telefone: info.telefone,
+        successUrl: `${baseUrl}/?sucesso_assinatura=true`,
+        cancelUrl: `${baseUrl}/?cancelou_assinatura=true`
+      });
+
+      return res.json({ ok: true, checkoutUrl });
+    } catch (err: any) {
+      console.error('Erro ao criar checkout Stripe:', err);
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao gerar checkout' });
+    }
+  });
+
+  // Acesso ao Portal do Cliente Stripe (gerenciamento de cartão, faturas e cancelamento)
+  app.post('/api/billing/portal', async (req: Request, res: Response) => {
+    try {
+      const { medicoId } = req.body || {};
+      if (!medicoId || !stripeService) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId inválido ou Stripe indisponível' });
+      }
+      const info = await billingRepo.buscarContaPorMedico(medicoId);
+      if (!info?.stripeCustomerId) {
+        return res.status(400).json({ ok: false, detalhe: 'Nenhuma assinatura Stripe vinculada a este médico' });
+      }
+
+      const host = req.get('host') || 'localhost:3000';
+      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      const returnUrl = `${protocol}://${host}/`;
+
+      const portalUrl = await stripeService.criarSessaoPortal({
+        stripeCustomerId: info.stripeCustomerId,
+        returnUrl
+      });
+
+      return res.json({ ok: true, portalUrl });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao abrir portal da Stripe' });
+    }
+  });
+
+  // Consulta do status de uso e limites atuais do médico
+  app.get('/api/billing/status', async (req: Request, res: Response) => {
+    try {
+      const medicoId = (req.query['medicoId'] as string)?.trim();
+      if (!medicoId) {
+        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
+      }
+      const uso = await billingRepo.buscarUsoELimiteMedico(medicoId);
+      const info = await billingRepo.buscarContaPorMedico(medicoId);
+      return res.json({ ok: true, uso, info });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status de faturamento' });
     }
   });
 

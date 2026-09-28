@@ -22,10 +22,12 @@ import type { AtendimentoRepositorio } from '../atendimento/atendimento-reposito
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
 import type { ExtratorIaService } from '../ia/extrator-ia-service.js';
+import type { BillingRepositorio } from '../billing/billing-repositorio.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
   enviarMensagemPaciente: EnviarMensagemPaciente;
+  billingRepositorio?: BillingRepositorio;
   consultaCpfProvider?: ConsultaCpfProvider;
   iaService?: ExtratorIaService;
   segredoConfigurado: string;
@@ -125,6 +127,7 @@ async function rotearMensagem(
   const res = await processarComandoEmissao(conversa, casamento.valorDigitadoCentavos, {
     repositorio: deps.repositorio,
     enviarMensagemPaciente: deps.enviarMensagemPaciente,
+    billingRepositorio: deps.billingRepositorio,
     instanciaNome: payload.instance,
     instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
   });

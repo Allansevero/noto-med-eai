@@ -10,9 +10,13 @@ import { MENSAGEM_PEDIDO_CPF } from '../whatsapp/whatsapp-config.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 
+import type { BillingRepositorio } from '../billing/billing-repositorio.js';
+import { verificarLimiteEmissao } from '../billing/verificar-limite-emissao.js';
+
 export interface ProcessarEmissaoDeps {
   repositorio: AtendimentoRepositorio;
   enviarMensagemPaciente: EnviarMensagemPaciente;
+  billingRepositorio?: BillingRepositorio;
   instanciaNome: string;
   instanciaOficialNome?: string;
   agora?: () => Date;
@@ -26,7 +30,15 @@ export type ResultadoProcessarEmissao =
       aguardandoCpf: boolean;
       aguardandoData: boolean;
     }
-  | { ok: false; motivo: 'paciente_ausente' | 'valor_indisponivel' | 'medico_nao_encontrado' };
+  | {
+      ok: false;
+      motivo:
+        | 'paciente_ausente'
+        | 'valor_indisponivel'
+        | 'medico_nao_encontrado'
+        | 'limite_atingido';
+      detalhe?: string;
+    };
 
 export async function processarComandoEmissao(
   conversa: ConversaRegistro,
@@ -60,6 +72,20 @@ export async function processarComandoEmissao(
 
   const medico = await deps.repositorio.buscarDadosMedico(conversa.medicoId);
   if (!medico) return { ok: false, motivo: 'medico_nao_encontrado' };
+
+  if (deps.billingRepositorio) {
+    const uso = await deps.billingRepositorio.buscarUsoELimiteMedico(conversa.medicoId);
+    const verificacao = verificarLimiteEmissao(uso);
+    if (!verificacao.permitido) {
+      const telMedico = medico.telefone || conversa.contatoTelefone;
+      await deps.enviarMensagemPaciente.enviarTexto({
+        instanciaNome: deps.instanciaOficialNome || 'notomed_oficial',
+        contatoTelefone: telMedico,
+        texto: `⚠️ Emissão não realizada: ${verificacao.mensagem}`
+      });
+      return { ok: false, motivo: 'limite_atingido', detalhe: verificacao.mensagem };
+    }
+  }
 
   const semDataConsulta = consultas.length === 0;
   const possuiCpf = Boolean(paciente?.cpfHash);

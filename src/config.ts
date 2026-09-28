@@ -24,6 +24,10 @@ export interface AppConfig {
   groqModel: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
+  stripeSecretKey?: string;
+  stripePublishableKey?: string;
+  stripePriceId?: string;
+  stripeWebhookSecret?: string;
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -44,7 +48,11 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     groqApiKey: env['GROQ_API_KEY'] || '',
     groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
-    hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN']
+    hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
+    stripeSecretKey: env['STRIPE_SECRET_KEY'],
+    stripePublishableKey: env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
+    stripePriceId: env['STRIPE_PRICE_ID'] || 'price_1UFaloBMqkVPUWioDTWXIPv6',
+    stripeWebhookSecret: env['STRIPE_WEBHOOK_SECRET']
   };
 }
 

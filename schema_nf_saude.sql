@@ -194,10 +194,13 @@ create table assinaturas (
   data_inicio           timestamptz not null default now(),
   data_fim_trial        timestamptz,
   data_proxima_cobranca timestamptz,
-  cancelada_em          timestamptz,
+  stripe_customer_id    text,
+  stripe_subscription_id text,
   criado_em             timestamptz not null default now(),
   atualizado_em         timestamptz not null default now()
 );
+create index idx_assinaturas_stripe_sub on assinaturas(stripe_subscription_id);
+create index idx_assinaturas_stripe_cust on assinaturas(stripe_customer_id);
 
 create table faturas_assinatura (
   id                    uuid primary key default gen_random_uuid(),
