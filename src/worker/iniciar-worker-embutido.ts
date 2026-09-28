@@ -10,6 +10,7 @@ import type { AppConfig } from '../config.js';
 import { PostgresFilaRepositorio } from '../io/postgres/postgres-fila-repositorio.js';
 import { PostgresEmissorDpsService } from '../io/fiscal/postgres-emissor-dps-service.js';
 import { MeuDanfeClient } from '../io/meudanfe/meu-danfe-client.js';
+import { HubDesenvolvedorCpfClient } from '../io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
 import { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
 import { processarItemFila } from './processar-item-fila.js';
 import type { NotificadorAlertas } from './notificar-erro-medico.js';
@@ -18,7 +19,8 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
   const workerId = `embedded-${process.pid}-${randomUUID().slice(0, 6)}`;
   const filaRepo = new PostgresFilaRepositorio(pool);
   const meuDanfeClient = config.meuDanfeApiKey ? new MeuDanfeClient(config.meuDanfeApiKey) : undefined;
-  const emissorDps = new PostgresEmissorDpsService(pool, config.encryptionKey, meuDanfeClient);
+  const hubCpfClient = config.hubDesenvolvedorToken ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken) : undefined;
+  const emissorDps = new PostgresEmissorDpsService(pool, config.encryptionKey, meuDanfeClient, hubCpfClient);
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,

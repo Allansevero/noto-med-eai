@@ -15,6 +15,7 @@ import { generateDanfsePdf } from '../../fiscal/danfse/gerar-danfse-pdf.js';
 import { comporChaveAcessoNacional } from '../../fiscal/danfse/formatadores-fiscais.js';
 import { montarXmlNfse } from '../../fiscal/danfse/montar-xml-nfse.js';
 import type { MeuDanfeClient } from '../meudanfe/meu-danfe-client.js';
+import type { ConsultaCpfProvider } from '../../paciente/consulta-cpf-provider.js';
 
 export type ConfigPrestadorCompleto = ConfigPrestador & {
   serie: string;
@@ -29,7 +30,8 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
   constructor(
     private readonly pool: pg.Pool,
     private readonly chaveCriptografia: string,
-    private readonly meuDanfeClient?: MeuDanfeClient
+    private readonly meuDanfeClient?: MeuDanfeClient,
+    private readonly consultaCpfProvider?: ConsultaCpfProvider
   ) {}
 
   async emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps> {
@@ -41,6 +43,24 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const tomador = await this.carregarDadosTomador(item.pacienteId);
     if (!tomador || !tomador.cpf) {
       return { sucesso: false, erro: `Paciente ${item.pacienteId} sem CPF válido para emissão` };
+    }
+
+    // Garante que o nome completo do tomador seja obtido via API oficial da Receita
+    if (!tomador.nome || tomador.nome.trim() === '' || tomador.nome.toUpperCase() === 'PACIENTE') {
+      if (this.consultaCpfProvider) {
+        try {
+          const dadosCpf = await this.consultaCpfProvider.consultar(tomador.cpf);
+          if (dadosCpf?.nome) {
+            tomador.nome = dadosCpf.nome;
+            await this.pool.query(
+              `update pacientes set nome = $1, data_nascimento = coalesce(data_nascimento, $2), atualizado_em = now() where id = $3`,
+              [dadosCpf.nome, dadosCpf.dataNascimento || null, item.pacienteId]
+            );
+          }
+        } catch (err: any) {
+          console.warn('[PostgresEmissorDpsService] Falha ao consultar CPF do tomador:', err?.message || err);
+        }
+      }
     }
 
     const ndps = await this.obterProximoNdps(item.medicoId);
