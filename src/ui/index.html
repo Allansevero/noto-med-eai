@@ -76,11 +76,11 @@
     /* Container de Acesso / Login */
     .access-container {
       width: 100%;
-      max-width: 520px;
+      max-width: 380px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      text-align: center;
+      align-items: flex-start;
+      text-align: left;
       gap: var(--gap);
       margin: auto;
     }
@@ -88,7 +88,8 @@
     .access-header {
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: flex-start;
+      text-align: left;
       gap: 0.75rem;
       width: 100%;
     }
@@ -99,6 +100,7 @@
       line-height: 1.05;
       letter-spacing: -0.025em;
       color: var(--text);
+      text-align: left;
       margin: 0;
     }
 
@@ -106,6 +108,7 @@
       font-size: var(--font-size-base);
       color: var(--text-secondary);
       line-height: 1.4;
+      text-align: left;
       margin: 0;
     }
 
@@ -113,7 +116,8 @@
       width: 100%;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: flex-start;
+      text-align: left;
       gap: var(--gap);
     }
 
@@ -167,6 +171,7 @@
       height: 100%;
       padding: 0;
       font-weight: 500;
+      text-align: left;
     }
 
     .phone-input::placeholder {
@@ -180,9 +185,9 @@
       line-height: 1.5;
       color: var(--text);
       opacity: 0.85;
-      text-align: center;
+      text-align: left;
       margin: 0;
-      padding: 0 0.5rem;
+      padding: 0;
     }
 
     .legal-disclaimer a {
@@ -236,10 +241,10 @@
     .alert {
       width: 100%;
       padding: 0.85rem 1.25rem;
-      border-radius: 9999px;
+      border-radius: 14px;
       font-size: 14px;
       font-weight: 500;
-      text-align: center;
+      text-align: left;
       box-sizing: border-box;
     }
 
@@ -625,7 +630,7 @@
           Entrar no Noto
         </button>
 
-        <div>
+        <div style="width: 100%; text-align: left;">
           <button type="button" class="btn-link" id="linkVoltar">
             ← Voltar e alterar número
           </button>
@@ -921,14 +926,23 @@
 
     // Formatação automática com +55 e máscara
     function formatarCom55(valor) {
-      let digits = valor.replace(/\D/g, '');
+      if (!valor) return '';
 
-      // Se colou ou digitou começando com 55 e possui mais de 11 dígitos, remove o 55 do início
-      if (digits.startsWith('55') && digits.length > 11) {
+      let valorSemDdi = valor.trim();
+      if (valorSemDdi.startsWith('+55')) {
+        valorSemDdi = valorSemDdi.slice(3);
+      } else if (valorSemDdi.startsWith('+')) {
+        valorSemDdi = valorSemDdi.replace(/^\+\d{1,3}/, '');
+      }
+
+      let digits = valorSemDdi.replace(/\D/g, '');
+
+      // Se colou 13 dígitos começando com 55 (DDI + DDD + 9 dígitos), remove o 55 do DDI
+      if (digits.length === 13 && digits.startsWith('55')) {
         digits = digits.slice(2);
       }
 
-      // Limita a 11 dígitos (DDD + 9 dígitos)
+      // Limita a 11 dígitos nacionais (DDD + 9 dígitos)
       if (digits.length > 11) {
         digits = digits.slice(0, 11);
       }
@@ -939,15 +953,15 @@
 
       let res = '+55 ';
       if (digits.length <= 2) {
-        res += `(${digits}`;
-      } else if (digits.length <= 7) {
-        res += `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-      } else if (digits.length <= 10) {
-        res += `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-      } else {
-        res += `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+        return `${res}(${digits}`;
       }
-      return res;
+      if (digits.length <= 7) {
+        return `${res}(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+      }
+      if (digits.length <= 10) {
+        return `${res}(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      }
+      return `${res}(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
     }
 
     inputTelefone.addEventListener('input', (e) => {
@@ -957,10 +971,11 @@
 
     inputTelefone.addEventListener('keydown', (e) => {
       if (e.key === 'Backspace') {
-        const digitos = e.target.value.replace(/\D/g, '');
-        // Se só sobrou o prefixo ou 1 dígito do DDD, limpa o campo
-        if (digitos.length <= 1 || (digitos.startsWith('55') && digitos.length <= 3)) {
-          e.target.value = '';
+        const val = inputTelefone.value.trim();
+        // Se sobrou apenas o prefixo ou o usuário está apagando o último dígito, limpa tudo
+        if (val === '+55 (' || val === '+55 ' || val === '+55' || val === '+5' || val === '+') {
+          e.preventDefault();
+          inputTelefone.value = '';
         }
       }
     });
@@ -990,10 +1005,12 @@
       e.preventDefault();
       hideAlert();
 
-      const digitosCompletos = inputTelefone.value.replace(/\D/g, '');
-      // Extrai apenas DDD + número (remove 55 inicial se presente)
-      let numeroLocal = digitosCompletos;
-      if (numeroLocal.startsWith('55') && numeroLocal.length > 11) {
+      let valorSemDdi = inputTelefone.value.trim();
+      if (valorSemDdi.startsWith('+55')) {
+        valorSemDdi = valorSemDdi.slice(3);
+      }
+      let numeroLocal = valorSemDdi.replace(/\D/g, '');
+      if (numeroLocal.length === 13 && numeroLocal.startsWith('55')) {
         numeroLocal = numeroLocal.slice(2);
       }
 
