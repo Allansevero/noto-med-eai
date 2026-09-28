@@ -5,7 +5,7 @@
  */
 
 export const TEXTO_MODELO_PADRAO_AGENDADO = 'Consulta agendada!';
-export const TEXTO_MODELO_PADRAO_EMISSAO = 'Vou enviar em instantes sua NF no valor de R$';
+export const TEXTO_MODELO_PADRAO_EMISSAO = 'Vou enviar em instantes a sua NF no valor de R$';
 export const MENSAGEM_PEDIDO_CPF = 'poderia por favor me reenviar o seu CPF para emissão da nota fiscal?';
 
 export const EVENTOS_EVOLUTION = {
