@@ -508,6 +508,49 @@
       font-weight: 700;
       letter-spacing: 0.5px;
     }
+
+    .dash-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(18, 28, 34, 0.1);
+    }
+
+    .dash-brand {
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .btn-logout-small {
+      background: transparent;
+      border: 1px solid var(--border-line);
+      border-radius: 9999px;
+      padding: 0.35rem 1rem;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s ease;
+    }
+
+    .btn-logout-small:hover {
+      background: rgba(18, 28, 34, 0.08);
+    }
+
+    .btn-logout {
+      background: #FFFFFF !important;
+      border: 1px solid var(--border-line) !important;
+      color: var(--text) !important;
+    }
+
+    .btn-logout:hover {
+      background: #FAF8F5 !important;
+    }
   </style>
 </head>
 <body>
@@ -593,6 +636,14 @@
     <!-- CARD DO ONBOARDING / PAINEL (APÓS LOGIN) -->
     <section class="onboarding-card hidden" id="cardOnboarding">
       <div id="alertOnboarding" class="alert alert-error hidden"></div>
+
+      <!-- BARRA DE TOPO COM LOGO E BOTÃO DE LOGOUT -->
+      <div class="dash-top-bar">
+        <span class="dash-brand">Noto</span>
+        <button type="button" class="btn-logout-small" id="btnLogoutTop" title="Encerrar sessão">
+          Sair
+        </button>
+      </div>
 
       <!-- STEPPER PROGRESS BAR -->
       <div class="stepper" id="stepperNav">
@@ -782,9 +833,14 @@
           <div class="code-box">/emissao → Emite a NFS-e e envia o PDF na conversa</div>
         </div>
 
-        <button type="button" class="btn-action" style="background: transparent;" onclick="location.reload()">
-          Atualizar Painel
-        </button>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+          <button type="button" class="btn-action" style="background: transparent;" onclick="location.reload()">
+            Atualizar Painel
+          </button>
+          <button type="button" class="btn-action btn-logout" id="btnLogoutDash">
+            Sair (Logout)
+          </button>
+        </div>
       </div>
     </section>
 
@@ -825,6 +881,42 @@
 
     function hideAlert(targetBox = alertBox) {
       targetBox.classList.add('hidden');
+    }
+
+    // Função de Logout
+    function efetuarLogout() {
+      localStorage.removeItem('notomed_sessao');
+      sessaoAtual = null;
+      pararPollingConexao();
+
+      // Limpa os formulários
+      inputTelefone.value = '';
+      otpDigits.forEach(i => i.value = '');
+      formOtp.classList.add('hidden');
+      formTelefone.classList.remove('hidden');
+
+      // Alterna visibilidade dos containers
+      cardOnboarding.classList.add('hidden');
+      cardAuth.classList.remove('hidden');
+
+      // Reseta botões
+      const btnEnviar = document.getElementById('btnEnviarOtp');
+      if (btnEnviar) {
+        btnEnviar.disabled = false;
+        btnEnviar.textContent = 'Enviar código';
+      }
+
+      showAlert('Sessão encerrada com sucesso.', false);
+    }
+
+    const btnLogoutDash = document.getElementById('btnLogoutDash');
+    if (btnLogoutDash) {
+      btnLogoutDash.addEventListener('click', efetuarLogout);
+    }
+
+    const btnLogoutTop = document.getElementById('btnLogoutTop');
+    if (btnLogoutTop) {
+      btnLogoutTop.addEventListener('click', efetuarLogout);
     }
 
     // Formatação automática com +55 e máscara
