@@ -33,7 +33,7 @@ export class SupabaseAuthAdminService implements AuthAdminService {
 
   async buscarPorTelefone(telefone: string): Promise<UsuarioAutenticadoInfo | null> {
     const sql = `
-      select u.id as usuario_id, u.auth_user_id, u.papel, u.nome, m.id as medico_id
+      select u.id as usuario_id, u.auth_user_id, u.papel, u.nome, u.conta_id, m.id as medico_id
       from usuarios u
       left join medicos m on m.usuario_id = u.id
       where u.telefone = $1 and u.ativo = true
@@ -42,9 +42,24 @@ export class SupabaseAuthAdminService implements AuthAdminService {
     const { rows } = await this.pool.query(sql, [telefone]);
     if (rows.length === 0) return null;
 
+    let medicoId = rows[0].medico_id || undefined;
+    if (!medicoId && rows[0].papel === 'medico') {
+      const sqlCriar = `
+        insert into medicos (usuario_id, conta_id, nome_completo)
+        values ($1, $2, $3)
+        returning id
+      `;
+      const resCriar = await this.pool.query(sqlCriar, [
+        rows[0].usuario_id,
+        rows[0].conta_id,
+        rows[0].nome || 'Médico'
+      ]);
+      medicoId = resCriar.rows[0].id;
+    }
+
     return {
       usuarioId: rows[0].usuario_id,
-      medicoId: rows[0].medico_id || undefined,
+      medicoId,
       nome: rows[0].nome || undefined,
       authUserId: rows[0].auth_user_id,
       papel: rows[0].papel,

@@ -25,6 +25,7 @@ import { salvarCertificadoMedico } from './onboarding/fluxos/salvar-certificado-
 import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instancia-whatsapp-medico.js';
 import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-status-instancia-whatsapp.js';
 import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
+import { resolverMedicoId } from './onboarding/io/resolver-medico-id.js';
 import { GroqApiClient } from './io/groq/groq-api-client.js';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
@@ -143,12 +144,13 @@ export function criarAppExpress() {
   // Passo 0: Status Geral do Onboarding
   app.get('/api/onboarding/status', async (req: Request, res: Response) => {
     try {
-      const medicoId = String(req.query['medicoId'] || '');
-      if (!medicoId) {
+      const medicoIdRaw = String(req.query['medicoId'] || '');
+      if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const status = await consultarStatusOnboarding(pool, medicoId);
-      return res.json({ ok: true, status });
+      return res.json({ ok: true, status, medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status' });
     }
@@ -157,7 +159,7 @@ export function criarAppExpress() {
   // Passo 1: Nome do Médico / Usuário
   app.post('/api/onboarding/nome', async (req: Request, res: Response) => {
     try {
-      const { usuarioId, medicoId, nome } = req.body || {};
+      const { usuarioId, medicoId: medicoIdRaw, nome } = req.body || {};
       if (!nome || typeof nome !== 'string' || nome.trim().length < 2) {
         return res.status(400).json({ ok: false, detalhe: 'Nome completo é obrigatório' });
       }
@@ -165,10 +167,16 @@ export function criarAppExpress() {
       if (usuarioId) {
         await pool.query('update usuarios set nome = $2, atualizado_em = now() where id = $1', [usuarioId, nomeLimpo]);
       }
-      if (medicoId) {
-        await pool.query('update medicos set nome_completo = $2, atualizado_em = now() where id = $1', [medicoId, nomeLimpo]);
+      let medicoIdFinal = medicoIdRaw;
+      if (medicoIdRaw || usuarioId) {
+        try {
+          medicoIdFinal = await resolverMedicoId(pool, medicoIdRaw || usuarioId);
+          await pool.query('update medicos set nome_completo = $2, atualizado_em = now() where id = $1', [medicoIdFinal, nomeLimpo]);
+        } catch {
+          // Mantém medicoIdRaw se não conseguir resolver
+        }
       }
-      return res.json({ ok: true, nome: nomeLimpo });
+      return res.json({ ok: true, nome: nomeLimpo, medicoId: medicoIdFinal });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao salvar nome' });
     }
@@ -177,10 +185,11 @@ export function criarAppExpress() {
   // Passo 2: Upload e Extração do XML de Referência
   app.post('/api/onboarding/xml', async (req: Request, res: Response) => {
     try {
-      const { medicoId, xmlString } = req.body || {};
-      if (!medicoId || !xmlString) {
+      const { medicoId: medicoIdRaw, xmlString } = req.body || {};
+      if (!medicoIdRaw || !xmlString) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId e xmlString são obrigatórios' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const resultado = await processarOnboardingXml(
         {
           pool,
@@ -191,7 +200,7 @@ export function criarAppExpress() {
         medicoId,
         xmlString
       );
-      return res.json(resultado);
+      return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       console.error('Erro na extração do XML:', err);
       return res.status(400).json({ ok: false, detalhe: err?.message || 'Falha ao processar XML' });
@@ -201,10 +210,11 @@ export function criarAppExpress() {
   // Passo 2: Confirmação Manual dos Parâmetros Fiscais
   app.post('/api/onboarding/confirmar-fiscal', async (req: Request, res: Response) => {
     try {
-      const { medicoId, razaoSocial, especialidade, aliquotaIss, serieDps, proximoNumeroDps } = req.body || {};
-      if (!medicoId) {
+      const { medicoId: medicoIdRaw, razaoSocial, especialidade, aliquotaIss, serieDps, proximoNumeroDps } = req.body || {};
+      if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       await confirmarParametrosFiscais(pool, {
         medicoId,
         razaoSocial,
@@ -213,7 +223,7 @@ export function criarAppExpress() {
         serieDps,
         proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined
       });
-      return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso' });
+      return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao confirmar parâmetros fiscais' });
     }
@@ -222,17 +232,18 @@ export function criarAppExpress() {
   // Passo 3: Certificado Digital A1 (.pfx/.p12) + Senha
   app.post('/api/onboarding/certificado', async (req: Request, res: Response) => {
     try {
-      const { medicoId, arquivoBase64, nomeArquivo, senha } = req.body || {};
-      if (!medicoId || !arquivoBase64 || !senha) {
+      const { medicoId: medicoIdRaw, arquivoBase64, nomeArquivo, senha } = req.body || {};
+      if (!medicoIdRaw || !arquivoBase64 || !senha) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId, arquivo e senha são obrigatórios' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const resultado = await salvarCertificadoMedico(pool, authAdminService.supabaseClient, {
         medicoId,
         arquivoBuffer: Buffer.from(arquivoBase64, 'base64'),
         nomeArquivoOriginal: nomeArquivo || 'certificado.pfx',
         senhaCertificado: senha
       });
-      return res.json(resultado);
+      return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       console.error('Erro ao salvar certificado:', err);
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao processar certificado digital' });
@@ -242,10 +253,11 @@ export function criarAppExpress() {
   // Passo 4: Conectar WhatsApp do Consultório (Evolution API)
   app.post('/api/onboarding/whatsapp/iniciar', async (req: Request, res: Response) => {
     try {
-      const { medicoId, telefoneConsultorio } = req.body || {};
-      if (!medicoId) {
+      const { medicoId: medicoIdRaw, telefoneConsultorio } = req.body || {};
+      if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const appUrl = config.host === '0.0.0.0'
         ? 'https://notomed-web.6t32my.easypanel.host'
         : `http://${config.host}:${config.porta}`;
@@ -258,7 +270,7 @@ export function criarAppExpress() {
         appWebhookUrl: appUrl,
         webhookSecret: config.evolutionWebhookSecret
       });
-      return res.json(resultado);
+      return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       console.error('Erro ao iniciar conexão WhatsApp:', err);
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao conectar WhatsApp' });
@@ -268,32 +280,19 @@ export function criarAppExpress() {
   // Consulta status de conexão do WhatsApp na Evolution API em tempo real
   app.get('/api/onboarding/whatsapp/status', async (req: Request, res: Response) => {
     try {
-      const medicoId = (req.query['medicoId'] as string)?.trim();
-      if (!medicoId) {
+      const medicoIdRaw = (req.query['medicoId'] as string)?.trim();
+      if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const resultado = await consultarStatusInstanciaWhatsapp(pool, {
         medicoId,
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey
       });
-      return res.json(resultado);
+      return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do WhatsApp' });
-    }
-  });
-
-  // Consulta status consolidado do checklist de onboarding do médico
-  app.get('/api/onboarding/status', async (req: Request, res: Response) => {
-    try {
-      const medicoId = (req.query['medicoId'] as string)?.trim();
-      if (!medicoId) {
-        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
-      }
-      const status = await consultarStatusOnboarding(pool, medicoId);
-      return res.json({ ok: true, status });
-    } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do onboarding' });
     }
   });
 
@@ -446,14 +445,15 @@ export function criarAppExpress() {
   // Criar sessão de Checkout para assinatura do Plano Mensal (R$ 100/mês, 100 notas/mês)
   app.post('/api/billing/checkout', async (req: Request, res: Response) => {
     try {
-      const { medicoId } = req.body || {};
-      if (!medicoId) {
+      const { medicoId: medicoIdRaw } = req.body || {};
+      if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       if (!stripeService) {
         return res.status(503).json({ ok: false, detalhe: 'Stripe não configurado' });
       }
 
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const info = await billingRepo.buscarContaPorMedico(medicoId);
       if (!info) {
         return res.status(404).json({ ok: false, detalhe: 'Médico não encontrado' });
@@ -482,10 +482,11 @@ export function criarAppExpress() {
   // Acesso ao Portal do Cliente Stripe (gerenciamento de cartão, faturas e cancelamento)
   app.post('/api/billing/portal', async (req: Request, res: Response) => {
     try {
-      const { medicoId } = req.body || {};
-      if (!medicoId || !stripeService) {
+      const { medicoId: medicoIdRaw } = req.body || {};
+      if (!medicoIdRaw || !stripeService) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId inválido ou Stripe indisponível' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const info = await billingRepo.buscarContaPorMedico(medicoId);
       if (!info?.stripeCustomerId) {
         return res.status(400).json({ ok: false, detalhe: 'Nenhuma assinatura Stripe vinculada a este médico' });
@@ -509,10 +510,11 @@ export function criarAppExpress() {
   // Consulta do status de uso e limites atuais do médico
   app.get('/api/billing/status', async (req: Request, res: Response) => {
     try {
-      const medicoId = (req.query['medicoId'] as string)?.trim();
-      if (!medicoId) {
+      const medicoIdRaw = (req.query['medicoId'] as string)?.trim();
+      if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
+      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const uso = await billingRepo.buscarUsoELimiteMedico(medicoId);
       const info = await billingRepo.buscarContaPorMedico(medicoId);
       return res.json({ ok: true, uso, info });

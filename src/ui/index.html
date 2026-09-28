@@ -1134,6 +1134,10 @@
         const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
         const data = await res.json();
         if (data.ok && data.status) {
+          if (data.medicoId || data.status.medicoId) {
+            sessaoAtual.usuario.medicoId = data.medicoId || data.status.medicoId;
+            localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
+          }
           renderizarPassos(data.status);
         } else {
           mostrarPasso(1);
@@ -1200,6 +1204,10 @@
         });
         const data = await res.json();
         if (data.ok) {
+          if (data.medicoId) {
+            sessaoAtual.usuario.medicoId = data.medicoId;
+            localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
+          }
           showAlert('Identificação salva com sucesso!', false, alertOnboarding);
           mostrarPasso(2);
         } else {
@@ -1237,6 +1245,11 @@
         if (!res.ok || !data.ok) {
           showAlert(data.detalhe || 'Falha ao processar XML.', true, alertOnboarding);
           return;
+        }
+
+        if (data.medicoId) {
+          sessaoAtual.usuario.medicoId = data.medicoId;
+          localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
         }
 
         const p = data.parametros;
