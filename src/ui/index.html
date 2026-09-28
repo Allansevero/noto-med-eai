@@ -333,98 +333,55 @@
     }
 
     /* --- CARDS E FLUXO DO ONBOARDING / PAINEL --- */
+    /* --- FLUXO DO ONBOARDING / PAINEL --- */
     .onboarding-card {
       width: 100%;
-      max-width: 620px;
-      background: #FFFFFF;
-      border: 1px solid var(--border-line);
-      border-radius: 28px;
-      padding: 2.5rem 2rem;
+      max-width: 380px;
       display: flex;
       flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
       gap: var(--gap);
+      margin: auto;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      padding: 0;
       box-sizing: border-box;
-      box-shadow: 0 10px 30px rgba(18, 28, 34, 0.04);
     }
 
-    .stepper {
-      display: flex;
-      justify-content: space-between;
-      position: relative;
+    .step-view {
       width: 100%;
-    }
-
-    .stepper::before {
-      content: '';
-      position: absolute;
-      top: 18px;
-      left: 20px;
-      right: 20px;
-      height: 2px;
-      background: rgba(18, 28, 34, 0.12);
-      z-index: 1;
-    }
-
-    .step-item {
-      position: relative;
-      z-index: 2;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 0.4rem;
+      align-items: flex-start;
+      text-align: left;
+      gap: var(--gap);
     }
 
-    .step-circle {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: #FFFFFF;
-      border: 2px solid rgba(18, 28, 34, 0.2);
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 700;
-      transition: all 0.25s ease;
-    }
-
-    .step-item.active .step-circle {
-      border-color: var(--border-line);
-      background: var(--primary);
-      color: var(--text);
-    }
-
-    .step-item.completed .step-circle {
-      border-color: var(--primary);
-      background: var(--primary);
-      color: var(--text);
-    }
-
-    .step-label {
-      font-size: 12px;
+    .field-label {
+      display: block;
+      font-size: 13px;
       font-weight: 600;
-      color: var(--text-muted);
-    }
-
-    .step-item.active .step-label,
-    .step-item.completed .step-label {
+      margin-bottom: 0.5rem;
       color: var(--text);
+      text-align: left;
     }
 
     .input-text {
       width: 100%;
-      height: 52px;
+      height: 58px;
       padding: 0 1.25rem;
       background: #FFFFFF;
       border: 1px solid var(--border-line);
       border-radius: 9999px;
       font-family: inherit;
-      font-size: var(--font-size-base);
+      font-size: 16px;
       color: var(--text);
       outline: none;
       box-sizing: border-box;
-      transition: box-shadow 0.2s ease;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      text-align: left;
     }
 
     .input-text:focus {
@@ -432,64 +389,95 @@
     }
 
     .drop-zone {
-      border: 2px dashed rgba(18, 28, 34, 0.3);
+      width: 100%;
+      border: 1px dashed var(--border-line);
       border-radius: 20px;
-      padding: 2.25rem 1.5rem;
+      padding: 2rem 1.25rem;
       text-align: center;
       cursor: pointer;
-      background: #FAF8F5;
-      transition: all 0.2s ease;
-      margin-bottom: 1rem;
+      background: #FFFFFF;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+      box-sizing: border-box;
     }
 
     .drop-zone:hover {
-      border-color: var(--border-line);
-      background: #F4EFE6;
+      background: #FAF8F5;
     }
 
     .drop-zone .icon {
-      font-size: 2.5rem;
+      font-size: 2.25rem;
       margin-bottom: 0.5rem;
     }
 
-    .params-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.85rem;
-      background: #FAF8F5;
-      border: 1px solid rgba(18, 28, 34, 0.12);
-      border-radius: 16px;
-      padding: 1.25rem;
-      font-size: 13px;
-      margin-bottom: 1.5rem;
-      text-align: left;
+    .drop-zone-title {
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 600;
+      margin: 0;
     }
 
-    .param-item span:first-child {
-      display: block;
+    .drop-zone-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .file-chosen-name {
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 0.75rem;
+      word-break: break-all;
+      font-size: 13px;
+    }
+
+    .params-card {
+      width: 100%;
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
+      border-radius: 20px;
+      padding: 1.25rem;
+      box-sizing: border-box;
+    }
+
+    .param-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.65rem 0;
+      border-bottom: 1px solid rgba(18, 28, 34, 0.08);
+      font-size: 13px;
+    }
+
+    .param-item:last-child {
+      border-bottom: none;
+    }
+
+    .param-label {
       color: var(--text-muted);
       font-size: 11px;
       text-transform: uppercase;
-      margin-bottom: 0.2rem;
       font-weight: 600;
+      letter-spacing: 0.02em;
     }
 
-    .param-item span:last-child {
+    .param-val {
       font-weight: 600;
       color: var(--text);
+      text-align: right;
     }
 
     .qr-container {
-      width: 240px;
-      height: 240px;
-      margin: 1.5rem auto;
+      width: 220px;
+      height: 220px;
+      margin: 0.5rem auto 1rem auto;
       background: #FFFFFF;
       border: 1px solid var(--border-line);
-      border-radius: 16px;
+      border-radius: 20px;
       padding: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-sizing: border-box;
     }
 
     .qr-container img {
@@ -499,24 +487,25 @@
     }
 
     .pairing-code {
-      font-size: 2.5rem;
+      font-size: 2.2rem;
       font-weight: 700;
-      letter-spacing: 6px;
+      letter-spacing: 4px;
       color: var(--text);
       text-align: center;
-      margin: 1.5rem 0;
+      margin: 1rem 0;
     }
 
     .code-box {
-      background: #FAF8F5;
-      border: 1px solid rgba(18, 28, 34, 0.12);
-      padding: 0.9rem 1.25rem;
+      background: #FFFFFF;
+      border: 1px solid var(--border-line);
+      padding: 0.85rem 1rem;
       border-radius: 12px;
       font-family: monospace;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text);
       margin-top: 0.5rem;
       text-align: left;
+      box-sizing: border-box;
     }
 
     .stat-row {
@@ -524,7 +513,7 @@
       justify-content: space-between;
       align-items: center;
       padding: 0.85rem 0;
-      border-bottom: 1px solid rgba(18, 28, 34, 0.08);
+      border-bottom: 1px solid rgba(18, 28, 34, 0.12);
       font-size: 14px;
     }
 
@@ -544,15 +533,14 @@
       justify-content: space-between;
       align-items: center;
       width: 100%;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid rgba(18, 28, 34, 0.1);
+      padding-bottom: 0.5rem;
     }
 
     .dash-brand {
       font-weight: 700;
-      font-size: 16px;
+      font-size: 18px;
       color: var(--text);
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
     }
 
     .btn-logout-small {
@@ -663,10 +651,8 @@
       </form>
     </main>
 
-    <!-- CARD DO ONBOARDING / PAINEL (APÓS LOGIN) -->
+    <!-- PAINEL / ONBOARDING SEQUENCIAL (APÓS LOGIN) -->
     <section class="onboarding-card hidden" id="cardOnboarding">
-      <div id="alertOnboarding" class="alert alert-error hidden"></div>
-
       <!-- BARRA DE TOPO COM LOGO E BOTÃO DE LOGOUT -->
       <div class="dash-top-bar">
         <span class="dash-brand">Noto</span>
@@ -675,150 +661,131 @@
         </button>
       </div>
 
-      <!-- STEPPER PROGRESS BAR -->
-      <div class="stepper" id="stepperNav">
-        <div class="step-item active" id="stepIndicator1">
-          <div class="step-circle">1</div>
-          <div class="step-label">Identificação</div>
-        </div>
-        <div class="step-item" id="stepIndicator2">
-          <div class="step-circle">2</div>
-          <div class="step-label">Dados Fiscais</div>
-        </div>
-        <div class="step-item" id="stepIndicator3">
-          <div class="step-circle">3</div>
-          <div class="step-label">Certificado A1</div>
-        </div>
-        <div class="step-item" id="stepIndicator4">
-          <div class="step-circle">4</div>
-          <div class="step-label">WhatsApp</div>
-        </div>
-        <div class="step-item" id="stepIndicator5">
-          <div class="step-circle">✓</div>
-          <div class="step-label">Liberado</div>
-        </div>
-      </div>
+      <div id="alertOnboarding" class="alert alert-error hidden"></div>
 
-      <!-- PASSO 1: NOME DO MÉDICO -->
-      <div id="step1View" style="display: flex; flex-direction: column; gap: var(--gap);">
-        <div style="text-align: center;">
-          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Identificação do Médico</h2>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+      <!-- ETAPA 1: NOME DO MÉDICO -->
+      <div id="step1View" class="step-view">
+        <div class="access-header">
+          <h2 class="access-title" style="font-size: 34px;">Identificação</h2>
+          <p class="access-subtitle">
             Como você gostaria de ser identificado nos atendimentos e mensagens aos pacientes?
           </p>
         </div>
-        <div>
-          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 0.5rem;">Nome Completo</label>
+
+        <div class="field-wrapper">
+          <label class="field-label">Nome Completo</label>
           <input type="text" id="inputNomeMedico" class="input-text" placeholder="Ex: Dr. Allan Severo" required />
         </div>
+
         <button type="button" class="btn-action" id="btnSalvarPasso1">
-          Avançar para Importação Fiscal
+          Continuar
         </button>
       </div>
 
-      <!-- PASSO 2: UPLOAD DO XML FISCAL -->
-      <div id="step2View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
-        <div style="text-align: center;">
-          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Importação Fiscal</h2>
-          <p style="color: var(--text-secondary); font-size: 14px;">
-            Envie o XML da última NFS-e emitida pelo seu consultório. O Noto extrairá automaticamente seu regime e dados fiscais.
+      <!-- ETAPA 2: UPLOAD DO XML FISCAL -->
+      <div id="step2View" class="step-view hidden">
+        <div class="access-header">
+          <h2 class="access-title" style="font-size: 34px;">Importação Fiscal</h2>
+          <p class="access-subtitle">
+            Envie o XML da última NFS-e emitida pelo seu consultório para extrairmos automaticamente seus dados fiscais.
           </p>
         </div>
 
         <div class="drop-zone" id="dropZoneXml" onclick="document.getElementById('fileXmlInput').click()">
           <div class="icon">📄</div>
-          <p style="font-size: 14px; color: var(--text); font-weight: 600;">Selecione o arquivo .xml da última nota fiscal</p>
-          <p style="font-size: 12px; color: var(--text-muted); margin-top: 0.25rem;">ou arraste o arquivo aqui</p>
-          <div style="font-weight: 700; color: var(--text); margin-top: 0.75rem;" id="labelXmlName"></div>
+          <p class="drop-zone-title">Selecione o arquivo .xml da última nota fiscal</p>
+          <p class="drop-zone-desc">ou arraste o arquivo aqui</p>
+          <div class="file-chosen-name" id="labelXmlName"></div>
           <input type="file" id="fileXmlInput" accept=".xml" class="hidden" />
         </div>
 
-        <div id="previewFiscal" class="hidden">
-          <div class="params-grid">
+        <div id="previewFiscal" class="hidden" style="width: 100%; display: flex; flex-direction: column; gap: var(--gap);">
+          <div class="params-card">
             <div class="param-item">
-              <span>Razão Social / Nome</span>
-              <span id="txtRazaoSocial">—</span>
+              <span class="param-label">Razão Social / Nome</span>
+              <span class="param-val" id="txtRazaoSocial">—</span>
             </div>
             <div class="param-item">
-              <span>CNPJ / CPF</span>
-              <span id="txtCnpj">—</span>
+              <span class="param-label">CNPJ / CPF</span>
+              <span class="param-val" id="txtCnpj">—</span>
             </div>
             <div class="param-item">
-              <span>Inscrição Municipal</span>
-              <span id="txtIm">—</span>
+              <span class="param-label">Inscrição Municipal</span>
+              <span class="param-val" id="txtIm">—</span>
             </div>
             <div class="param-item">
-              <span>Município / UF</span>
-              <span id="txtMunUf">—</span>
+              <span class="param-label">Município / UF</span>
+              <span class="param-val" id="txtMunUf">—</span>
             </div>
             <div class="param-item">
-              <span>Especialidade</span>
-              <span id="txtEspecialidade">—</span>
+              <span class="param-label">Especialidade</span>
+              <span class="param-val" id="txtEspecialidade">—</span>
             </div>
             <div class="param-item">
-              <span>Alíquota ISS</span>
-              <span id="txtAliquota">—</span>
+              <span class="param-label">Alíquota ISS</span>
+              <span class="param-val" id="txtAliquota">—</span>
             </div>
           </div>
 
           <button type="button" class="btn-action" id="btnConfirmarFiscal">
-            Confirmar Dados Fiscais
+            Confirmar e Continuar
           </button>
         </div>
       </div>
 
-      <!-- PASSO 3: CERTIFICADO A1 -->
-      <div id="step3View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
-        <div style="text-align: center;">
-          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Certificado Digital A1</h2>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+      <!-- ETAPA 3: CERTIFICADO A1 -->
+      <div id="step3View" class="step-view hidden">
+        <div class="access-header">
+          <h2 class="access-title" style="font-size: 34px;">Certificado Digital A1</h2>
+          <p class="access-subtitle">
             Necessário para assinar a NFS-e junto ao Ambiente Nacional da Receita Federal.
           </p>
         </div>
 
         <div class="drop-zone" id="dropZoneCert" onclick="document.getElementById('fileCertInput').click()">
           <div class="icon">🔐</div>
-          <p style="font-size: 14px; color: var(--text); font-weight: 600;">Selecione o arquivo .pfx ou .p12</p>
-          <div style="font-weight: 700; color: var(--text); margin-top: 0.75rem;" id="labelCertName"></div>
+          <p class="drop-zone-title">Selecione o arquivo .pfx ou .p12</p>
+          <p class="drop-zone-desc">ou arraste o arquivo aqui</p>
+          <div class="file-chosen-name" id="labelCertName"></div>
           <input type="file" id="fileCertInput" accept=".pfx,.p12" class="hidden" />
         </div>
 
-        <div>
-          <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 0.5rem;">Senha do Certificado Digital</label>
+        <div class="field-wrapper">
+          <label class="field-label">Senha do Certificado Digital</label>
           <input type="password" id="inputSenhaCert" class="input-text" placeholder="Digite a senha do certificado A1" />
         </div>
 
         <button type="button" class="btn-action" id="btnSalvarCertificado">
-          Salvar Certificado Seguro
+          Salvar Certificado
         </button>
       </div>
 
-      <!-- PASSO 4: WHATSAPP DO CONSULTÓRIO -->
-      <div id="step4View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
-        <div style="text-align: center;">
-          <h2 style="font-size: 26px; font-weight: 700; margin-bottom: 0.5rem;">Conectar WhatsApp</h2>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+      <!-- ETAPA 4: WHATSAPP DO CONSULTÓRIO -->
+      <div id="step4View" class="step-view hidden">
+        <div class="access-header">
+          <h2 class="access-title" style="font-size: 34px;">Conectar WhatsApp</h2>
+          <p class="access-subtitle">
             Conecte o número do seu consultório para ativar o disparo automático de notas.
           </p>
         </div>
 
-        <div id="loadingQr" class="hidden" style="text-align: center; padding: 2rem;">
+        <div id="loadingQr" class="hidden" style="text-align: left; padding: 1rem 0;">
           <p style="color: var(--text-secondary); font-size: 14px;">Gerando conexão segura com a Evolution API...</p>
         </div>
 
-        <div id="boxQrCode" class="hidden" style="text-align: center;">
+        <div id="boxQrCode" class="hidden" style="width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center;">
           <div class="qr-container">
             <img id="imgQrCode" alt="QR Code WhatsApp" />
           </div>
-          <p id="statusEsperandoQr" style="color: #0b7330; font-weight: 600; font-size: 14px; margin-bottom: 0.5rem;">
+          <p id="statusEsperandoQr" style="color: #0b7330; font-weight: 600; font-size: 14px; margin-bottom: 0.5rem; text-align: center;">
             Aguardando leitura do QR Code no WhatsApp...
           </p>
-          <p style="font-size: 13px; color: var(--text-muted);">
+          <p style="font-size: 13px; color: var(--text-muted); text-align: center;">
             Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho
           </p>
         </div>
 
-        <div id="boxPairingCode" class="hidden" style="text-align: center;">
+        <div id="boxPairingCode" class="hidden" style="width: 100%; text-align: center;">
           <p style="font-size: 13px; color: var(--text-secondary);">Ou digite o código de pareamento no celular:</p>
           <div class="pairing-code" id="txtPairingCode">----</div>
         </div>
@@ -828,17 +795,17 @@
         </button>
       </div>
 
-      <!-- PASSO 5: LIBERADO -->
-      <div id="step5View" class="hidden" style="display: flex; flex-direction: column; gap: var(--gap);">
-        <div style="text-align: center;">
-          <span class="tag-active" style="display: inline-block; margin-bottom: 1rem;">ATIVO &amp; LIBERADO</span>
-          <h2 style="font-size: 28px; font-weight: 700; margin-bottom: 0.5rem;">Consultório Pronto!</h2>
-          <p style="color: var(--text-secondary); font-size: 14px;">
+      <!-- ETAPA 5: LIBERADO / PAINEL FINAL -->
+      <div id="step5View" class="step-view hidden">
+        <div class="access-header">
+          <span class="tag-active" style="align-self: flex-start; margin-bottom: 0.5rem;">ATIVO &amp; LIBERADO</span>
+          <h2 class="access-title" style="font-size: 34px;">Consultório Pronto!</h2>
+          <p class="access-subtitle">
             Você já pode emitir notas fiscais pelo WhatsApp. O sistema opera de forma invisível.
           </p>
         </div>
 
-        <div>
+        <div style="width: 100%;">
           <div class="stat-row">
             <span style="color: var(--text-secondary);">Médico Responsável</span>
             <span id="resumoNomeMedico" style="font-weight: 700;">—</span>
@@ -857,7 +824,7 @@
           </div>
         </div>
 
-        <div>
+        <div style="width: 100%;">
           <p style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; text-align: left;">Comandos no seu WhatsApp:</p>
           <div class="code-box">/agendado → Cadastra paciente e agenda consulta</div>
           <div class="code-box">/emissao → Emite a NFS-e e envia o PDF na conversa</div>
@@ -1171,12 +1138,6 @@
         pararPollingConexao();
       }
       [step1View, step2View, step3View, step4View, step5View].forEach(v => v.classList.add('hidden'));
-      for (let i = 1; i <= 5; i++) {
-        const ind = document.getElementById(`stepIndicator${i}`);
-        ind.className = 'step-item';
-        if (i < passoNum) ind.classList.add('completed');
-        if (i === passoNum) ind.classList.add('active');
-      }
 
       if (passoNum === 1) step1View.classList.remove('hidden');
       if (passoNum === 2) step2View.classList.remove('hidden');
