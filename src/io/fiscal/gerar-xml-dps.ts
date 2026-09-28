@@ -1,0 +1,108 @@
+/**
+ * Geração pura do XML da DPS (Padrão Nacional SEFIN v1.01).
+ * Constrói os elementos XML estritamente na ordem exigida pelo XSD oficial
+ * e gera o identificador oficial Id="DPS..." de 42 dígitos para assinatura.
+ */
+
+import type { EmissaoInput, ConfigPrestador } from './montar-dps.js';
+import { momentoSP } from './montar-dps.js';
+
+export interface ResultadoXmlDps {
+  dpsId: string;
+  xml: string;
+}
+
+function escaparXml(valor: string): string {
+  return valor
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+export function gerarXmlDps(
+  input: EmissaoInput,
+  cfg: ConfigPrestador,
+  agora: Date = new Date()
+): ResultadoXmlDps {
+  const { dhEmi, dCompet } = momentoSP(agora);
+  const cnpjLimpo = cfg.cnpj.replace(/\D/g, '');
+  const serie = (cfg.serie || '00001').padStart(5, '0').slice(0, 5);
+  const numeroDps = input.nDPS.replace(/\D/g, '').padStart(15, '0').slice(-15);
+  const codMun = cfg.codMunicipio.replace(/\D/g, '').padStart(7, '0').slice(0, 7);
+
+  // Id oficial da DPS na SEFIN: DPS + 42 dígitos (tpEmit=1 + cLocEmi=7 + tipoInscricao=2 + CNPJ/CPF=14 + serie=5 + nDPS=15 = 43)
+  // Conforme manual SEFIN: "DPS" seguido de 42 dígitos numéricos.
+  const dpsIdNumerico = `1${codMun}2${cnpjLimpo.padStart(14, '0')}${serie}${numeroDps}`.slice(0, 42);
+  const dpsId = `DPS${dpsIdNumerico}`;
+
+  const meEpp = cfg.regTrib.opSimpNac === 3;
+  const regTribXml = [
+    `<opSimpNac>${cfg.regTrib.opSimpNac}</opSimpNac>`,
+    meEpp ? `<regApTribSN>${cfg.regTrib.regApTribSN}</regApTribSN>` : '',
+    `<regEspTrib>${cfg.regTrib.regEspTrib}</regEspTrib>`
+  ].filter(Boolean).join('');
+
+  const tomaDocXml = input.tomador.CPF
+    ? `<CPF>${input.tomador.CPF.replace(/\D/g, '')}</CPF>`
+    : `<CNPJ>${(input.tomador.CNPJ || '').replace(/\D/g, '')}</CNPJ>`;
+
+  let tomaEndXml = '';
+  if (input.tomador.end) {
+    const end = input.tomador.end;
+    const endNac = `<endNac><cMun>${end.cMun.replace(/\D/g, '')}</cMun><CEP>${end.CEP.replace(/\D/g, '')}</CEP></endNac>`;
+    const cpl = end.xCpl ? `<xCpl>${escaparXml(end.xCpl)}</xCpl>` : '';
+    tomaEndXml = `<end>${endNac}<xLgr>${escaparXml(end.xLgr)}</xLgr><nro>${escaparXml(end.nro)}</nro>${cpl}<xBairro>${escaparXml(end.xBairro)}</xBairro></end>`;
+  }
+
+  const foneXml = input.tomador.fone ? `<fone>${input.tomador.fone.replace(/\D/g, '')}</fone>` : '';
+  const emailXml = input.tomador.email ? `<email>${escaparXml(input.tomador.email)}</email>` : '';
+
+  const vServFmt = Number(input.vServ).toFixed(2);
+  const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN ?? 6.0).toFixed(2);
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">` +
+      `<infDPS Id="${dpsId}">` +
+        `<tpAmb>${cfg.ambiente}</tpAmb>` +
+        `<dhEmi>${dhEmi}</dhEmi>` +
+        `<verAplic>1.0</verAplic>` +
+        `<serie>${serie}</serie>` +
+        `<nDPS>${input.nDPS}</nDPS>` +
+        `<dCompet>${dCompet}</dCompet>` +
+        `<tpEmit>1</tpEmit>` +
+        `<cLocEmi>${codMun}</cLocEmi>` +
+        `<prest>` +
+          `<CNPJ>${cnpjLimpo}</CNPJ>` +
+          `<IM>${escaparXml(cfg.im)}</IM>` +
+          `<regTrib>${regTribXml}</regTrib>` +
+        `</prest>` +
+        `<toma>` +
+          `${tomaDocXml}` +
+          `<xNome>${escaparXml(input.tomador.xNome)}</xNome>` +
+          `${tomaEndXml}` +
+          `${foneXml}` +
+          `${emailXml}` +
+        `</toma>` +
+        `<serv>` +
+          `<locPrest><cLocPrestacao>${codMun}</cLocPrestacao></locPrest>` +
+          `<cServ>` +
+            `<cTribNac>${input.cTribNac.replace(/\D/g, '')}</cTribNac>` +
+            `<cNBS>${input.cNBS.replace(/\D/g, '')}</cNBS>` +
+            `<xDescServ>${escaparXml(input.xDescServ)}</xDescServ>` +
+          `</cServ>` +
+        `</serv>` +
+        `<valores>` +
+          `<vServPrest><vServ>${vServFmt}</vServ></vServPrest>` +
+          `<trib>` +
+            `<tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>` +
+            `<tribFed><piscofins><CST>08</CST></piscofins></tribFed>` +
+            `<totTrib><pTotTribSN>${pTotTribFmt}</pTotTribSN></totTrib>` +
+          `</trib>` +
+        `</valores>` +
+      `</infDPS>` +
+    `</DPS>`;
+
+  return { dpsId, xml };
+}

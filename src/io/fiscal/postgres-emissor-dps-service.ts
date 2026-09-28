@@ -5,12 +5,18 @@
  */
 
 import type pg from 'pg';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   EmissorDpsService,
   SolicitacaoEmissaoItem,
   ResultadoEmissaoDps
 } from '../../worker/emissor-dps-service.js';
 import { montarDps, type ConfigPrestador, type EmissaoInput } from './montar-dps.js';
+import { gerarXmlDps } from './gerar-xml-dps.js';
+import { extrairChavesCertificado } from './extrair-chaves-certificado.js';
+import { assinarXmlDps } from './assinar-xml-dps.js';
+import { carregarCertificadoMedico } from './carregar-certificado-medico.js';
+import { SefinNacionalClient } from './sefin-nacional-client.js';
 import { generateDanfsePdf } from '../../fiscal/danfse/gerar-danfse-pdf.js';
 import { comporChaveAcessoNacional } from '../../fiscal/danfse/formatadores-fiscais.js';
 import { montarXmlNfse } from '../../fiscal/danfse/montar-xml-nfse.js';
@@ -31,7 +37,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     private readonly pool: pg.Pool,
     private readonly chaveCriptografia: string,
     private readonly meuDanfeClient?: MeuDanfeClient,
-    private readonly consultaCpfProvider?: ConsultaCpfProvider
+    private readonly consultaCpfProvider?: ConsultaCpfProvider,
+    private readonly supabaseClient?: SupabaseClient,
+    private readonly sefinClient?: SefinNacionalClient
   ) {}
 
   async emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps> {
@@ -79,30 +87,84 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       cClassTrib: item.cclassTrib || '000001'
     };
 
-    // Monta a DPS estritamente conforme o padrão SEFIN Nacional
-    const layoutDps = montarDps(emissaoInput, prestadorConfig);
-    const anoMes = layoutDps.infDps.dCompet.slice(0, 7);
+    const anoMes = new Date().toISOString().slice(0, 7);
+    let chaveAcessoFinal = '';
+    let respostaSefinRaw: Record<string, unknown> | undefined;
+    let xmlAutorizadoFinal: string | undefined;
+    let dataEmissaoFinal = new Date();
 
-    // Chave de Acesso Nacional oficial de 50 dígitos da SEFIN
-    const chaveAcesso = comporChaveAcessoNacional({
-      codIbgeMunicipio: prestadorConfig.codMunicipio,
-      ambiente: prestadorConfig.ambiente === 1 ? 'producao' : 'homologacao',
-      anoMes,
-      cnpjOuCpf: prestadorConfig.cnpj,
-      serie: prestadorConfig.serie || '00001',
-      ndps
-    });
+    if (this.supabaseClient && this.sefinClient) {
+      const cert = await carregarCertificadoMedico(this.pool, this.supabaseClient, item.medicoId);
+      if (!cert) {
+        return {
+          sucesso: false,
+          erro: `Médico ${item.medicoId} não possui certificado digital A1 ativo cadastrado no sistema para emissão com validade jurídica na SEFIN.`
+        };
+      }
+
+      let chaves;
+      try {
+        chaves = extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado);
+      } catch (err: any) {
+        return {
+          sucesso: false,
+          erro: `Falha ao decodificar certificado A1 do médico: ${err?.message || err}`
+        };
+      }
+
+      const { dpsId, xml: xmlDps } = gerarXmlDps(emissaoInput, prestadorConfig);
+      const xmlAssinado = assinarXmlDps({
+        xml: xmlDps,
+        dpsId,
+        pemKey: chaves.pemKey,
+        pemCert: chaves.pemCert,
+        certBase64: chaves.certBase64
+      });
+
+      const resSefin = await this.sefinClient.transmitirDps({
+        xmlAssinado,
+        pfxBuffer: cert.pfxBuffer,
+        senhaCertificado: cert.senhaCertificado,
+        ambiente: prestadorConfig.ambiente
+      });
+
+      if (!resSefin.sucesso) {
+        return {
+          sucesso: false,
+          erro: resSefin.motivo,
+          codigoErroSefin: resSefin.codigoErro,
+          respostaSefinRaw: resSefin.respostaRaw
+        };
+      }
+
+      chaveAcessoFinal = resSefin.chaveAcesso;
+      respostaSefinRaw = resSefin.respostaRaw;
+      xmlAutorizadoFinal = resSefin.xmlAutorizado;
+      dataEmissaoFinal = resSefin.dataAutorizacao;
+    } else {
+      // Modo de simulação local (quando executado sem credenciais do Supabase/SEFIN)
+      const layoutDps = montarDps(emissaoInput, prestadorConfig);
+      chaveAcessoFinal = comporChaveAcessoNacional({
+        codIbgeMunicipio: prestadorConfig.codMunicipio,
+        ambiente: prestadorConfig.ambiente === 1 ? 'producao' : 'homologacao',
+        anoMes,
+        cnpjOuCpf: prestadorConfig.cnpj,
+        serie: prestadorConfig.serie || '00001',
+        ndps
+      });
+      respostaSefinRaw = { layoutDps };
+    }
 
     const valorServico = item.valorServicoCentavos / 100;
     const aliquotaIss = prestadorConfig.regTrib.opSimpNac === 1 ? 2.0 : 2.0;
     const issApurado = (valorServico * aliquotaIss) / 100;
 
     const dadosDanfse = {
-      chaveAcesso,
+      chaveAcesso: chaveAcessoFinal,
       numero: String(ndps),
       serie: prestadorConfig.serie || '00001',
       competencia: anoMes,
-      dataEmissao: new Date().toISOString(),
+      dataEmissao: dataEmissaoFinal.toISOString(),
       ambiente: (prestadorConfig.ambiente === 1 ? 'producao' : 'homologacao') as 'producao' | 'homologacao',
       prestador: {
         razaoSocial: prestadorConfig.razaoSocial,
@@ -142,8 +204,8 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
     if (this.meuDanfeClient) {
       try {
-        const xmlString = montarXmlNfse({
-          chaveAcesso,
+        const xmlString = xmlAutorizadoFinal || montarXmlNfse({
+          chaveAcesso: chaveAcessoFinal,
           numero: String(ndps),
           serie: prestadorConfig.serie || '00001',
           competencia: anoMes,
@@ -167,19 +229,33 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       pdfBytes = await generateDanfsePdf(dadosDanfse);
     }
 
+    const xmlStoragePath = `notas/${item.medicoId}/${anoMes}/${chaveAcessoFinal}.xml`;
+    if (this.supabaseClient && xmlAutorizadoFinal) {
+      try {
+        await this.supabaseClient.storage
+          .from('notas')
+          .upload(xmlStoragePath, Buffer.from(xmlAutorizadoFinal, 'utf-8'), {
+            contentType: 'application/xml',
+            upsert: true
+          });
+      } catch (err: any) {
+        console.warn('[PostgresEmissorDpsService] Aviso ao gravar XML no Storage:', err?.message || err);
+      }
+    }
+
     const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
 
     return {
       sucesso: true,
-      chaveAcesso,
+      chaveAcesso: chaveAcessoFinal,
       ndps,
       serie: prestadorConfig.serie || '00001',
       competencia: anoMes,
-      dataEmissao: new Date(),
+      dataEmissao: dataEmissaoFinal,
       valorServicosCentavos: item.valorServicoCentavos,
-      xmlStoragePath: `notas/${item.medicoId}/${anoMes}/${chaveAcesso}.xml`,
+      xmlStoragePath,
       pdfStoragePath: pdfBase64,
-      respostaSefinRaw: { layoutDps }
+      respostaSefinRaw
     };
   }
 
