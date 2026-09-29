@@ -2,14 +2,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { salvarCertificadoMedico } from './salvar-certificado-medico.js';
 
-function criarSupabaseMock(erroUpload: { message: string } | null = null) {
+function criarSupabaseMock(errosUpload: Array<{ message: string } | null> = [null]) {
   const removidos: string[][] = [];
+  const bucketsCriados: string[] = [];
+  let tentativaUpload = 0;
   return {
     removidos,
+    bucketsCriados,
     cliente: {
       storage: {
+        createBucket: async (bucket: string) => {
+          bucketsCriados.push(bucket);
+          return { data: { name: bucket }, error: null };
+        },
         from: () => ({
-          upload: async () => ({ data: erroUpload ? null : { path: 'cert.pfx' }, error: erroUpload }),
+          upload: async () => {
+            const error = errosUpload[Math.min(tentativaUpload, errosUpload.length - 1)];
+            tentativaUpload += 1;
+            return { data: error ? null : { path: 'cert.pfx' }, error };
+          },
           remove: async (paths: string[]) => {
             removidos.push(paths);
             return { data: null, error: null };
@@ -81,7 +92,7 @@ describe('salvarCertificadoMedico', () => {
   });
 
   it('deve interromper quando o Storage rejeitar o arquivo', async () => {
-    const supabase = criarSupabaseMock({ message: 'bucket indisponivel' });
+    const supabase = criarSupabaseMock([{ message: 'storage indisponivel' }]);
     let conectou = false;
 
     await assert.rejects(
@@ -94,5 +105,36 @@ describe('salvarCertificadoMedico', () => {
       /Falha ao armazenar/
     );
     assert.equal(conectou, false);
+  });
+
+  it('deve criar o bucket privado e repetir o upload quando ele ainda nao existir', async () => {
+    const executedQueries: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        executedQueries.push(sql);
+        if (sql.includes('vault.create_secret')) return { rows: [{ id: 'secret-123' }] };
+        if (sql.includes('insert into medico_certificados')) {
+          return { rows: [{ id: 'cert-123', valido_ate: '2027-09-26' }] };
+        }
+        return { rows: [] };
+      },
+      release: () => undefined
+    };
+    const supabase = criarSupabaseMock([{ message: 'Bucket not found' }, null]);
+
+    const resultado = await salvarCertificadoMedico(
+      { connect: async () => client } as any,
+      supabase.cliente,
+      {
+        medicoId: 'medico-uuid',
+        arquivoBuffer: Buffer.from('dummy-pfx-data'),
+        nomeArquivoOriginal: 'certificado.pfx',
+        senhaCertificado: '123456'
+      }
+    );
+
+    assert.equal(resultado.ok, true);
+    assert.deepEqual(supabase.bucketsCriados, ['certificados']);
+    assert.ok(executedQueries.includes('commit'));
   });
 });

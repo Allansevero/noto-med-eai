@@ -23,6 +23,38 @@ export type ResultadoSalvarCertificado = {
   validoAte: string;
 };
 
+const BUCKET_CERTIFICADOS = 'certificados';
+
+async function enviarCertificadoAoStorage(
+  supabase: SupabaseClient,
+  storagePath: string,
+  arquivoBuffer: Buffer
+): Promise<void> {
+  const enviar = () => supabase.storage
+    .from(BUCKET_CERTIFICADOS)
+    .upload(storagePath, arquivoBuffer, {
+      contentType: 'application/x-pkcs12',
+      upsert: true
+    });
+
+  let resultado = await enviar();
+  if (resultado.error && /bucket not found/i.test(resultado.error.message)) {
+    const criacao = await supabase.storage.createBucket(BUCKET_CERTIFICADOS, {
+      public: false,
+      fileSizeLimit: 10 * 1024 * 1024,
+      allowedMimeTypes: ['application/x-pkcs12', 'application/octet-stream']
+    });
+    if (criacao.error && !/already exists|duplicate/i.test(criacao.error.message)) {
+      throw new Error(`Falha ao criar o armazenamento privado de certificados: ${criacao.error.message}`);
+    }
+    resultado = await enviar();
+  }
+
+  if (resultado.error) {
+    throw new Error(`Falha ao armazenar o certificado A1: ${resultado.error.message}`);
+  }
+}
+
 export async function salvarCertificadoMedico(
   pool: pg.Pool,
   supabase: SupabaseClient,
@@ -33,15 +65,7 @@ export async function salvarCertificadoMedico(
   const storagePath = `certificados/${medicoId}/${certId}.pfx`;
 
   // 1. Armazena arquivo no Supabase Storage
-  const { error: erroUpload } = await supabase.storage
-    .from('certificados')
-    .upload(storagePath, arquivoBuffer, {
-      contentType: 'application/x-pkcs12',
-      upsert: true
-    });
-  if (erroUpload) {
-    throw new Error(`Falha ao armazenar o certificado A1: ${erroUpload.message}`);
-  }
+  await enviarCertificadoAoStorage(supabase, storagePath, arquivoBuffer);
 
   // 2. Usa a funcao oficial do Vault. Nunca cria um registro ativo sem a senha.
   const client = await pool.connect();
@@ -95,7 +119,7 @@ export async function salvarCertificadoMedico(
     await client.query('commit');
   } catch (err) {
     await client.query('rollback').catch(() => undefined);
-    await supabase.storage.from('certificados').remove([storagePath]).catch(() => undefined);
+    await supabase.storage.from(BUCKET_CERTIFICADOS).remove([storagePath]).catch(() => undefined);
     throw err;
   } finally {
     client.release();
