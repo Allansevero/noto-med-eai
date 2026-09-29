@@ -134,12 +134,13 @@ describe('processarMensagemWebhook', () => {
   const segredo = 'segredo-secreto-evolution';
   const pepper = 'pepper-app-123';
 
-  function criarDeps(repo: AtendimentoRepositorioMemoria) {
+  function criarDeps(repo: AtendimentoRepositorioMemoria, consultaCpfProvider?: any) {
     return {
       repositorio: repo,
       enviarMensagemPaciente: new EnviarMensagemFake(),
       segredoConfigurado: segredo,
-      pepper
+      pepper,
+      consultaCpfProvider
     };
   }
 
@@ -212,7 +213,12 @@ describe('processarMensagemWebhook', () => {
       }
     };
 
-    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+    const provedorCpf = {
+      async consultar() {
+        return { nome: 'MARIA DA SILVA OFICIAL' };
+      }
+    };
+    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo, provedorCpf));
 
     assert.strictEqual(res.ok, true);
     if (res.ok) assert.strictEqual(res.acao, 'historico_sincronizado');
@@ -220,10 +226,10 @@ describe('processarMensagemWebhook', () => {
     assert.strictEqual(repo.pacientes.length, 1);
     assert.strictEqual(repo.conversas[0].pacienteId, repo.pacientes[0].id);
     assert.ok(repo.pacientes[0].cpfHash);
-    assert.strictEqual(repo.pacientes[0].nome, 'Maria da Silva');
+    assert.strictEqual(repo.pacientes[0].nome, 'MARIA DA SILVA OFICIAL');
   });
 
-  it('deve cadastrar e vincular contato de mensagem comum mesmo sem CPF', async () => {
+  it('deve cadastrar e vincular contato de mensagem comum mesmo sem CPF e sem gravar pushName como nome', async () => {
     const repo = new AtendimentoRepositorioMemoria();
     repo.instancias.push({
       id: 'inst-1',
@@ -249,7 +255,8 @@ describe('processarMensagemWebhook', () => {
     assert.strictEqual(res.ok, true);
     if (res.ok) assert.strictEqual(res.acao, 'descartada');
     assert.strictEqual(repo.pacientes.length, 1);
-    assert.strictEqual(repo.pacientes[0].nome, 'Ana Souza');
+    // Nunca salvar o nome do paciente pelo nome/pushName do WhatsApp
+    assert.strictEqual(repo.pacientes[0].nome, null);
     assert.strictEqual(repo.conversas[0].pacienteId, repo.pacientes[0].id);
   });
 
@@ -395,15 +402,16 @@ describe('processarMensagemWebhook', () => {
       id: 'inst-1',
       nomeInstancia: 'notomed_clinica',
       medicoId: 'med-1',
-      apiKey: 'k',
-      webhookSecret: null
+      oficial: false
     });
     repo.medico = {
       id: 'med-1',
       telefone: '5551993527271',
-      nome: 'Dr. Allan',
-      limiteNotasMes: 100,
-      notasEmitidasMes: 0
+      nomeCompleto: 'Dr. Allan',
+      especialidade: null,
+      crm: null,
+      rqe: null,
+      ctribNacPadrao: '041601'
     };
 
     const payload = {

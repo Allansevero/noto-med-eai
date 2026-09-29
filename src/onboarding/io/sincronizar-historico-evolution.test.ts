@@ -66,13 +66,18 @@ describe('sincronizarHistoricoEvolution', () => {
         apiKey: 'chave',
         nomeInstancia: 'medico_123',
         repositorio,
+        consultaCpfProvider: {
+          async consultar() {
+            return { nome: 'MARIA SILVA OFICIAL' };
+          }
+        },
         pepper: 'pepper'
       });
 
       assert.equal(resultado.mensagensAnalisadas, 2);
       assert.equal(resultado.conversasAnalisadas, 1);
       assert.equal(resultado.pacientesVinculados, 1);
-      assert.equal(pacientes[0].nome, 'Maria Silva');
+      assert.equal(pacientes[0].nome, 'MARIA SILVA OFICIAL');
       assert.ok(pacientes[0].cpfHash);
       assert.equal(conversas[0].pacienteId, pacientes[0].id);
     } finally {

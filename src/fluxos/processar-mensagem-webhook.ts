@@ -90,7 +90,7 @@ export async function processarMensagemWebhook(
     const paciente = await deps.repositorio.criarPacienteMinimo({
       medicoId: conversa.medicoId,
       telefone,
-      nome: payload.data.key.fromMe ? null : payload.data.pushName?.trim() || null,
+      nome: null, // Nunca salvar o nome do paciente pelo nome/pushName do WhatsApp
       origemCadastro: 'conversa_whatsapp'
     });
     if (conversa.pacienteId !== paciente.id) {

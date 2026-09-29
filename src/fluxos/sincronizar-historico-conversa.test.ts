@@ -128,4 +128,47 @@ describe('sincronizarHistoricoConversa', () => {
     assert.strictEqual(repo.pacientes[0].nome, 'Fernando Oliveira');
     assert.strictEqual(conversa.pacienteId, repo.pacientes[0].id);
   });
+
+  it('nunca deve salvar nomeContato do WhatsApp como nome do paciente, usando apenas a API se houver CPF', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const conversa: ConversaRegistro = {
+      id: 'conv-3',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '555195611075',
+      pacienteId: null,
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversa);
+
+    const mensagensSemCpf = ['Oi doutor', 'Tudo bem?'];
+
+    // 1. Mensagens sem CPF com nomeContato fornecido -> paciente.nome DEVE SER NULL
+    await sincronizarHistoricoConversa(
+      conversa,
+      mensagensSemCpf,
+      { repositorio: repo, pepper },
+      'Emellyn Severo' // pushName do WhatsApp
+    );
+
+    assert.strictEqual(repo.pacientes.length, 1);
+    assert.strictEqual(repo.pacientes[0].nome, null);
+
+    // 2. Mensagens com CPF e provedor de API -> paciente.nome DEVE SER O DA API, NÃO DO WHATSAPP
+    const mensagensComCpf = ['Meu CPF é 044.571.170-13'];
+    const provedorOficial: ConsultaCpfProvider = {
+      async consultar() {
+        return { nome: 'EMELLYN ANTUNES RODRIGUES SEVERO' };
+      }
+    };
+
+    await sincronizarHistoricoConversa(
+      conversa,
+      mensagensComCpf,
+      { repositorio: repo, consultaCpfProvider: provedorOficial, pepper },
+      'Emellyn Severo'
+    );
+
+    assert.strictEqual(repo.pacientes[0].nome, 'EMELLYN ANTUNES RODRIGUES SEVERO');
+  });
 });

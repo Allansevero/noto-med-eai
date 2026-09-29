@@ -50,22 +50,15 @@ export async function sincronizarHistoricoConversa(
         pacienteId: paciente.id,
         cpfHash,
         cpf: cpfValido,
-        nome: dadosConsulta?.nome || paciente.nome || nomeContato,
+        nome: dadosConsulta?.nome || paciente.nome || null,
         dataNascimento: dadosConsulta?.dataNascimento
-      });
-    } else if (!paciente.nome && nomeContato) {
-      paciente = await deps.repositorio.criarPacienteMinimo({
-        medicoId,
-        telefone: conversa.contatoTelefone,
-        nome: nomeContato,
-        origemCadastro: 'historico_whatsapp'
       });
     }
   } else {
     paciente = await deps.repositorio.criarPacienteMinimo({
       medicoId,
       telefone: conversa.contatoTelefone,
-      nome: dadosConsulta?.nome || nomeContato || null,
+      nome: dadosConsulta?.nome || null,
       cpfHash,
       cpf: cpfValido,
       origemCadastro: 'historico_whatsapp'
