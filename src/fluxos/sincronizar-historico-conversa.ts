@@ -50,7 +50,7 @@ export async function sincronizarHistoricoConversa(
         pacienteId: paciente.id,
         cpfHash,
         cpf: cpfValido,
-        nome: dadosConsulta?.nome || nomeContato,
+        nome: dadosConsulta?.nome || paciente.nome || nomeContato,
         dataNascimento: dadosConsulta?.dataNascimento
       });
     } else if (!paciente.nome && nomeContato) {

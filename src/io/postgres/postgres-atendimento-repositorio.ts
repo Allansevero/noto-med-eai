@@ -145,7 +145,11 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       insert into pacientes (medico_id, telefone, nome, email, cpf_cnpj_hash, cpf_cnpj_encriptado, origem_cadastro)
       values ($1, $2, $3, $4, $5, case when $7::text is not null then pgp_sym_encrypt($7, $8) else null end, coalesce($6, 'conversa'))
       on conflict (medico_id, telefone) do update set
-        nome = coalesce(excluded.nome, pacientes.nome),
+        nome = case
+          when pacientes.nome is not null and trim(pacientes.nome) != '' and upper(trim(pacientes.nome)) != 'PACIENTE'
+          then pacientes.nome
+          else coalesce(excluded.nome, pacientes.nome)
+        end,
         email = coalesce(excluded.email, pacientes.email),
         cpf_cnpj_hash = coalesce(excluded.cpf_cnpj_hash, pacientes.cpf_cnpj_hash),
         cpf_cnpj_encriptado = coalesce(excluded.cpf_cnpj_encriptado, pacientes.cpf_cnpj_encriptado)

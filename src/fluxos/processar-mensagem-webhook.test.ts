@@ -388,4 +388,42 @@ describe('processarMensagemWebhook', () => {
     assert.strictEqual(repo.solicitacoes[0].fila, 'pronta');
     assert.ok(repo.solicitacoes[0].xdescServ.includes('NAS DATAS 27/09/2026'));
   });
+
+  it('deve reconhecer CPF fornecido diretamente na mensagem mesmo sem flag aguardando_cpf_desde', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.instancias.push({
+      id: 'inst-1',
+      nomeInstancia: 'notomed_clinica',
+      medicoId: 'med-1',
+      apiKey: 'k',
+      webhookSecret: null
+    });
+    repo.medico = {
+      id: 'med-1',
+      telefone: '5551993527271',
+      nome: 'Dr. Allan',
+      limiteNotasMes: 100,
+      notasEmitidasMes: 0
+    };
+
+    const payload = {
+      event: 'messages.upsert',
+      instance: 'notomed_clinica',
+      data: {
+        key: {
+          remoteJid: '555195611075@s.whatsapp.net',
+          fromMe: false,
+          id: 'MSG-CPF-DIRETO'
+        },
+        pushName: 'Emellyn Severo',
+        message: { conversation: 'Segue meu CPF: 044.571.170-13' }
+      }
+    };
+
+    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.acao, 'resposta_cpf');
+    }
+  });
 });

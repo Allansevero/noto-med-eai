@@ -30,9 +30,17 @@ export async function processarRespostaCpf(
   }
 
   const cpfHash = gerarHashCpf(cpfValido, deps.pepper);
-  const dadosConsulta = deps.consultaCpfProvider
-    ? await deps.consultaCpfProvider.consultar(cpfValido)
-    : null;
+  let dadosConsulta = null;
+  if (deps.consultaCpfProvider) {
+    try {
+      dadosConsulta = await deps.consultaCpfProvider.consultar(cpfValido);
+      if (dadosConsulta?.nome) {
+        console.log(`[processarRespostaCpf] Nome civil oficial obtido da Receita Federal: ${dadosConsulta.nome}`);
+      }
+    } catch (err: any) {
+      console.warn('[processarRespostaCpf] Falha ao consultar provedor de CPF:', err?.message || err);
+    }
+  }
 
   await deps.repositorio.atualizarCpfPaciente({
     pacienteId: conversa.pacienteId,

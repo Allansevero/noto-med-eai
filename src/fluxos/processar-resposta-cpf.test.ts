@@ -116,4 +116,41 @@ describe('processarRespostaCpf', () => {
     assert.strictEqual(paciente.nome, 'Maria Santos Silva');
     assert.ok(paciente.cpfHash !== null);
   });
+
+  it('deve substituir apelido/nome incompleto do WhatsApp pelo nome civil oficial da Receita', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const paciente: PacienteRegistro = {
+      id: 'pac-2',
+      medicoId: 'med-1',
+      telefone: '555195611075',
+      nome: 'Emellyn Severo', // Nome incompleto vindo do pushName do WhatsApp
+      cpfHash: null
+    };
+    repo.pacientes.push(paciente);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-2',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '555195611075',
+      pacienteId: 'pac-2',
+      aguardandoCpfDesde: new Date()
+    };
+    repo.conversas.push(conversa);
+
+    const provedorReceita: ConsultaCpfProvider = {
+      async consultar(cpf: string): Promise<DadosConsultaCpf> {
+        return { nome: 'EMELLYN ANTUNES RODRIGUES SEVERO' };
+      }
+    };
+
+    const res = await processarRespostaCpf(conversa, '04457117013', {
+      repositorio: repo,
+      consultaCpfProvider: provedorReceita,
+      pepper
+    });
+
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(paciente.nome, 'EMELLYN ANTUNES RODRIGUES SEVERO');
+  });
 });

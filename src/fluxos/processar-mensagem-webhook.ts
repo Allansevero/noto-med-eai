@@ -14,6 +14,7 @@ import {
   type WebhookEvolutionPayload
 } from '../whatsapp/payload-webhook-schema.js';
 import { casarRespostaRapida } from '../whatsapp/casar-resposta-rapida.js';
+import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
 import { processarRespostaCpf } from './processar-resposta-cpf.js';
 import { processarRespostaDataConsulta } from './processar-resposta-data-consulta.js';
 import { processarComandoAgendado } from './processar-comando-agendado.js';
@@ -110,7 +111,8 @@ async function rotearMensagem(
   const fromMe = payload.data.key.fromMe;
 
   // 1. Resposta ao pedido de CPF (paciente ou médico fornecendo no chat)
-  if (conversa.aguardandoCpfDesde) {
+  const temCpfTexto = extrairCpfTexto(texto);
+  if (conversa.aguardandoCpfDesde || temCpfTexto) {
     const res = await processarRespostaCpf(conversa, texto, {
       repositorio: deps.repositorio,
       consultaCpfProvider: deps.consultaCpfProvider,

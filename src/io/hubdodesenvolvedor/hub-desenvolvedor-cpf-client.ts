@@ -54,6 +54,9 @@ export class HubDesenvolvedorCpfClient implements ConsultaCpfProvider {
 
   private extrairDados(corpo: any): DadosConsultaCpf | null {
     if (!corpo || corpo.status !== true || !corpo.result) {
+      if (corpo?.message) {
+        console.warn(`[HubDesenvolvedor] Resposta da API: ${corpo.message}`);
+      }
       return null;
     }
 

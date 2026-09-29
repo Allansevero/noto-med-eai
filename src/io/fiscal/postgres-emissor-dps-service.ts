@@ -55,20 +55,18 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     }
 
     // Garante que o nome completo do tomador seja obtido via API oficial da Receita
-    if (!tomador.nome || tomador.nome.trim() === '' || tomador.nome.toUpperCase() === 'PACIENTE') {
-      if (this.consultaCpfProvider) {
-        try {
-          const dadosCpf = await this.consultaCpfProvider.consultar(tomador.cpf);
-          if (dadosCpf?.nome) {
-            tomador.nome = dadosCpf.nome;
-            await this.pool.query(
-              `update pacientes set nome = $1, data_nascimento = coalesce(data_nascimento, $2), atualizado_em = now() where id = $3`,
-              [dadosCpf.nome, dadosCpf.dataNascimento || null, item.pacienteId]
-            );
-          }
-        } catch (err: any) {
-          console.warn('[PostgresEmissorDpsService] Falha ao consultar CPF do tomador:', err?.message || err);
+    if (this.consultaCpfProvider && tomador.cpf) {
+      try {
+        const dadosCpf = await this.consultaCpfProvider.consultar(tomador.cpf);
+        if (dadosCpf?.nome) {
+          tomador.nome = dadosCpf.nome;
+          await this.pool.query(
+            `update pacientes set nome = $1, data_nascimento = coalesce(data_nascimento, $2), atualizado_em = now() where id = $3`,
+            [dadosCpf.nome, dadosCpf.dataNascimento || null, item.pacienteId]
+          );
         }
+      } catch (err: any) {
+        console.warn('[PostgresEmissorDpsService] Falha ao consultar CPF do tomador:', err?.message || err);
       }
     }
 
