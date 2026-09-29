@@ -682,12 +682,12 @@
         </button>
       </div>
 
-      <!-- ETAPA 2: UPLOAD DO XML FISCAL -->
+      <!-- ETAPA 3: REVISAO FISCAL / FALLBACK DE XML -->
       <div id="step2View" class="step-view hidden">
         <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Importação Fiscal</h2>
+          <h2 class="access-title" style="font-size: 34px;">Dados fiscais</h2>
           <p class="access-subtitle">
-            Envie o XML da última NFS-e emitida pelo seu consultório para extrairmos automaticamente seus dados fiscais.
+            Os dados da sua última NFS-e são buscados automaticamente com o certificado A1. Se a nota não estiver disponível no Ambiente Nacional, envie o XML manualmente.
           </p>
         </div>
 
@@ -733,12 +733,12 @@
         </div>
       </div>
 
-      <!-- ETAPA 3: CERTIFICADO A1 -->
+      <!-- ETAPA 2: CERTIFICADO A1 E BUSCA AUTOMATICA NO ADN -->
       <div id="step3View" class="step-view hidden">
         <div class="access-header">
           <h2 class="access-title" style="font-size: 34px;">Certificado Digital A1</h2>
           <p class="access-subtitle">
-            Necessário para assinar a NFS-e junto ao Ambiente Nacional da Receita Federal.
+            Usaremos o A1 para localizar sua última NFS-e no Ambiente Nacional e preencher seus dados fiscais automaticamente.
           </p>
         </div>
 
@@ -756,7 +756,7 @@
         </div>
 
         <button type="button" class="btn-action" id="btnSalvarCertificado">
-          Salvar Certificado
+          Salvar e buscar dados fiscais
         </button>
       </div>
 
@@ -1157,10 +1157,13 @@
 
       if (!p.passo1Nome) {
         mostrarPasso(1);
-      } else if (!p.passo2XmlEnviado || !p.passo2FiscalConfirmado) {
-        mostrarPasso(2);
       } else if (!p.passo3CertificadoValido) {
         mostrarPasso(3);
+      } else if (!p.passo2XmlEnviado || !p.passo2FiscalConfirmado) {
+        mostrarPasso(2);
+        if (p.passo2XmlEnviado && status.perfilFiscal) {
+          exibirPreviewPerfilFiscal(status.perfilFiscal);
+        }
       } else if (!p.passo4WhatsappConectado) {
         mostrarPasso(4);
       } else {
@@ -1209,7 +1212,7 @@
             localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
           }
           showAlert('Identificação salva com sucesso!', false, alertOnboarding);
-          mostrarPasso(2);
+          mostrarPasso(3);
         } else {
           showAlert(data.detalhe || 'Erro ao salvar nome', true, alertOnboarding);
         }
@@ -1218,7 +1221,7 @@
       }
     });
 
-    // --- PASSO 2: UPLOAD XML ---
+    // --- PASSO 3: REVISAO FISCAL / FALLBACK DE UPLOAD XML ---
     const fileXmlInput = document.getElementById('fileXmlInput');
     fileXmlInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -1252,22 +1255,39 @@
           localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
         }
 
-        const p = data.parametros;
-        const s = data.servico;
-        document.getElementById('txtRazaoSocial').textContent = p.razaoSocial || '—';
-        document.getElementById('txtCnpj').textContent = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
-        document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
-        document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
-        document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
-        document.getElementById('txtAliquota').textContent = (s.aliquotaIss !== null && s.aliquotaIss !== undefined)
-          ? `${s.aliquotaIss}%`
-          : 'Não especificada';
-
-        document.getElementById('previewFiscal').classList.remove('hidden');
+        exibirPreviewFiscal(data);
         showAlert('Parâmetros fiscais extraídos com sucesso! Revise e confirme.', false, alertOnboarding);
       } catch (err) {
         showAlert('Erro ao enviar XML.', true, alertOnboarding);
       }
+    }
+
+    function exibirPreviewFiscal(data) {
+      const p = data.parametros;
+      const s = data.servico;
+      document.getElementById('txtRazaoSocial').textContent = p.razaoSocial || '—';
+      document.getElementById('txtCnpj').textContent = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+      document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
+      document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
+      document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
+      document.getElementById('txtAliquota').textContent = (s.aliquotaIss !== null && s.aliquotaIss !== undefined)
+        ? `${s.aliquotaIss}%`
+        : 'Não especificada';
+      document.getElementById('dropZoneXml').classList.add('hidden');
+      document.getElementById('previewFiscal').classList.remove('hidden');
+    }
+
+    function exibirPreviewPerfilFiscal(perfil) {
+      document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';
+      document.getElementById('txtCnpj').textContent = perfil.cnpjCpfMask || 'Cadastrado';
+      document.getElementById('txtIm').textContent = perfil.inscricaoMunicipal || '—';
+      document.getElementById('txtMunUf').textContent = `${perfil.codMunicipioIbge || '—'} (${perfil.uf || '—'})`;
+      document.getElementById('txtEspecialidade').textContent = perfil.especialidade || 'A definir na confirmação';
+      document.getElementById('txtAliquota').textContent = (perfil.aliquotaIss !== null && perfil.aliquotaIss !== undefined)
+        ? `${perfil.aliquotaIss}%`
+        : 'Não especificada';
+      document.getElementById('dropZoneXml').classList.add('hidden');
+      document.getElementById('previewFiscal').classList.remove('hidden');
     }
 
     document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
@@ -1282,7 +1302,7 @@
         const data = await res.json();
         if (data.ok) {
           showAlert('Parâmetros fiscais confirmados com sucesso!', false, alertOnboarding);
-          mostrarPasso(3);
+          mostrarPasso(4);
         } else {
           showAlert(data.detalhe || 'Erro ao confirmar', true, alertOnboarding);
         }
@@ -1291,7 +1311,7 @@
       }
     });
 
-    // --- PASSO 3: UPLOAD CERTIFICADO A1 ---
+    // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---
     const fileCertInput = document.getElementById('fileCertInput');
     fileCertInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -1314,6 +1334,9 @@
         return;
       }
       const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      const btn = document.getElementById('btnSalvarCertificado');
+      btn.disabled = true;
+      btn.textContent = 'Buscando última NFS-e...';
       try {
         const res = await fetch('/api/onboarding/certificado', {
           method: 'POST',
@@ -1327,13 +1350,23 @@
         });
         const data = await res.json();
         if (data.ok) {
-          showAlert('Certificado digital A1 salvo com sucesso!', false, alertOnboarding);
-          mostrarPasso(4);
+          mostrarPasso(2);
+          if (data.importacaoFiscal?.ok) {
+            exibirPreviewFiscal(data.importacaoFiscal);
+            showAlert('Última NFS-e encontrada. Revise os dados fiscais extraídos.', false, alertOnboarding);
+          } else {
+            document.getElementById('dropZoneXml').classList.remove('hidden');
+            document.getElementById('previewFiscal').classList.add('hidden');
+            showAlert(`Certificado salvo. ${data.importacaoFiscal?.detalhe || 'Envie o XML da última NFS-e para continuar.'}`, true, alertOnboarding);
+          }
         } else {
           showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);
         }
       } catch (err) {
         showAlert('Erro de conexão ao enviar certificado', true, alertOnboarding);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Salvar e buscar dados fiscais';
       }
     });
 

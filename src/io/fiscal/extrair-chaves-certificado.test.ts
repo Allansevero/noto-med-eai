@@ -28,6 +28,7 @@ describe('extrairChavesCertificado', () => {
     assert.ok(chaves.certBase64.length > 100);
     assert.equal(chaves.serialNumber, '01');
     assert.ok(chaves.validoAte instanceof Date);
+    assert.equal(chaves.documentoTitular, '12345678000195');
   });
 
   it('deve lançar erro quando buffer for vazio', () => {

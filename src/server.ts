@@ -32,6 +32,8 @@ import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolv
 import { PostgresBillingRepositorio } from './io/postgres/postgres-billing-repositorio.js';
 import { StripeService } from './billing/stripe-service.js';
 import { processarWebhookStripe } from './billing/processar-webhook-stripe.js';
+import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
+import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -70,6 +72,7 @@ export function criarAppExpress() {
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
   const billingRepo = new PostgresBillingRepositorio(pool);
+  const adnNfseClient = new AdnNfseClient();
   const stripeService = config.stripeSecretKey
     ? new StripeService({
         secretKey: config.stripeSecretKey,
@@ -182,7 +185,7 @@ export function criarAppExpress() {
     }
   });
 
-  // Passo 2: Upload e Extração do XML de Referência
+  // Passo 3 (fallback): Upload e extracao manual do XML de referencia
   app.post('/api/onboarding/xml', async (req: Request, res: Response) => {
     try {
       const { medicoId: medicoIdRaw, xmlString } = req.body || {};
@@ -207,7 +210,7 @@ export function criarAppExpress() {
     }
   });
 
-  // Passo 2: Confirmação Manual dos Parâmetros Fiscais
+  // Passo 3: Confirmacao dos parametros fiscais encontrados
   app.post('/api/onboarding/confirmar-fiscal', async (req: Request, res: Response) => {
     try {
       const { medicoId: medicoIdRaw, razaoSocial, especialidade, aliquotaIss, serieDps, proximoNumeroDps } = req.body || {};
@@ -229,7 +232,7 @@ export function criarAppExpress() {
     }
   });
 
-  // Passo 3: Certificado Digital A1 (.pfx/.p12) + Senha
+  // Passo 2: Certificado A1 + importacao automatica da ultima NFS-e pelo ADN
   app.post('/api/onboarding/certificado', async (req: Request, res: Response) => {
     try {
       const { medicoId: medicoIdRaw, arquivoBase64, nomeArquivo, senha } = req.body || {};
@@ -237,13 +240,66 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId, arquivo e senha são obrigatórios' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
+      const arquivoBuffer = Buffer.from(arquivoBase64, 'base64');
+
+      let documentoTitular: string | undefined;
+      try {
+        const certificado = extrairChavesCertificado(arquivoBuffer, senha);
+        if (certificado.validoAte && certificado.validoAte.getTime() < Date.now()) {
+          return res.status(400).json({ ok: false, detalhe: 'O certificado A1 informado esta vencido.' });
+        }
+        documentoTitular = certificado.documentoTitular;
+      } catch (err: any) {
+        return res.status(400).json({
+          ok: false,
+          detalhe: `Certificado A1 ou senha invalidos: ${err?.message || 'nao foi possivel abrir o arquivo'}`
+        });
+      }
+
       const resultado = await salvarCertificadoMedico(pool, authAdminService.supabaseClient, {
         medicoId,
-        arquivoBuffer: Buffer.from(arquivoBase64, 'base64'),
+        arquivoBuffer,
         nomeArquivoOriginal: nomeArquivo || 'certificado.pfx',
         senhaCertificado: senha
       });
-      return res.json({ ...resultado, medicoId });
+
+      try {
+        if (!documentoTitular) {
+          throw new Error('Nao foi possivel identificar o CPF/CNPJ do titular no certificado A1.');
+        }
+        const consulta = await adnNfseClient.buscarNfseMaisRecente(arquivoBuffer, senha, documentoTitular);
+        const fiscal = await processarOnboardingXml(
+          {
+            pool,
+            supabase: authAdminService.supabaseClient,
+            chaveCriptografia: config.encryptionKey,
+            pepperCpf: config.appPepper
+          },
+          medicoId,
+          consulta.documento.xml
+        );
+
+        return res.json({
+          ...resultado,
+          medicoId,
+          importacaoFiscal: {
+            ...fiscal,
+            fonte: 'adn',
+            nsu: consulta.documento.nsu,
+            chaveAcesso: consulta.documento.chaveAcesso
+          }
+        });
+      } catch (err: any) {
+        console.warn('[ADN] Importacao automatica indisponivel:', err?.message || err);
+        return res.json({
+          ...resultado,
+          medicoId,
+          importacaoFiscal: {
+            ok: false,
+            detalhe: err?.message || 'Nenhuma NFS-e compativel foi encontrada no ADN.'
+          }
+        });
+      }
     } catch (err: any) {
       console.error('Erro ao salvar certificado:', err);
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao processar certificado digital' });
@@ -539,4 +595,3 @@ if (process.env['NODE_ENV'] !== 'test') {
   iniciarWorkerEmbutido(pool, config);
   console.log('[Notomed Whats] Worker de fila NFS-e iniciado com sucesso.');
 }
-

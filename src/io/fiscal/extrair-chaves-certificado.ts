@@ -13,6 +13,48 @@ export interface ChavesCertificado {
   serialNumber?: string;
   validoDe?: Date;
   validoAte?: Date;
+  documentoTitular?: string;
+}
+
+function validarDocumento(documento: string): boolean {
+  if (/^(\d)\1+$/.test(documento)) return false;
+  const numeros = documento.split('').map(Number);
+
+  if (documento.length === 11) {
+    const calcular = (quantidade: number) => {
+      const soma = numeros.slice(0, quantidade).reduce((total, numero, indice) =>
+        total + numero * (quantidade + 1 - indice), 0);
+      const resto = (soma * 10) % 11;
+      return resto === 10 ? 0 : resto;
+    };
+    return calcular(9) === numeros[9] && calcular(10) === numeros[10];
+  }
+
+  if (documento.length === 14) {
+    const calcular = (quantidade: 12 | 13) => {
+      const pesos = quantidade === 12
+        ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+        : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+      const soma = numeros.slice(0, quantidade).reduce((total, numero, indice) =>
+        total + numero * pesos[indice], 0);
+      const resto = soma % 11;
+      return resto < 2 ? 0 : 11 - resto;
+    };
+    return calcular(12) === numeros[12] && calcular(13) === numeros[13];
+  }
+
+  return false;
+}
+
+function extrairDocumentoDosTextos(textos: string[]): string | undefined {
+  for (const texto of textos) {
+    const candidatos = String(texto)
+      .match(/(?<!\d)(?:\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}|\d{3}\.?\d{3}\.?\d{3}-?\d{2})(?!\d)/g)
+      ?.map((valor) => valor.replace(/\D/g, '')) || [];
+    const valido = candidatos.find(validarDocumento);
+    if (valido) return valido;
+  }
+  return undefined;
 }
 
 export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): ChavesCertificado {
@@ -41,6 +83,7 @@ export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): Chav
   const certAsn1 = forge.pki.certificateToAsn1(certObj);
   const certDer = forge.asn1.toDer(certAsn1).getBytes();
   const certBase64 = Buffer.from(certDer, 'binary').toString('base64');
+  const textosIdentificacao = certObj.subject.attributes.map((atributo) => String(atributo.value || ''));
 
   return {
     pemKey,
@@ -48,6 +91,7 @@ export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): Chav
     certBase64,
     serialNumber: certObj.serialNumber,
     validoDe: certObj.validity?.notBefore,
-    validoAte: certObj.validity?.notAfter
+    validoAte: certObj.validity?.notAfter,
+    documentoTitular: extrairDocumentoDosTextos(textosIdentificacao)
   };
 }
