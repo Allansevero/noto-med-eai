@@ -32,8 +32,16 @@ export class EvolutionApiClient
 
   async enviar(params: EnviarOtpParams): Promise<ResultadoEnvioOtp> {
     const texto = formatarMensagemOtp(params.codigo);
-    const res = await this.enviarTextoGenerico(this.instanciaOficialNome, params.telefone, texto);
-    return { sucesso: res.sucesso, erro: res.erro };
+    const resultadoBotao = await this.enviarOtpComBotao(params.telefone, params.codigo, texto);
+    if (resultadoBotao.sucesso) return resultadoBotao;
+
+    const fallback = await this.enviarTextoGenerico(this.instanciaOficialNome, params.telefone, texto);
+    return {
+      sucesso: fallback.sucesso,
+      erro: fallback.sucesso
+        ? undefined
+        : `Botão: ${resultadoBotao.erro || 'falha desconhecida'}; texto: ${fallback.erro || 'falha desconhecida'}`
+    };
   }
 
   async enviarTexto(params: EnviarMensagemPacienteParams): Promise<ResultadoEnvioMensagemPaciente> {
@@ -84,17 +92,13 @@ export class EvolutionApiClient
     }
   }
 
-  private async enviarTextoGenerico(
-    instancia: string,
+  private async enviarOtpComBotao(
     telefone: string,
-    texto: string
-  ): Promise<ResultadoEnvioMensagemPaciente> {
-    const url = `${this.baseUrl.replace(/\/$/, '')}/message/sendText/${instancia}`;
+    codigo: string,
+    textoFallback: string
+  ): Promise<ResultadoEnvioOtp> {
+    const url = `${this.baseUrl.replace(/\/$/, '')}/message/sendButtons/${this.instanciaOficialNome}`;
     try {
-      const telLimpo = telefone.replace(/\D/g, '');
-      const telNormalizado =
-        telLimpo.length === 10 || telLimpo.length === 11 ? `55${telLimpo}` : telLimpo;
-
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -102,7 +106,43 @@ export class EvolutionApiClient
           apikey: this.apiKey
         },
         body: JSON.stringify({
-          number: telNormalizado,
+          number: this.normalizarTelefone(telefone),
+          title: 'Código de verificação',
+          description: textoFallback,
+          footer: 'Noto',
+          buttons: [{
+            type: 'copyCode',
+            displayText: 'Copiar código',
+            copyCode: codigo
+          }]
+        })
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        return { sucesso: false, erro: `HTTP ${resp.status}: ${txt}` };
+      }
+      return { sucesso: true };
+    } catch (err: any) {
+      return { sucesso: false, erro: err.message || 'Erro de conexão com Evolution API' };
+    }
+  }
+
+  private async enviarTextoGenerico(
+    instancia: string,
+    telefone: string,
+    texto: string
+  ): Promise<ResultadoEnvioMensagemPaciente> {
+    const url = `${this.baseUrl.replace(/\/$/, '')}/message/sendText/${instancia}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: this.apiKey
+        },
+        body: JSON.stringify({
+          number: this.normalizarTelefone(telefone),
           text: texto
         })
       });
@@ -117,5 +157,10 @@ export class EvolutionApiClient
     } catch (err: any) {
       return { sucesso: false, erro: err.message || 'Erro de conexão com Evolution API' };
     }
+  }
+
+  private normalizarTelefone(telefone: string): string {
+    const telLimpo = telefone.replace(/\D/g, '');
+    return telLimpo.length === 10 || telLimpo.length === 11 ? `55${telLimpo}` : telLimpo;
   }
 }
