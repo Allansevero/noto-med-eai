@@ -15,6 +15,7 @@ import type {
   SolicitacaoAguardandoDataRegistro
 } from '../../atendimento/atendimento-repositorio.js';
 import type { RespostaRapidaModelo } from '../../whatsapp/casar-resposta-rapida.js';
+import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
 
 export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   constructor(
@@ -279,8 +280,8 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   }
 
   async buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null> {
-    const telLimpo = telefone.replace(/\D/g, '');
-    const telSem55 = telLimpo.startsWith('55') ? telLimpo.slice(2) : telLimpo;
+    const variantes = gerarVariantesTelefoneBrasileiro(telefone);
+    if (variantes.length === 0) return null;
     const sql = `
       select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe,
              coalesce(msf.ctrib_nac, '080201') as ctrib_nac_padrao,
@@ -288,11 +289,10 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       from medicos m
       join usuarios u on u.id = m.usuario_id
       left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true
-      where regexp_replace(u.telefone, '\\D', '', 'g') in ($1, $2)
-         or '55' || regexp_replace(u.telefone, '\\D', '', 'g') = $1
+      where regexp_replace(u.telefone, '\\D', '', 'g') = any($1::text[])
       limit 1
     `;
-    const { rows } = await this.pool.query(sql, [telLimpo, telSem55]);
+    const { rows } = await this.pool.query(sql, [variantes]);
     if (rows.length === 0) return null;
     return {
       id: rows[0].id,
