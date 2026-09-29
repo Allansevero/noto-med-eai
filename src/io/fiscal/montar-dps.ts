@@ -117,7 +117,7 @@ export function montarDps(
         trib: {
           tribMun: { tribISSQN: 1, tpRetISSQN: 1 },
           ...(ehMei ? {} : { tribFed: { piscofins: { CST: '08' } } }),
-          totTrib: { pTotTribSN: input.pTotTribSN ?? cfg.pTotTribSN }
+          totTrib: ehMei ? { indTotTrib: 0 } : { pTotTribSN: input.pTotTribSN ?? cfg.pTotTribSN }
         }
       }
     }

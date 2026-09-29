@@ -158,11 +158,14 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
         if (
           resSefin.codigoErro === 'E0676' ||
+          resSefin.codigoErro === 'E0710' ||
           resSefin.motivo?.includes('E0676') ||
-          resSefin.motivo?.includes('identificado como MEI')
+          resSefin.motivo?.includes('E0710') ||
+          resSefin.motivo?.includes('identificado como MEI') ||
+          resSefin.motivo?.includes('Para MEI')
         ) {
           console.warn(
-            `[PostgresEmissorDpsService] Prestador identificado como MEI na SEFIN (E0676). Ajustando perfil fiscal automaticamente para MEI e retransmitindo...`
+            `[PostgresEmissorDpsService] Prestador identificado como MEI na SEFIN (${resSefin.codigoErro || 'E0676/E0710'}). Ajustando perfil fiscal automaticamente para MEI e retransmitindo...`
           );
           prestadorConfig.regTrib.opSimpNac = 2;
           delete (prestadorConfig.regTrib as any).regApTribSN;

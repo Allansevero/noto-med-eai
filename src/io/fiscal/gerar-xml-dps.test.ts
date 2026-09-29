@@ -80,7 +80,7 @@ describe('gerarXmlDps', () => {
     assert.ok(!res.xml.includes('<end>'));
   });
 
-  it('deve omitir tribFed e regApTribSN quando o emitente for MEI (opSimpNac = 2)', () => {
+  it('deve omitir tribFed, regApTribSN e pTotTribSN (usando indTotTrib=0) quando o emitente for MEI (opSimpNac = 2)', () => {
     const cfgMei: ConfigPrestador = {
       ...cfg,
       regTrib: {
@@ -95,14 +95,17 @@ describe('gerarXmlDps', () => {
     assert.ok(!res.xml.includes('<regApTribSN>'));
     assert.ok(!res.xml.includes('<tribFed>'));
     assert.ok(!res.xml.includes('<piscofins>'));
+    assert.ok(!res.xml.includes('<pTotTribSN>'));
+    assert.ok(res.xml.includes('<totTrib><indTotTrib>0</indTotTrib></totTrib>'));
     assert.ok(res.xml.includes('<tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>'));
   });
 
-  it('deve incluir tribFed e regApTribSN quando o emitente for ME/EPP (opSimpNac = 3)', () => {
+  it('deve incluir tribFed, regApTribSN e pTotTribSN quando o emitente for ME/EPP (opSimpNac = 3)', () => {
     const res = gerarXmlDps(input, cfg);
     assert.ok(res.xml.includes('<opSimpNac>3</opSimpNac>'));
     assert.ok(res.xml.includes('<regApTribSN>1</regApTribSN>'));
     assert.ok(res.xml.includes('<tribFed><piscofins><CST>08</CST></piscofins></tribFed>'));
+    assert.ok(res.xml.includes('<totTrib><pTotTribSN>6.00</pTotTribSN></totTrib>'));
   });
 });
 

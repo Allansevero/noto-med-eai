@@ -68,6 +68,9 @@ export function gerarXmlDps(
   const vServFmt = Number(input.vServ).toFixed(2);
   const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN ?? 6.0).toFixed(2);
   const tribFedXml = ehMei ? '' : `<tribFed><piscofins><CST>08</CST></piscofins></tribFed>`;
+  const totTribXml = ehMei
+    ? `<totTrib><indTotTrib>0</indTotTrib></totTrib>`
+    : `<totTrib><pTotTribSN>${pTotTribFmt}</pTotTribSN></totTrib>`;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
     `<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">` +
@@ -104,7 +107,7 @@ export function gerarXmlDps(
           `<trib>` +
             `<tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>` +
             `${tribFedXml}` +
-            `<totTrib><pTotTribSN>${pTotTribFmt}</pTotTribSN></totTrib>` +
+            `${totTribXml}` +
           `</trib>` +
         `</valores>` +
       `</infDPS>` +
