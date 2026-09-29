@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { EvolutionApiClient } from './evolution-api-client.js';
 
 describe('EvolutionApiClient OTP', () => {
-  it('deve tentar o botão de copiar e garantir o envio do OTP em texto', async () => {
+  it('deve enviar o botão de copiar sem duplicar o OTP em texto', async () => {
     const fetchOriginal = globalThis.fetch;
     const chamadas: Array<{ url: string; body: any }> = [];
     globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
@@ -21,7 +21,7 @@ describe('EvolutionApiClient OTP', () => {
       const resultado = await client.enviar({ telefone: '51999998888', codigo: '123456' });
 
       assert.equal(resultado.sucesso, true);
-      assert.equal(chamadas.length, 2);
+      assert.equal(chamadas.length, 1);
       assert.ok(chamadas[0].url.endsWith('/message/sendButtons/notomed_oficial'));
       assert.equal(chamadas[0].body.number, '5551999998888');
       assert.deepEqual(chamadas[0].body.buttons, [{
@@ -29,8 +29,6 @@ describe('EvolutionApiClient OTP', () => {
         displayText: 'Copiar código',
         copyCode: '123456'
       }]);
-      assert.ok(chamadas[1].url.endsWith('/message/sendText/notomed_oficial'));
-      assert.ok(chamadas[1].body.text.includes('123456'));
     } finally {
       globalThis.fetch = fetchOriginal;
     }

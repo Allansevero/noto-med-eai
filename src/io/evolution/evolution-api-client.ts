@@ -33,19 +33,12 @@ export class EvolutionApiClient
   async enviar(params: EnviarOtpParams): Promise<ResultadoEnvioOtp> {
     const texto = formatarMensagemOtp(params.codigo);
     const resultadoBotao = await this.enviarOtpComBotao(params.telefone, params.codigo, texto);
-    if (!resultadoBotao.sucesso) {
-      console.warn(`[Evolution] OTP interativo indisponível: ${resultadoBotao.erro}`);
+    if (resultadoBotao.sucesso) {
+      return resultadoBotao;
     }
 
-    // A Evolution 2.3.7 pode aceitar o botão (HTTP 201), mas não entregar a
-    // viewOnceMessage gerada pelo Baileys. O texto garante que o OTP chegue.
-    const envioTexto = await this.enviarTextoGenerico(this.instanciaOficialNome, params.telefone, texto);
-    return {
-      sucesso: envioTexto.sucesso,
-      erro: envioTexto.sucesso
-        ? undefined
-        : `Botão: ${resultadoBotao.erro || 'aceito sem confirmação de entrega'}; texto: ${envioTexto.erro || 'falha desconhecida'}`
-    };
+    console.warn(`[Evolution] OTP interativo indisponível: ${resultadoBotao.erro}`);
+    return this.enviarTextoGenerico(this.instanciaOficialNome, params.telefone, texto);
   }
 
   async enviarTexto(params: EnviarMensagemPacienteParams): Promise<ResultadoEnvioMensagemPaciente> {
