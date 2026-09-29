@@ -25,7 +25,7 @@ describe('EvolutionApiClient OTP', () => {
       assert.ok(chamadas[0].url.endsWith('/message/sendButtons/notomed_oficial'));
       assert.equal(chamadas[0].body.number, '5551999998888');
       assert.deepEqual(chamadas[0].body.buttons, [{
-        type: 'copyCode',
+        type: 'copy',
         displayText: 'Copiar código',
         copyCode: '123456'
       }]);

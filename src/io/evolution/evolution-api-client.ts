@@ -35,6 +35,7 @@ export class EvolutionApiClient
     const resultadoBotao = await this.enviarOtpComBotao(params.telefone, params.codigo, texto);
     if (resultadoBotao.sucesso) return resultadoBotao;
 
+    console.warn(`[Evolution] OTP interativo indisponível; usando texto: ${resultadoBotao.erro}`);
     const fallback = await this.enviarTextoGenerico(this.instanciaOficialNome, params.telefone, texto);
     return {
       sucesso: fallback.sucesso,
@@ -111,7 +112,7 @@ export class EvolutionApiClient
           description: textoFallback,
           footer: 'Noto',
           buttons: [{
-            type: 'copyCode',
+            type: 'copy',
             displayText: 'Copiar código',
             copyCode: codigo
           }]
