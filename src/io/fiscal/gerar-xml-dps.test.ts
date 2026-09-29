@@ -42,6 +42,12 @@ describe('gerarXmlDps', () => {
     cClassTrib: '000001'
   };
 
+  it('omite a inscrição municipal quando ela não estiver cadastrada', () => {
+    const resultado = gerarXmlDps(input, { ...cfg, im: '' }, new Date('2026-09-28T12:00:00Z'));
+
+    assert.doesNotMatch(resultado.xml, /<IM>/);
+  });
+
   it('deve gerar XML com id oficial de 42 dígitos e caracteres escapados', () => {
     const res = gerarXmlDps(input, cfg, new Date('2026-09-28T12:00:00Z'));
 

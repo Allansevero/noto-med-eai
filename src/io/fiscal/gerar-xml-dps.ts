@@ -58,6 +58,9 @@ export function gerarXmlDps(
 
   const foneXml = input.tomador.fone ? `<fone>${input.tomador.fone.replace(/\D/g, '')}</fone>` : '';
   const emailXml = input.tomador.email ? `<email>${escaparXml(input.tomador.email)}</email>` : '';
+  const inscricaoMunicipalXml = cfg.im?.trim()
+    ? `<IM>${escaparXml(cfg.im.trim())}</IM>`
+    : '';
 
   const vServFmt = Number(input.vServ).toFixed(2);
   const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN ?? 6.0).toFixed(2);
@@ -75,7 +78,7 @@ export function gerarXmlDps(
         `<cLocEmi>${codMun}</cLocEmi>` +
         `<prest>` +
           `<CNPJ>${cnpjLimpo}</CNPJ>` +
-          `<IM>${escaparXml(cfg.im)}</IM>` +
+          `${inscricaoMunicipalXml}` +
           `<regTrib>${regTribXml}</regTrib>` +
         `</prest>` +
         `<toma>` +
