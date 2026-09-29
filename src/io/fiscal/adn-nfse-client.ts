@@ -43,7 +43,7 @@ export class AdnNfseClient {
     documentoTitular: string
   ): Promise<ResultadoConsultaAdn> {
     const titular = documentoTitular.replace(/\D/g, '');
-    const loteInicial = await this.consultarLote(0, pfxBuffer, senhaCertificado, titular);
+    const loteInicial = await this.consultarLote(0, pfxBuffer, senhaCertificado);
     let documentos = loteInicial.documentos;
 
     const maiorNsuRecebido = documentos.reduce((maior, item) => Math.max(maior, item.nsu), 0);
@@ -51,7 +51,7 @@ export class AdnNfseClient {
       // A API entrega no maximo 50 DF-e. Consultar perto do maxNSU evita
       // percorrer todo o historico apenas para obter a nota mais recente.
       const inicioUltimoLote = Math.max(0, loteInicial.maxNsu - 50);
-      const loteFinal = await this.consultarLote(inicioUltimoLote, pfxBuffer, senhaCertificado, titular);
+      const loteFinal = await this.consultarLote(inicioUltimoLote, pfxBuffer, senhaCertificado);
       documentos = [...documentos, ...loteFinal.documentos];
     }
 
@@ -94,14 +94,12 @@ export class AdnNfseClient {
   private async consultarLote(
     ultimoNsu: number,
     pfxBuffer: Buffer,
-    senhaCertificado: string,
-    documentoTitular: string
+    senhaCertificado: string
   ): Promise<LoteAdn> {
-    const parametros = new URLSearchParams({ lote: 'true' });
-    if (documentoTitular.length === 14) {
-      parametros.set('cnpjConsulta', documentoTitular);
-    }
-    const url = `${this.baseUrl.replace(/\/$/, '')}/DFe/${ultimoNsu}?${parametros.toString()}`;
+    // Sem cnpjConsulta, o ADN usa diretamente o titular autenticado pelo A1.
+    // Esse parametro se destina a filiais da mesma raiz e pode causar rejeicao
+    // quando inferido a partir de um certificado que contenha uma cadeia completa.
+    const url = `${this.baseUrl.replace(/\/$/, '')}/DFe/${ultimoNsu}?lote=true`;
     const resposta = this.transmissorHttp
       ? await this.transmissorHttp(url, pfxBuffer, senhaCertificado)
       : await this.executarRequisicaoMtls(url, pfxBuffer, senhaCertificado);

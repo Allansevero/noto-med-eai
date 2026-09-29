@@ -57,6 +57,19 @@ function extrairDocumentoDosTextos(textos: string[]): string | undefined {
   return undefined;
 }
 
+function certificadoCorrespondeAChavePrivada(
+  certificado: forge.pki.Certificate,
+  chavePrivada: forge.pki.PrivateKey
+): boolean {
+  const publica = certificado.publicKey as forge.pki.rsa.PublicKey;
+  const privada = chavePrivada as forge.pki.rsa.PrivateKey;
+  return Boolean(
+    publica?.n && publica?.e && privada?.n && privada?.e &&
+    publica.n.compareTo(privada.n) === 0 &&
+    publica.e.compareTo(privada.e) === 0
+  );
+}
+
 export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): ChavesCertificado {
   if (!pfxBuffer || pfxBuffer.length === 0) {
     throw new Error('Buffer do certificado A1 está vazio.');
@@ -69,13 +82,18 @@ export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): Chav
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
 
   const keyObj = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0]?.key;
-  const certObj = certBags[forge.pki.oids.certBag]?.[0]?.cert;
+  const certificados = (certBags[forge.pki.oids.certBag] || [])
+    .map((bag) => bag.cert)
+    .filter((certificado): certificado is forge.pki.Certificate => Boolean(certificado));
+  const certObj = keyObj
+    ? certificados.find((certificado) => certificadoCorrespondeAChavePrivada(certificado, keyObj))
+    : undefined;
 
   if (!keyObj) {
     throw new Error('Chave privada não encontrada no arquivo PKCS#12.');
   }
   if (!certObj) {
-    throw new Error('Certificado X509 não encontrado no arquivo PKCS#12.');
+    throw new Error('Certificado X509 correspondente à chave privada não encontrado no arquivo PKCS#12.');
   }
 
   const pemKey = forge.pki.privateKeyToPem(keyObj);

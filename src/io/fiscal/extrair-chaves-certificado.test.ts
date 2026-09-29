@@ -38,6 +38,38 @@ describe('extrairChavesCertificado', () => {
     );
   });
 
+  it('deve selecionar o certificado que corresponde à chave privada em uma cadeia', () => {
+    const titularKeys = forge.pki.rsa.generateKeyPair(1024);
+    const caKeys = forge.pki.rsa.generateKeyPair(1024);
+
+    const ca = forge.pki.createCertificate();
+    ca.publicKey = caKeys.publicKey;
+    ca.serialNumber = '10';
+    ca.validity.notBefore = new Date();
+    ca.validity.notAfter = new Date(Date.now() + 86400000);
+    ca.setSubject([{ name: 'commonName', value: 'AUTORIDADE TESTE:11222333000181' }]);
+    ca.setIssuer(ca.subject.attributes);
+    ca.setExtensions([{ name: 'basicConstraints', cA: true }]);
+    ca.sign(caKeys.privateKey, forge.md.sha256.create());
+
+    const titular = forge.pki.createCertificate();
+    titular.publicKey = titularKeys.publicKey;
+    titular.serialNumber = '11';
+    titular.validity.notBefore = new Date();
+    titular.validity.notAfter = new Date(Date.now() + 86400000);
+    titular.setSubject([{ name: 'commonName', value: 'CLINICA TITULAR:12345678000195' }]);
+    titular.setIssuer(ca.subject.attributes);
+    titular.sign(caKeys.privateKey, forge.md.sha256.create());
+
+    const senha = 'senha-cadeia';
+    const p12Asn1 = forge.pkcs12.toPkcs12Asn1(titularKeys.privateKey, [ca, titular], senha);
+    const pfxBuffer = Buffer.from(forge.asn1.toDer(p12Asn1).getBytes(), 'binary');
+
+    const chaves = extrairChavesCertificado(pfxBuffer, senha);
+    assert.equal(chaves.serialNumber, '11');
+    assert.equal(chaves.documentoTitular, '12345678000195');
+  });
+
   it('deve lançar erro quando senha for incorreta', () => {
     const keys = forge.pki.rsa.generateKeyPair(1024);
     const cert = forge.pki.createCertificate();
