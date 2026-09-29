@@ -32,9 +32,11 @@ export function gerarXmlDps(
   const numeroDps = input.nDPS.replace(/\D/g, '').padStart(15, '0').slice(-15);
   const codMun = cfg.codMunicipio.replace(/\D/g, '').padStart(7, '0').slice(0, 7);
 
-  // Id oficial da DPS na SEFIN: DPS + 42 dígitos (tpEmit=1 + cLocEmi=7 + tipoInscricao=2 + CNPJ/CPF=14 + serie=5 + nDPS=15 = 43)
-  // Conforme manual SEFIN: "DPS" seguido de 42 dígitos numéricos.
-  const dpsIdNumerico = `1${codMun}2${cnpjLimpo.padStart(14, '0')}${serie}${numeroDps}`.slice(0, 42);
+  // Id oficial: DPS + município (7) + tipo de inscrição (1) + inscrição
+  // federal (14) + série (5) + número da DPS (15) = 42 dígitos.
+  const tipoInscricaoFederal = cnpjLimpo.length === 11 ? '1' : '2';
+  const inscricaoFederal = cnpjLimpo.padStart(14, '0');
+  const dpsIdNumerico = `${codMun}${tipoInscricaoFederal}${inscricaoFederal}${serie}${numeroDps}`;
   const dpsId = `DPS${dpsIdNumerico}`;
 
   const meEpp = cfg.regTrib.opSimpNac === 3;

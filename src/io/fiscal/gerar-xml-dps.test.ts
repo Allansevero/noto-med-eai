@@ -53,6 +53,7 @@ describe('gerarXmlDps', () => {
 
     assert.ok(res.dpsId.startsWith('DPS'));
     assert.equal(res.dpsId.length, 45); // DPS + 42 dígitos
+    assert.equal(res.dpsId, 'DPS355030821234567800019500001000000000000001');
 
     assert.ok(res.xml.includes('<tpAmb>1</tpAmb>'));
     assert.ok(res.xml.includes('<CNPJ>12345678000195</CNPJ>'));
