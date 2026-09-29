@@ -5,6 +5,7 @@
  */
 
 import https from 'node:https';
+import { rootCertificates } from 'node:tls';
 import zlib from 'node:zlib';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,6 +44,13 @@ export type HttpMtlsTransmissor = (
   passphrase: string,
   caBundle?: Buffer
 ) => Promise<{ status: number; corpo: string }>;
+
+export function combinarAutoridadesCertificadoras(caBundle?: Buffer): Array<string | Buffer> | undefined {
+  if (!caBundle) return undefined;
+  // Informar `ca` substitui as autoridades padrão do Node. Mantemos as raízes
+  // públicas e acrescentamos a cadeia específica usada pela SEFIN restrita.
+  return [...rootCertificates, caBundle];
+}
 
 export class SefinNacionalClient {
   private readonly defaultCaBundle: Buffer | undefined;
@@ -198,7 +206,7 @@ export class SefinNacionalClient {
         },
         pfx,
         passphrase,
-        ca: caBundle,
+        ca: combinarAutoridadesCertificadoras(caBundle),
         timeout: 45000,
         rejectUnauthorized: true
       };

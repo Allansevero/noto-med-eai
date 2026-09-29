@@ -1,9 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
-import { SefinNacionalClient } from './sefin-nacional-client.js';
+import { SefinNacionalClient, combinarAutoridadesCertificadoras } from './sefin-nacional-client.js';
 
 describe('SefinNacionalClient', () => {
+  it('preserva as autoridades padrão ao acrescentar a cadeia da SEFIN', () => {
+    const adicional = Buffer.from('certificado-adicional');
+    const autoridades = combinarAutoridadesCertificadoras(adicional);
+
+    assert.ok(autoridades && autoridades.length > 1);
+    assert.strictEqual(autoridades?.at(-1), adicional);
+  });
+
   const fakePfx = Buffer.from('dummy-pfx');
   const xmlAssinado = `<?xml version="1.0" encoding="UTF-8"?><DPS xmlns="http://www.sped.fazenda.gov.br/nfse"><infDPS Id="DPS1"><nDPS>1</nDPS></infDPS></DPS>`;
 
