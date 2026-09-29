@@ -130,6 +130,15 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       });
 
       if (!resSefin.sucesso) {
+        if (resSefin.codigoErro === 'E0014') {
+          await this.pool.query(
+            `update medico_perfil_fiscal
+             set proximo_numero_dps = greatest(coalesce(proximo_numero_dps, 1), $2 + 1),
+                 atualizado_em = now()
+             where medico_id = $1`,
+            [item.medicoId, ndps]
+          );
+        }
         return {
           sucesso: false,
           erro: resSefin.motivo,
