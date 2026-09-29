@@ -101,6 +101,10 @@ export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): Chav
   const certAsn1 = forge.pki.certificateToAsn1(certObj);
   const certDer = forge.asn1.toDer(certAsn1).getBytes();
   const certBase64 = Buffer.from(certDer, 'binary').toString('base64');
+  const atributosCommonName = certObj.subject.attributes.filter((atributo) =>
+    atributo.name === 'commonName' || atributo.shortName === 'CN' || atributo.type === '2.5.4.3'
+  );
+  const textosCommonName = atributosCommonName.map((atributo) => String(atributo.value || ''));
   const textosIdentificacao = certObj.subject.attributes.map((atributo) => String(atributo.value || ''));
 
   return {
@@ -110,6 +114,8 @@ export function extrairChavesCertificado(pfxBuffer: Buffer, senha: string): Chav
     serialNumber: certObj.serialNumber,
     validoDe: certObj.validity?.notBefore,
     validoAte: certObj.validity?.notAfter,
-    documentoTitular: extrairDocumentoDosTextos(textosIdentificacao)
+    // No ICP-Brasil, o CN identifica o titular. Outros campos (como OU)
+    // podem conter CNPJs de entidades da cadeia de certificacao.
+    documentoTitular: extrairDocumentoDosTextos(textosCommonName) ?? extrairDocumentoDosTextos(textosIdentificacao)
   };
 }

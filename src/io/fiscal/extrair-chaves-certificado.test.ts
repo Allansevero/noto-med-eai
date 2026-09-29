@@ -12,7 +12,10 @@ describe('extrairChavesCertificado', () => {
     cert.validity.notBefore = new Date();
     cert.validity.notAfter = new Date();
     cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
-    cert.setSubject([{ name: 'commonName', value: 'CLINICA MEDICA LTDA:12345678000195' }]);
+    cert.setSubject([
+      { name: 'organizationalUnitName', value: 'ENTIDADE CERTIFICADORA:11222333000181' },
+      { name: 'commonName', value: 'CLINICA MEDICA LTDA:12345678000195' }
+    ]);
     cert.setIssuer([{ name: 'commonName', value: 'CLINICA MEDICA LTDA:12345678000195' }]);
     cert.sign(keys.privateKey, forge.md.sha256.create());
 
