@@ -92,7 +92,6 @@ export function gerarXmlDps(
           `<locPrest><cLocPrestacao>${codMun}</cLocPrestacao></locPrest>` +
           `<cServ>` +
             `<cTribNac>${input.cTribNac.replace(/\D/g, '')}</cTribNac>` +
-            `<cNBS>${input.cNBS.replace(/\D/g, '')}</cNBS>` +
             `<xDescServ>${escaparXml(input.xDescServ)}</xDescServ>` +
           `</cServ>` +
         `</serv>` +

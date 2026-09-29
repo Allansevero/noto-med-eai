@@ -61,6 +61,7 @@ describe('gerarXmlDps', () => {
     assert.ok(res.xml.includes('&lt;especialidade&gt;'));
     assert.ok(res.xml.includes('<vServ>250.00</vServ>'));
     assert.ok(res.xml.includes('<cTribNac>080201</cTribNac>'));
+    assert.ok(!res.xml.includes('<cNBS>'));
     assert.ok(res.xml.includes(`Id="${res.dpsId}"`));
   });
 
