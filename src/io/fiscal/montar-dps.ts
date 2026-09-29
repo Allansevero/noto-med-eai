@@ -62,6 +62,7 @@ export function montarDps(
   agora: Date = new Date()
 ): LayoutDPS {
   const { dhEmi, dCompet } = momentoSP(agora);
+  const ehMei = cfg.regTrib.opSimpNac === 2;
   const meEpp = cfg.regTrib.opSimpNac === 3;
 
   return {
@@ -115,7 +116,7 @@ export function montarDps(
         vServPrest: { vServ: input.vServ },
         trib: {
           tribMun: { tribISSQN: 1, tpRetISSQN: 1 },
-          tribFed: { piscofins: { CST: '08' } },
+          ...(ehMei ? {} : { tribFed: { piscofins: { CST: '08' } } }),
           totTrib: { pTotTribSN: input.pTotTribSN ?? cfg.pTotTribSN }
         }
       }

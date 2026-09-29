@@ -39,6 +39,7 @@ export function gerarXmlDps(
   const dpsIdNumerico = `${codMun}${tipoInscricaoFederal}${inscricaoFederal}${serie}${numeroDps}`;
   const dpsId = `DPS${dpsIdNumerico}`;
 
+  const ehMei = cfg.regTrib.opSimpNac === 2;
   const meEpp = cfg.regTrib.opSimpNac === 3;
   const regTribXml = [
     `<opSimpNac>${cfg.regTrib.opSimpNac}</opSimpNac>`,
@@ -66,6 +67,7 @@ export function gerarXmlDps(
 
   const vServFmt = Number(input.vServ).toFixed(2);
   const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN ?? 6.0).toFixed(2);
+  const tribFedXml = ehMei ? '' : `<tribFed><piscofins><CST>08</CST></piscofins></tribFed>`;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
     `<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">` +
@@ -101,7 +103,7 @@ export function gerarXmlDps(
           `<vServPrest><vServ>${vServFmt}</vServ></vServPrest>` +
           `<trib>` +
             `<tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>` +
-            `<tribFed><piscofins><CST>08</CST></piscofins></tribFed>` +
+            `${tribFedXml}` +
             `<totTrib><pTotTribSN>${pTotTribFmt}</pTotTribSN></totTrib>` +
           `</trib>` +
         `</valores>` +

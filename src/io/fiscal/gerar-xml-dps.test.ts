@@ -79,4 +79,30 @@ describe('gerarXmlDps', () => {
     assert.ok(!res.xml.includes('<CPF>'));
     assert.ok(!res.xml.includes('<end>'));
   });
+
+  it('deve omitir tribFed e regApTribSN quando o emitente for MEI (opSimpNac = 2)', () => {
+    const cfgMei: ConfigPrestador = {
+      ...cfg,
+      regTrib: {
+        opSimpNac: 2,
+        regApTribSN: 1,
+        regEspTrib: 0
+      }
+    };
+
+    const res = gerarXmlDps(input, cfgMei);
+    assert.ok(res.xml.includes('<opSimpNac>2</opSimpNac>'));
+    assert.ok(!res.xml.includes('<regApTribSN>'));
+    assert.ok(!res.xml.includes('<tribFed>'));
+    assert.ok(!res.xml.includes('<piscofins>'));
+    assert.ok(res.xml.includes('<tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>'));
+  });
+
+  it('deve incluir tribFed e regApTribSN quando o emitente for ME/EPP (opSimpNac = 3)', () => {
+    const res = gerarXmlDps(input, cfg);
+    assert.ok(res.xml.includes('<opSimpNac>3</opSimpNac>'));
+    assert.ok(res.xml.includes('<regApTribSN>1</regApTribSN>'));
+    assert.ok(res.xml.includes('<tribFed><piscofins><CST>08</CST></piscofins></tribFed>'));
+  });
 });
+

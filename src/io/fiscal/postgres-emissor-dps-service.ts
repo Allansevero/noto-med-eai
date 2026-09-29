@@ -141,7 +141,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
           break;
         }
 
-        if (resSefin.codigoErro === 'E0014') {
+        if (resSefin.codigoErro === 'E0014' || resSefin.motivo?.includes('E0014')) {
           console.warn(`[PostgresEmissorDpsService] DPS ${ndpsAtual} duplicada (E0014). Avançando para ${ndpsAtual + 1}...`);
           ndpsAtual++;
           await this.pool.query(
@@ -150,6 +150,29 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
                  atualizado_em = now()
              where medico_id = $1`,
             [item.medicoId, ndpsAtual]
+          );
+          if (seq < MAX_INCREMENTOS_SEQUENCIA) {
+            continue;
+          }
+        }
+
+        if (
+          resSefin.codigoErro === 'E0676' ||
+          resSefin.motivo?.includes('E0676') ||
+          resSefin.motivo?.includes('identificado como MEI')
+        ) {
+          console.warn(
+            `[PostgresEmissorDpsService] Prestador identificado como MEI na SEFIN (E0676). Ajustando perfil fiscal automaticamente para MEI e retransmitindo...`
+          );
+          prestadorConfig.regTrib.opSimpNac = 2;
+          delete (prestadorConfig.regTrib as any).regApTribSN;
+          await this.pool.query(
+            `update medico_perfil_fiscal
+             set opcao_simples_nacional = 'mei',
+                 regime_apuracao_sn = null,
+                 atualizado_em = now()
+             where medico_id = $1`,
+            [item.medicoId]
           );
           if (seq < MAX_INCREMENTOS_SEQUENCIA) {
             continue;

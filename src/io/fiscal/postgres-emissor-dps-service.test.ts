@@ -364,4 +364,140 @@ describe('PostgresEmissorDpsService', () => {
     assert.equal(resultado.chaveAcesso, chaveOficialSefin);
     assert.ok(queriesExecutadas.some((q) => q.includes('update medico_perfil_fiscal')));
   });
+
+  it('deve auto-recuperar erro E0676 atualizando perfil para MEI e retransmitindo com sucesso', async () => {
+    const keys = forge.pki.rsa.generateKeyPair(1024);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = '01';
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date();
+    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
+    cert.setSubject([{ name: 'commonName', value: 'DR TESTE MEI:12345678000195' }]);
+    cert.setIssuer([{ name: 'commonName', value: 'DR TESTE MEI:12345678000195' }]);
+    cert.sign(keys.privateKey, forge.md.sha256.create());
+
+    const senha = 'senha-teste-123';
+    const p12Asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], senha);
+    const p12Buffer = Buffer.from(forge.asn1.toDer(p12Asn1).getBytes(), 'binary');
+
+    let queriesExecutadas: string[] = [];
+    const fakePool: any = {
+      async query(sql: string) {
+        queriesExecutadas.push(sql);
+        if (sql.includes('medico_perfil_fiscal') && sql.includes('select')) {
+          return {
+            rows: [
+              {
+                documento_limpo: '12345678000195',
+                inscricao_municipal: '123456',
+                razao_social: 'Dr Teste MEI',
+                uf: 'SP',
+                cod_municipio_ibge: '3550308',
+                serie_dps: '00001',
+                proximo_numero_dps: 20,
+                ambiente: 'producao',
+                opcao_simples_nacional: 'me_epp' // inicialmente cadastrado como me_epp
+              }
+            ]
+          };
+        }
+        if (sql.includes('notas_fiscais') && sql.includes('max(ndps)')) {
+          return { rows: [{ proximo: '1' }] };
+        }
+        if (sql.includes('pacientes')) {
+          return {
+            rows: [
+              {
+                cpf_limpo: '12345678909',
+                nome: 'Paciente Teste'
+              }
+            ]
+          };
+        }
+        if (sql.includes('medico_certificados')) {
+          return {
+            rows: [
+              {
+                id: 'cert-1',
+                medico_id: 'medico-1',
+                arquivo_storage_path: 'certificados/medico-1/cert.pfx',
+                senha_secret_id: 'sec-1',
+                valido_ate: '2027-01-01'
+              }
+            ]
+          };
+        }
+        if (sql.includes('vault.decrypted_secrets')) {
+          return { rows: [{ secret: senha }] };
+        }
+        return { rows: [] };
+      }
+    };
+
+    const fakeSupabase: any = {
+      storage: {
+        from() {
+          return {
+            async download() {
+              const u8 = new Uint8Array(p12Buffer);
+              return { data: { async arrayBuffer() { return u8.buffer; } }, error: null };
+            },
+            async upload() {
+              return { data: {}, error: null };
+            }
+          };
+        }
+      }
+    };
+
+    let chamadasTransmissor = 0;
+    const chaveOficialSefin = '35260912345678000195550010000000201234567890123456';
+    const fakeTransmissor = async () => {
+      chamadasTransmissor++;
+      if (chamadasTransmissor === 1) {
+        return {
+          status: 422,
+          corpo: JSON.stringify({
+            erros: [
+              {
+                Codigo: 'E0676',
+                Descricao:
+                  'Não é permitido o preenchimento das informações relativas aos tributos federais quando o emitente for identificado como MEI na data de competência informada na DPS.'
+              }
+            ]
+          })
+        };
+      }
+      return {
+        status: 200,
+        corpo: JSON.stringify({
+          chNFSe: chaveOficialSefin,
+          nNFSe: 201,
+          nProt: 'PROT-SEFIN-2026-2000'
+        })
+      };
+    };
+
+    const fakeSefinClient = new SefinNacionalClient(fakeTransmissor as any);
+    const service = new PostgresEmissorDpsService(
+      fakePool,
+      chaveCriptografia,
+      undefined,
+      undefined,
+      fakeSupabase,
+      fakeSefinClient
+    );
+
+    const resultado = await service.emitir(itemMock);
+    assert.equal(resultado.sucesso, true);
+    assert.equal(chamadasTransmissor, 2);
+    assert.equal(resultado.ndps, 20);
+    assert.equal(resultado.chaveAcesso, chaveOficialSefin);
+    assert.ok(
+      queriesExecutadas.some(
+        (q) => q.includes('update medico_perfil_fiscal') && q.includes("opcao_simples_nacional = 'mei'")
+      )
+    );
+  });
 });
