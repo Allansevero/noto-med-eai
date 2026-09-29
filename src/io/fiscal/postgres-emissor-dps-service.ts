@@ -88,6 +88,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       cClassTrib: item.cclassTrib || '000001'
     };
 
+    let ndpsAtual = ndps;
     const anoMes = new Date().toISOString().slice(0, 7);
     let chaveAcessoFinal = '';
     let respostaSefinRaw: Record<string, unknown> | undefined;
@@ -113,46 +114,67 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         };
       }
 
-      const { dpsId, xml: xmlDps } = gerarXmlDps(emissaoInput, prestadorConfig);
-      const xmlAssinado = assinarXmlDps({
-        xml: xmlDps,
-        dpsId,
-        pemKey: chaves.pemKey,
-        pemCert: chaves.pemCert,
-        certBase64: chaves.certBase64
-      });
+      let resSefinFinal: any;
+      const MAX_INCREMENTOS_SEQUENCIA = 5;
 
-      const resSefin = await this.sefinClient.transmitirDps({
-        xmlAssinado,
-        pfxBuffer: cert.pfxBuffer,
-        senhaCertificado: cert.senhaCertificado,
-        ambiente: prestadorConfig.ambiente
-      });
+      for (let seq = 0; seq <= MAX_INCREMENTOS_SEQUENCIA; seq++) {
+        emissaoInput.nDPS = String(ndpsAtual);
+        const { dpsId, xml: xmlDps } = gerarXmlDps(emissaoInput, prestadorConfig);
+        const xmlAssinado = assinarXmlDps({
+          xml: xmlDps,
+          dpsId,
+          pemKey: chaves.pemKey,
+          pemCert: chaves.pemCert,
+          certBase64: chaves.certBase64
+        });
 
-      if (!resSefin.sucesso) {
+        const resSefin = await this.sefinClient.transmitirDps({
+          xmlAssinado,
+          pfxBuffer: cert.pfxBuffer,
+          senhaCertificado: cert.senhaCertificado,
+          ambiente: prestadorConfig.ambiente
+        });
+
+        resSefinFinal = resSefin;
+
+        if (resSefin.sucesso) {
+          break;
+        }
+
         if (resSefin.codigoErro === 'E0014') {
+          console.warn(`[PostgresEmissorDpsService] DPS ${ndpsAtual} duplicada (E0014). Avançando para ${ndpsAtual + 1}...`);
+          ndpsAtual++;
           await this.pool.query(
             `update medico_perfil_fiscal
-             set proximo_numero_dps = greatest(coalesce(proximo_numero_dps, 1), $2 + 1),
+             set proximo_numero_dps = greatest(coalesce(proximo_numero_dps, 1), $2),
                  atualizado_em = now()
              where medico_id = $1`,
-            [item.medicoId, ndps]
+            [item.medicoId, ndpsAtual]
           );
+          if (seq < MAX_INCREMENTOS_SEQUENCIA) {
+            continue;
+          }
         }
+
+        break;
+      }
+
+      if (!resSefinFinal || !resSefinFinal.sucesso) {
         return {
           sucesso: false,
-          erro: resSefin.motivo,
-          codigoErroSefin: resSefin.codigoErro,
-          respostaSefinRaw: resSefin.respostaRaw
+          erro: resSefinFinal?.motivo || 'Erro na transmissão à SEFIN',
+          codigoErroSefin: resSefinFinal?.codigoErro,
+          respostaSefinRaw: resSefinFinal?.respostaRaw
         };
       }
 
-      chaveAcessoFinal = resSefin.chaveAcesso;
-      respostaSefinRaw = resSefin.respostaRaw;
-      xmlAutorizadoFinal = resSefin.xmlAutorizado;
-      dataEmissaoFinal = resSefin.dataAutorizacao;
+      chaveAcessoFinal = resSefinFinal.chaveAcesso;
+      respostaSefinRaw = resSefinFinal.respostaRaw;
+      xmlAutorizadoFinal = resSefinFinal.xmlAutorizado;
+      dataEmissaoFinal = resSefinFinal.dataAutorizacao;
     } else {
       // Modo de simulação local (quando executado sem credenciais do Supabase/SEFIN)
+      emissaoInput.nDPS = String(ndpsAtual);
       const layoutDps = montarDps(emissaoInput, prestadorConfig);
       chaveAcessoFinal = comporChaveAcessoNacional({
         codIbgeMunicipio: prestadorConfig.codMunicipio,
@@ -160,7 +182,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         anoMes,
         cnpjOuCpf: prestadorConfig.cnpj,
         serie: prestadorConfig.serie || '00001',
-        ndps
+        ndps: ndpsAtual
       });
       respostaSefinRaw = { layoutDps };
     }
@@ -171,7 +193,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
     const dadosDanfse = {
       chaveAcesso: chaveAcessoFinal,
-      numero: String(ndps),
+      numero: String(ndpsAtual),
       serie: prestadorConfig.serie || '00001',
       competencia: anoMes,
       dataEmissao: dataEmissaoFinal.toISOString(),
@@ -216,7 +238,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       try {
         const xmlString = xmlAutorizadoFinal || montarXmlNfse({
           chaveAcesso: chaveAcessoFinal,
-          numero: String(ndps),
+          numero: String(ndpsAtual),
           serie: prestadorConfig.serie || '00001',
           competencia: anoMes,
           dataEmissao: dadosDanfse.dataEmissao,
@@ -258,7 +280,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     return {
       sucesso: true,
       chaveAcesso: chaveAcessoFinal,
-      ndps,
+      ndps: ndpsAtual,
       serie: prestadorConfig.serie || '00001',
       competencia: anoMes,
       dataEmissao: dataEmissaoFinal,

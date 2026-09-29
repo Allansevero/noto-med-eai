@@ -15,7 +15,7 @@ import { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
 import { createClient } from '@supabase/supabase-js';
 import { SefinNacionalClient } from '../io/fiscal/sefin-nacional-client.js';
 import { processarItemFila } from './processar-item-fila.js';
-import type { NotificadorAlertas } from './notificar-erro-medico.js';
+import { formatarMensagemErroMedico, type NotificadorAlertas } from './notificar-erro-medico.js';
 
 export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
   const workerId = `embedded-${process.pid}-${randomUUID().slice(0, 6)}`;
@@ -45,8 +45,12 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
 
   const notificadorAlertas: NotificadorAlertas = {
     async notificarMedicoWhatsApp(params) {
-      const texto = `⚠️ Aviso de Emissão: Não foi possível emitir a NFS-e. Motivo: ${params.motivoErro}`;
-      await evolutionClient.enviar({ telefone: params.telefoneMedico, codigo: texto });
+      const texto = formatarMensagemErroMedico(params);
+      await evolutionClient.enviarTexto({
+        instanciaNome: config.evolutionOfficialInstanceName,
+        contatoTelefone: params.telefoneMedico,
+        texto
+      });
     },
     async notificarDesenvolvedorEmail(params) {
       if (config.resendApiKey && config.devEmailAlerta) {

@@ -725,6 +725,14 @@
               <span class="param-label">Alíquota ISS</span>
               <span class="param-val" id="txtAliquota">—</span>
             </div>
+            <div class="param-item">
+              <span class="param-label">Série da DPS</span>
+              <input type="text" id="inputSerieDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" value="900" />
+            </div>
+            <div class="param-item">
+              <span class="param-label">Próximo Número da DPS</span>
+              <input type="number" id="inputProximoNumeroDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" min="1" value="1" />
+            </div>
           </div>
 
           <button type="button" class="btn-action" id="btnConfirmarFiscal">
@@ -1289,6 +1297,12 @@
       document.getElementById('txtAliquota').textContent = (perfil.aliquotaIss !== null && perfil.aliquotaIss !== undefined)
         ? `${perfil.aliquotaIss}%`
         : 'Não especificada';
+      if (document.getElementById('inputSerieDps')) {
+        document.getElementById('inputSerieDps').value = perfil.serieDps || '900';
+      }
+      if (document.getElementById('inputProximoNumeroDps')) {
+        document.getElementById('inputProximoNumeroDps').value = perfil.proximoNumeroDps || 1;
+      }
       document.getElementById('dropZoneXml').classList.add('hidden');
       document.getElementById('previewFiscal').classList.remove('hidden');
     }
@@ -1296,11 +1310,13 @@
     document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
       hideAlert(alertOnboarding);
       const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      const serieDps = document.getElementById('inputSerieDps')?.value?.trim() || '900';
+      const proximoNumeroDps = parseInt(document.getElementById('inputProximoNumeroDps')?.value || '1', 10);
       try {
         const res = await fetch('/api/onboarding/confirmar-fiscal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId })
+          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps })
         });
         const data = await res.json();
         if (data.ok) {
