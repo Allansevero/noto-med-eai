@@ -10,6 +10,9 @@ describe('conectarInstanciaWhatsappMedico', () => {
     const mockPool = {
       query: async (sql: string, values: any[]) => {
         executedQueries.push({ sql, values });
+        if (sql.includes('select u.telefone')) {
+          return { rows: [{ telefone: '51999998888' }] };
+        }
         return { rows: [{ id: 'inst-123' }] };
       }
     } as any;
@@ -20,7 +23,10 @@ describe('conectarInstanciaWhatsappMedico', () => {
         body: init?.body ? JSON.parse(String(init.body)) : undefined
       });
       if (String(url).includes('/instance/create')) {
-        return new Response(JSON.stringify({ qrcode: { base64: 'abc' } }), { status: 201 });
+        return new Response(JSON.stringify({}), { status: 201 });
+      }
+      if (String(url).includes('/instance/connect/')) {
+        return new Response(JSON.stringify({ pairingCode: 'ABCD-EFGH' }), { status: 200 });
       }
       if (String(url).includes('/settings/find/')) {
         return new Response(JSON.stringify({
@@ -46,12 +52,18 @@ describe('conectarInstanciaWhatsappMedico', () => {
       });
 
       assert.equal(res.ok, true);
+      assert.equal(res.pairingCode, 'ABCD-EFGH');
+      assert.equal(res.qrcodeBase64, null);
       assert.ok(res.nomeInstancia.startsWith('medico_'));
-      assert.equal(executedQueries.length, 1);
-      assert.ok(executedQueries[0].sql.includes('whatsapp_instancias'));
+      assert.ok(executedQueries.some(({ sql }) => sql.includes('whatsapp_instancias')));
 
       const criacao = chamadas.find((c) => c.url.includes('/instance/create'));
       assert.equal(criacao?.body.syncFullHistory, true);
+      assert.equal(criacao?.body.qrcode, false);
+      assert.equal(criacao?.body.number, '5551999998888');
+
+      const conexao = chamadas.find((c) => c.url.includes('/instance/connect/'));
+      assert.ok(conexao?.url.includes('number=5551999998888'));
 
       const configuracao = chamadas.find((c) => c.url.includes('/settings/set/'));
       assert.equal(configuracao?.body.syncFullHistory, true);

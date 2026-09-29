@@ -786,8 +786,11 @@
         </div>
 
         <div id="boxPairingCode" class="hidden" style="width: 100%; text-align: center;">
-          <p style="font-size: 13px; color: var(--text-secondary);">Ou digite o código de pareamento no celular:</p>
+          <p style="font-size: 13px; color: var(--text-secondary);">Digite este código de pareamento no WhatsApp:</p>
           <div class="pairing-code" id="txtPairingCode">----</div>
+          <p style="font-size: 13px; color: var(--text-muted); text-align: center;">
+            WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho &gt; Conectar com número de telefone
+          </p>
         </div>
 
         <button type="button" class="btn-action" id="btnIniciarWhatsapp">
@@ -1398,9 +1401,9 @@
       }
     }
 
-    let segundosDesdeUltimoQr = 0;
+    let segundosDesdeUltimaConexao = 0;
 
-    async function atualizarQrCode(medicoId) {
+    async function atualizarCodigoConexao(medicoId) {
       try {
         const res = await fetch('/api/onboarding/whatsapp/iniciar', {
           method: 'POST',
@@ -1408,7 +1411,11 @@
           body: JSON.stringify({ medicoId })
         });
         const data = await res.json();
-        if (data.ok && data.qrcodeBase64) {
+        if (data.ok && data.pairingCode) {
+          document.getElementById('txtPairingCode').textContent = data.pairingCode;
+          document.getElementById('boxPairingCode').classList.remove('hidden');
+          document.getElementById('boxQrCode').classList.add('hidden');
+        } else if (data.ok && data.qrcodeBase64) {
           document.getElementById('imgQrCode').src = data.qrcodeBase64;
         }
       } catch {}
@@ -1416,13 +1423,13 @@
 
     function iniciarPollingConexao(medicoId) {
       pararPollingConexao();
-      segundosDesdeUltimoQr = 0;
+      segundosDesdeUltimaConexao = 0;
       pollingConexaoId = setInterval(async () => {
         await verificarStatusWhatsapp(medicoId);
-        segundosDesdeUltimoQr += 2.5;
-        if (segundosDesdeUltimoQr >= 25) {
-          segundosDesdeUltimoQr = 0;
-          await atualizarQrCode(medicoId);
+        segundosDesdeUltimaConexao += 2.5;
+        if (segundosDesdeUltimaConexao >= 25) {
+          segundosDesdeUltimaConexao = 0;
+          await atualizarCodigoConexao(medicoId);
         }
       }, 2500);
     }
@@ -1463,15 +1470,6 @@
           return;
         }
 
-        if (data.qrcodeBase64) {
-          document.getElementById('imgQrCode').src = data.qrcodeBase64;
-          document.getElementById('boxQrCode').classList.remove('hidden');
-          if (btnTxt) btnTxt.textContent = 'Recarregar QR Code';
-          showAlert('Aponte a câmera do WhatsApp para o QR Code!', false, alertOnboarding);
-          iniciarPollingConexao(medicoId);
-          return;
-        }
-
         if (data.pairingCode) {
           document.getElementById('txtPairingCode').textContent = data.pairingCode;
           document.getElementById('boxPairingCode').classList.remove('hidden');
@@ -1481,8 +1479,17 @@
           return;
         }
 
-        showAlert('Instância pronta na Evolution. Clique em Recarregar QR Code.', false, alertOnboarding);
-        if (btnTxt) btnTxt.textContent = 'Recarregar QR Code';
+        if (data.qrcodeBase64) {
+          document.getElementById('imgQrCode').src = data.qrcodeBase64;
+          document.getElementById('boxQrCode').classList.remove('hidden');
+          if (btnTxt) btnTxt.textContent = 'Recarregar QR Code';
+          showAlert('Aponte a câmera do WhatsApp para o QR Code!', false, alertOnboarding);
+          iniciarPollingConexao(medicoId);
+          return;
+        }
+
+        showAlert('Instância pronta na Evolution. Clique para gerar um novo código.', false, alertOnboarding);
+        if (btnTxt) btnTxt.textContent = 'Gerar novo código';
       } catch (err) {
         document.getElementById('loadingQr').classList.add('hidden');
         btn.disabled = false;

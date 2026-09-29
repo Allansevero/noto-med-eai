@@ -24,13 +24,35 @@ export type ResultadoConexaoWhatsapp = {
   pairingCode?: string | null;
 };
 
+function formatarTelefonePareamento(telefone?: string): string | undefined {
+  const digitos = telefone?.replace(/\D/g, '') || '';
+  if (!digitos) return undefined;
+  if ((digitos.length === 10 || digitos.length === 11) && !digitos.startsWith('55')) {
+    return `55${digitos}`;
+  }
+  return digitos;
+}
+
 export async function conectarInstanciaWhatsappMedico(
   pool: pg.Pool,
   input: IniciarConexaoWhatsappInput
 ): Promise<ResultadoConexaoWhatsapp> {
-  const { medicoId, telefoneConsultorio, evolutionUrl, evolutionApiKey, appWebhookUrl, webhookSecret } = input;
+  const { medicoId, evolutionUrl, evolutionApiKey, appWebhookUrl, webhookSecret } = input;
   const baseUrl = evolutionUrl.replace(/\/+$/, '');
   const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
+  let telefonePareamento = formatarTelefonePareamento(input.telefoneConsultorio);
+
+  if (!telefonePareamento) {
+    const telefoneSalvo = await pool.query(
+      `select u.telefone
+       from medicos m
+       join usuarios u on u.id = m.usuario_id
+       where m.id = $1
+       limit 1`,
+      [medicoId]
+    );
+    telefonePareamento = formatarTelefonePareamento(telefoneSalvo.rows[0]?.telefone);
+  }
 
   let qrcodeBase64: string | null = null;
   let pairingCode: string | null = null;
@@ -42,11 +64,11 @@ export async function conectarInstanciaWhatsappMedico(
     const bodyCreate: Record<string, any> = {
       instanceName: nomeInstancia,
       integration: 'WHATSAPP-BAILEYS',
-      qrcode: true,
+      qrcode: !telefonePareamento,
       syncFullHistory: true
     };
-    if (telefoneConsultorio) {
-      bodyCreate.number = telefoneConsultorio.replace(/\D/g, '');
+    if (telefonePareamento) {
+      bodyCreate.number = telefonePareamento;
     }
 
     const resCreate = await fetch(`${baseUrl}/instance/create`, {
@@ -85,11 +107,12 @@ export async function conectarInstanciaWhatsappMedico(
     throw new Error(`Não foi possível ativar a sincronização de histórico da instância ${nomeInstancia}`);
   }
 
-  // 2. Se não veio QR code no create, solicita pelo /instance/connect
-  if (!qrcodeBase64 && !pairingCode) {
+  // 2. Com telefone cadastrado, solicita explicitamente o codigo de pareamento.
+  // Sem telefone, preserva o QR Code como alternativa.
+  if ((telefonePareamento && !pairingCode) || (!telefonePareamento && !qrcodeBase64 && !pairingCode)) {
     try {
-      const urlConnect = telefoneConsultorio
-        ? `${baseUrl}/instance/connect/${nomeInstancia}?number=${telefoneConsultorio.replace(/\D/g, '')}`
+      const urlConnect = telefonePareamento
+        ? `${baseUrl}/instance/connect/${nomeInstancia}?number=${telefonePareamento}`
         : `${baseUrl}/instance/connect/${nomeInstancia}`;
 
       const resConnect = await fetch(urlConnect, {
@@ -97,8 +120,8 @@ export async function conectarInstanciaWhatsappMedico(
         headers: { apikey: evolutionApiKey }
       });
       const dataConnect = await resConnect.json().catch(() => ({}));
-      qrcodeBase64 = dataConnect.base64 || dataConnect.qrcode?.base64 || null;
       pairingCode = dataConnect.pairingCode || null;
+      qrcodeBase64 = pairingCode ? null : (dataConnect.base64 || dataConnect.qrcode?.base64 || qrcodeBase64);
       if (dataConnect.instance?.state === 'open') {
         status = 'open';
       }
