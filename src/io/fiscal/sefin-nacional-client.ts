@@ -108,11 +108,17 @@ export class SefinNacionalClient {
 
     // 1. Tratamento de Rejeição e Erros retornados pela SEFIN
     if (status >= 400 || json['erros'] || json['mensagens']) {
-      const erros = (json['erros'] || json['mensagens'] || []) as Array<{ codigo?: string; descricao?: string; mensagem?: string }>;
+      const erros = (json['erros'] || json['mensagens'] || []) as Array<{
+        codigo?: string; descricao?: string; mensagem?: string;
+        Codigo?: string; Descricao?: string; Mensagem?: string; Complemento?: string;
+      }>;
       if (Array.isArray(erros) && erros.length > 0) {
         const primeiro = erros[0];
-        const cod = primeiro.codigo || 'SEFIN_ERR';
-        const msg = primeiro.descricao || primeiro.mensagem || JSON.stringify(primeiro);
+        const cod = primeiro.codigo || primeiro.Codigo || 'SEFIN_ERR';
+        const descricao = primeiro.descricao || primeiro.Descricao || primeiro.mensagem || primeiro.Mensagem;
+        const msg = descricao
+          ? `${descricao}${primeiro.Complemento ? ` ${primeiro.Complemento}` : ''}`
+          : JSON.stringify(primeiro);
         return {
           sucesso: false,
           codigoErro: cod,

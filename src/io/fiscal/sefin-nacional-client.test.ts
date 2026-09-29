@@ -59,7 +59,7 @@ describe('SefinNacionalClient', () => {
         status: 422,
         corpo: JSON.stringify({
           erros: [
-            { codigo: 'E0116', descricao: 'Inscrição Municipal não cadastrada no município de incidência' }
+            { Codigo: 'E0116', Descricao: 'Inscrição Municipal não cadastrada no município de incidência' }
           ]
         })
       };
