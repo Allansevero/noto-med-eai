@@ -85,6 +85,18 @@ export async function processarMensagemWebhook(
   const medicoId = instancia.medicoId || medico?.id || null;
 
   const conversa = await deps.repositorio.buscarOuCriarConversa(instancia.id, medicoId, telefone);
+  if (conversa.medicoId) {
+    const paciente = await deps.repositorio.criarPacienteMinimo({
+      medicoId: conversa.medicoId,
+      telefone,
+      nome: payload.data.key.fromMe ? null : payload.data.pushName?.trim() || null,
+      origemCadastro: 'conversa_whatsapp'
+    });
+    if (conversa.pacienteId !== paciente.id) {
+      await deps.repositorio.vincularPacienteConversa(conversa.id, paciente.id);
+      conversa.pacienteId = paciente.id;
+    }
+  }
   return rotearMensagem(conversa, texto, payload, deps, telefone);
 }
 

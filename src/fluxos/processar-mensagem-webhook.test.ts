@@ -47,6 +47,14 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     return this.pacientes.find((p) => p.medicoId === medicoId && p.telefone === telefone) ?? null;
   }
   async criarPacienteMinimo(params: any): Promise<PacienteRegistro> {
+    const existente = this.pacientes.find(
+      (p) => p.medicoId === params.medicoId && p.telefone === params.telefone
+    );
+    if (existente) {
+      existente.nome = params.nome ?? existente.nome;
+      existente.cpfHash = params.cpfHash ?? existente.cpfHash;
+      return existente;
+    }
     const pac: PacienteRegistro = {
       id: `pac-${this.pacientes.length + 1}`,
       medicoId: params.medicoId,
@@ -187,6 +195,7 @@ describe('processarMensagemWebhook', () => {
               fromMe: false,
               id: 'HIST-1'
             },
+            pushName: 'Maria da Silva',
             message: { conversation: 'Boa tarde, seguem meus dados.' }
           },
           {
@@ -211,6 +220,37 @@ describe('processarMensagemWebhook', () => {
     assert.strictEqual(repo.pacientes.length, 1);
     assert.strictEqual(repo.conversas[0].pacienteId, repo.pacientes[0].id);
     assert.ok(repo.pacientes[0].cpfHash);
+    assert.strictEqual(repo.pacientes[0].nome, 'Maria da Silva');
+  });
+
+  it('deve cadastrar e vincular contato de mensagem comum mesmo sem CPF', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.instancias.push({
+      id: 'inst-1',
+      medicoId: 'med-1',
+      nomeInstancia: 'consultorio_dr_joao',
+      oficial: false
+    });
+
+    const res = await processarMensagemWebhook({
+      event: 'messages.upsert',
+      instance: 'consultorio_dr_joao',
+      data: {
+        key: {
+          remoteJid: '5511988887777@s.whatsapp.net',
+          fromMe: false,
+          id: 'MSG-CONTATO'
+        },
+        pushName: 'Ana Souza',
+        message: { conversation: 'Gostaria de marcar uma consulta.' }
+      }
+    }, segredo, criarDeps(repo));
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) assert.strictEqual(res.acao, 'descartada');
+    assert.strictEqual(repo.pacientes.length, 1);
+    assert.strictEqual(repo.pacientes[0].nome, 'Ana Souza');
+    assert.strictEqual(repo.conversas[0].pacienteId, repo.pacientes[0].id);
   });
 
   it('deve rotear comando /agendado disparado pelo médico (fromMe: true)', async () => {

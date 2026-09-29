@@ -43,13 +43,18 @@ export async function processarHistoricoWebhook(
   const mensagensPorTelefone = agruparMensagensPorTelefone(payload.mensagens);
   let pacientesVinculados = 0;
 
-  for (const [telefone, mensagens] of mensagensPorTelefone) {
+  for (const [telefone, historico] of mensagensPorTelefone) {
     const conversa = await deps.repositorio.buscarOuCriarConversa(
       instancia.id,
       instancia.medicoId,
       telefone
     );
-    const resultado = await sincronizarHistoricoConversa(conversa, mensagens, deps);
+    const resultado = await sincronizarHistoricoConversa(
+      conversa,
+      historico.mensagens,
+      deps,
+      historico.nomeContato
+    );
     if (resultado.pacienteVinculado) pacientesVinculados += 1;
   }
 
@@ -64,19 +69,22 @@ export async function processarHistoricoWebhook(
 
 function agruparMensagensPorTelefone(
   mensagens: DadosMensagemEvolution[]
-): Map<string, string[]> {
-  const agrupadas = new Map<string, string[]>();
+): Map<string, { mensagens: string[]; nomeContato: string | null }> {
+  const agrupadas = new Map<string, { mensagens: string[]; nomeContato: string | null }>();
 
   for (const mensagem of mensagens) {
     const telefone =
       extrairTelefoneJid(mensagem.key.remoteJidAlt) ||
       extrairTelefoneJid(mensagem.key.remoteJid);
-    const texto = extrairTextoMensagem(mensagem);
-    if (!telefone || !texto) continue;
+    if (!telefone) continue;
 
-    const textos = agrupadas.get(telefone) ?? [];
-    textos.push(texto);
-    agrupadas.set(telefone, textos);
+    const atual = agrupadas.get(telefone) ?? { mensagens: [], nomeContato: null };
+    const texto = extrairTextoMensagem(mensagem);
+    if (texto) atual.mensagens.push(texto);
+    if (!mensagem.key.fromMe && mensagem.pushName?.trim()) {
+      atual.nomeContato = mensagem.pushName.trim();
+    }
+    agrupadas.set(telefone, atual);
   }
 
   return agrupadas;

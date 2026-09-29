@@ -61,7 +61,7 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
 describe('sincronizarHistoricoConversa', () => {
   const pepper = 'pepper-onboarding-teste';
 
-  it('deve manter conversa sem paciente quando não encontrar CPF nas mensagens antigas', async () => {
+  it('deve criar e vincular paciente pelo contato mesmo sem CPF nas mensagens antigas', async () => {
     const repo = new AtendimentoRepositorioMemoria();
     const conversa: ConversaRegistro = {
       id: 'conv-1',
@@ -85,9 +85,10 @@ describe('sincronizarHistoricoConversa', () => {
     });
 
     assert.strictEqual(res.ok, true);
-    assert.strictEqual(res.pacienteVinculado, false);
-    assert.strictEqual(conversa.pacienteId, null);
-    assert.strictEqual(repo.pacientes.length, 0);
+    assert.strictEqual(res.pacienteVinculado, true);
+    assert.strictEqual(conversa.pacienteId, repo.pacientes[0].id);
+    assert.strictEqual(repo.pacientes.length, 1);
+    assert.strictEqual(repo.pacientes[0].telefone, '5511999998888');
   });
 
   it('deve extrair CPF do histórico, consultar dados e vincular paciente preenchido', async () => {

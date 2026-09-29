@@ -34,6 +34,7 @@ import { StripeService } from './billing/stripe-service.js';
 import { processarWebhookStripe } from './billing/processar-webhook-stripe.js';
 import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
+import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -153,6 +154,21 @@ export function criarAppExpress() {
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const status = await consultarStatusOnboarding(pool, medicoId);
+      if (status.passos.passo4WhatsappConectado) {
+        const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
+        void sincronizarHistoricoEvolutionUmaVez({
+          baseUrl: config.evolutionApiUrl,
+          apiKey: config.evolutionGlobalApiKey,
+          nomeInstancia,
+          repositorio: atendimentoRepo,
+          consultaCpfProvider: hubCpfClient,
+          pepper: config.appPepper
+        }).then((resultado) => {
+          console.info('[Evolution] Histórico sincronizado:', resultado);
+        }).catch((erro: any) => {
+          console.warn('[Evolution] Histórico ainda indisponível:', erro?.message || erro);
+        });
+      }
       return res.json({ ok: true, status, medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status' });
