@@ -722,8 +722,12 @@
               <span class="param-val" id="txtEspecialidade">—</span>
             </div>
             <div class="param-item">
-              <span class="param-label">Alíquota ISS</span>
-              <span class="param-val" id="txtAliquota">—</span>
+              <span class="param-label">Regime Tributário</span>
+              <select id="selectOpcaoSimples" style="width: 175px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="mei" style="background: #1B2831; color: #fff;">MEI</option>
+                <option value="me_epp" style="background: #1B2831; color: #fff;">ME / EPP (Simples)</option>
+                <option value="nao_optante" style="background: #1B2831; color: #fff;">Não optante / Outro</option>
+              </select>
             </div>
             <div class="param-item">
               <span class="param-label">Série da DPS</span>
@@ -1281,9 +1285,9 @@
       document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
       document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
       document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
-      document.getElementById('txtAliquota').textContent = (s.aliquotaIss !== null && s.aliquotaIss !== undefined)
-        ? `${s.aliquotaIss}%`
-        : 'Não especificada';
+      if (document.getElementById('selectOpcaoSimples')) {
+        document.getElementById('selectOpcaoSimples').value = p.opcaoSimplesNacional || 'me_epp';
+      }
       document.getElementById('dropZoneXml').classList.add('hidden');
       document.getElementById('previewFiscal').classList.remove('hidden');
     }
@@ -1294,9 +1298,9 @@
       document.getElementById('txtIm').textContent = perfil.inscricaoMunicipal || '—';
       document.getElementById('txtMunUf').textContent = `${perfil.codMunicipioIbge || '—'} (${perfil.uf || '—'})`;
       document.getElementById('txtEspecialidade').textContent = perfil.especialidade || 'A definir na confirmação';
-      document.getElementById('txtAliquota').textContent = (perfil.aliquotaIss !== null && perfil.aliquotaIss !== undefined)
-        ? `${perfil.aliquotaIss}%`
-        : 'Não especificada';
+      if (document.getElementById('selectOpcaoSimples')) {
+        document.getElementById('selectOpcaoSimples').value = perfil.opcaoSimplesNacional || 'me_epp';
+      }
       if (document.getElementById('inputSerieDps')) {
         document.getElementById('inputSerieDps').value = perfil.serieDps || '900';
       }
@@ -1312,11 +1316,12 @@
       const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
       const serieDps = document.getElementById('inputSerieDps')?.value?.trim() || '900';
       const proximoNumeroDps = parseInt(document.getElementById('inputProximoNumeroDps')?.value || '1', 10);
+      const opcaoSimplesNacional = document.getElementById('selectOpcaoSimples')?.value || undefined;
       try {
         const res = await fetch('/api/onboarding/confirmar-fiscal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps })
+          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps, opcaoSimplesNacional })
         });
         const data = await res.json();
         if (data.ok) {

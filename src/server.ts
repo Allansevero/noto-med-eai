@@ -232,7 +232,15 @@ export function criarAppExpress() {
   // Passo 3: Confirmacao dos parametros fiscais encontrados
   app.post('/api/onboarding/confirmar-fiscal', async (req: Request, res: Response) => {
     try {
-      const { medicoId: medicoIdRaw, razaoSocial, especialidade, aliquotaIss, serieDps, proximoNumeroDps } = req.body || {};
+      const {
+        medicoId: medicoIdRaw,
+        razaoSocial,
+        especialidade,
+        aliquotaIss,
+        serieDps,
+        proximoNumeroDps,
+        opcaoSimplesNacional
+      } = req.body || {};
       if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
@@ -243,7 +251,8 @@ export function criarAppExpress() {
         especialidade,
         aliquotaIss: aliquotaIss !== undefined ? Number(aliquotaIss) : undefined,
         serieDps,
-        proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined
+        proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined,
+        opcaoSimplesNacional
       });
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {

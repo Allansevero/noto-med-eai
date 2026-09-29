@@ -26,6 +26,7 @@ export type StatusOnboardingMedico = {
     codMunicipioIbge: string | null;
     serieDps: string;
     proximoNumeroDps: number;
+    opcaoSimplesNacional?: 'nao_optante' | 'mei' | 'me_epp';
     extraidoAutomaticamente: boolean;
     confirmadoPeloMedico: boolean;
     especialidade: string | null;
@@ -50,6 +51,7 @@ export async function consultarStatusOnboarding(
       pf.cod_municipio_ibge,
       pf.serie_dps,
       pf.proximo_numero_dps,
+      pf.opcao_simples_nacional,
       pf.extraido_automaticamente,
       pf.confirmado_pelo_medico,
       msf.aliquota_iss,
@@ -98,6 +100,7 @@ export async function consultarStatusOnboarding(
       codMunicipioIbge: r.cod_municipio_ibge,
       serieDps: r.serie_dps || '00001',
       proximoNumeroDps: r.proximo_numero_dps || 1,
+      opcaoSimplesNacional: r.opcao_simples_nacional || 'me_epp',
       extraidoAutomaticamente: r.extraido_automaticamente,
       confirmadoPeloMedico: r.confirmado_pelo_medico,
       especialidade: r.especialidade,
