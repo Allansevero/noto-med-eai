@@ -117,6 +117,13 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         where id = $1
       `;
       await client.query(sqlAtualizaSolicitacao, [params.solicitacaoId]);
+      await client.query(
+        `update medico_perfil_fiscal
+         set proximo_numero_dps = greatest(coalesce(proximo_numero_dps, 1), $2 + 1),
+             atualizado_em = now()
+         where medico_id = $1`,
+        [params.medicoId, params.ndps]
+      );
       await client.query('commit');
     } catch (err) {
       await client.query('rollback');

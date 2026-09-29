@@ -155,6 +155,7 @@ describe('PostgresEmissorDpsService', () => {
                 uf: 'SP',
                 cod_municipio_ibge: '3550308',
                 serie_dps: '00001',
+                proximo_numero_dps: 12,
                 ambiente: 'producao',
                 opcao_simples_nacional: 'me_epp'
               }
@@ -234,7 +235,7 @@ describe('PostgresEmissorDpsService', () => {
     const resultado = await service.emitir(itemMock);
     assert.equal(resultado.sucesso, true);
     assert.equal(resultado.chaveAcesso, chaveOficialSefin);
-    assert.equal(resultado.ndps, 10);
+    assert.equal(resultado.ndps, 12);
     assert.ok(xmlSalvoNoStorage.includes('Signature'));
   });
 });

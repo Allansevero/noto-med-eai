@@ -30,6 +30,7 @@ export type ConfigPrestadorCompleto = ConfigPrestador & {
   uf: string;
   email?: string;
   telefone?: string;
+  proximoNumeroDps?: number;
 };
 
 export class PostgresEmissorDpsService implements EmissorDpsService {
@@ -71,7 +72,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       }
     }
 
-    const ndps = await this.obterProximoNdps(item.medicoId);
+    const ndps = await this.obterProximoNdps(item.medicoId, prestadorConfig.proximoNumeroDps);
     const emissaoInput: EmissaoInput = {
       nDPS: String(ndps),
       tomador: {
@@ -270,6 +271,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         pf.uf,
         pf.cod_municipio_ibge,
         pf.serie_dps,
+        pf.proximo_numero_dps,
         pf.ambiente,
         pf.opcao_simples_nacional,
         pf.regime_apuracao_sn,
@@ -301,6 +303,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       uf: r.uf || 'RS',
       email: r.email,
       telefone: r.telefone,
+      proximoNumeroDps: r.proximo_numero_dps ? Number(r.proximo_numero_dps) : undefined,
       regTrib: {
         opSimpNac: opSimpNacMap[r.opcao_simples_nacional] || 3,
         regApTribSN: regApMap[r.regime_apuracao_sn] || 1,
@@ -353,9 +356,10 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     };
   }
 
-  private async obterProximoNdps(medicoId: string): Promise<number> {
+  private async obterProximoNdps(medicoId: string, numeroConfigurado?: number): Promise<number> {
     const sql = `select coalesce(max(ndps), 0) + 1 as proximo from notas_fiscais where medico_id = $1`;
     const { rows } = await this.pool.query(sql, [medicoId]);
-    return Number.parseInt(rows[0].proximo, 10);
+    const proximoLocal = Number.parseInt(rows[0].proximo, 10);
+    return Math.max(proximoLocal, numeroConfigurado || 1);
   }
 }
