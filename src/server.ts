@@ -82,6 +82,16 @@ export function criarAppExpress() {
       })
     : undefined;
 
+  const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
+    sincronizarHistoricoEvolutionUmaVez({
+      baseUrl: config.evolutionApiUrl,
+      apiKey: config.evolutionGlobalApiKey,
+      nomeInstancia,
+      repositorio: atendimentoRepo,
+      consultaCpfProvider: hubCpfClient,
+      pepper: config.appPepper
+    });
+
   // Healthcheck para o Easypanel
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -156,14 +166,7 @@ export function criarAppExpress() {
       const status = await consultarStatusOnboarding(pool, medicoId);
       if (status.passos.passo4WhatsappConectado) {
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
-        void sincronizarHistoricoEvolutionUmaVez({
-          baseUrl: config.evolutionApiUrl,
-          apiKey: config.evolutionGlobalApiKey,
-          nomeInstancia,
-          repositorio: atendimentoRepo,
-          consultaCpfProvider: hubCpfClient,
-          pepper: config.appPepper
-        }).then((resultado) => {
+        void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
           console.info('[Evolution] Histórico sincronizado:', resultado);
         }).catch((erro: any) => {
           console.warn('[Evolution] Histórico ainda indisponível:', erro?.message || erro);
@@ -594,6 +597,27 @@ export function criarAppExpress() {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status de faturamento' });
     }
   });
+
+  if (process.env['NODE_ENV'] !== 'test') {
+    setTimeout(() => {
+      void pool.query(
+        `select nome_instancia
+         from whatsapp_instancias
+         where status = 'conectado' and oficial = false`
+      ).then(async ({ rows }) => {
+        for (const row of rows) {
+          try {
+            const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
+            console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
+          } catch (erro: any) {
+            console.warn('[Evolution] Histórico não recuperado ao iniciar:', erro?.message || erro);
+          }
+        }
+      }).catch((erro: any) => {
+        console.warn('[Evolution] Falha ao listar instâncias para histórico:', erro?.message || erro);
+      });
+    }, 5_000);
+  }
 
   return app;
 }
