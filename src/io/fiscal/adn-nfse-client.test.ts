@@ -39,7 +39,8 @@ describe('AdnNfseClient', () => {
     const resultado = await new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento);
 
     assert.equal(urls.length, 2);
-    assert.ok(urls[1].includes('/DFe/70?lote=true'));
+    assert.ok(urls[0].includes('/DFe/0?lote=true&cnpjConsulta=12345678000195'));
+    assert.ok(urls[1].includes('/DFe/70?lote=true&cnpjConsulta=12345678000195'));
     assert.equal(resultado.documento.nsu, 120);
     assert.equal(resultado.documento.chaveAcesso, 'chave-99');
     assert.equal(resultado.documento.xml, xmlRecente);
@@ -53,8 +54,44 @@ describe('AdnNfseClient', () => {
 
     await assert.rejects(
       () => new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento),
-      /Nenhuma NFS-e emitida/
+      /ADN não retornou documentos fiscais/
     );
+  });
+
+  it('deve explicar quando o ADN devolver NFS-e apenas de outro emitente', async () => {
+    const transmissor = async () => ({
+      status: 200,
+      corpo: JSON.stringify({
+        StatusProcessamento: 'DOCUMENTOS_LOCALIZADOS',
+        MaxNSU: 1,
+        LoteDFe: [{
+          NSU: 1,
+          ArquivoXml: Buffer.from('<NFSe><infNFSe><emit><CNPJ>11222333000181</CNPJ></emit></infNFSe></NFSe>').toString('base64')
+        }]
+      })
+    });
+
+    await assert.rejects(
+      () => new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento),
+      /retornou 1 NFS-e\(s\), mas nenhuma foi emitida/
+    );
+  });
+
+  it('nao deve enviar cnpjConsulta quando o titular for CPF', async () => {
+    let urlConsultada = '';
+    const transmissor = async (url: string) => {
+      urlConsultada = url;
+      return {
+        status: 200,
+        corpo: JSON.stringify({ StatusProcessamento: 'NENHUM_DOCUMENTO_LOCALIZADO', MaxNSU: 0, LoteDFe: [] })
+      };
+    };
+
+    await assert.rejects(
+      () => new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', '12345678901'),
+      /ADN não retornou/
+    );
+    assert.equal(urlConsultada.includes('cnpjConsulta'), false);
   });
 
   it('deve ignorar nota recebida como tomador e usar apenas nota emitida pelo titular', async () => {

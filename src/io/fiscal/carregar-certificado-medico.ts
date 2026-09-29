@@ -56,21 +56,7 @@ export async function carregarCertificadoMedico(
   }
 
   if (!senhaCertificado) {
-    try {
-      const resDirect = await pool.query(
-        `select secret from vault.secrets where id = $1 limit 1`,
-        [certRow.senha_secret_id]
-      );
-      if (resDirect.rows.length > 0 && resDirect.rows[0].secret) {
-        senhaCertificado = resDirect.rows[0].secret;
-      }
-    } catch {
-      // Ignora erro de consulta direta
-    }
-  }
-
-  if (!senhaCertificado) {
-    throw new Error(`Senha do certificado não encontrada no Vault para o médico ${medicoId}`);
+    throw new Error('Senha do certificado não encontrada no Vault. Cadastre o A1 novamente.');
   }
 
   // 2. Faz o download do arquivo .pfx / .p12 do Supabase Storage

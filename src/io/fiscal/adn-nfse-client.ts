@@ -42,7 +42,8 @@ export class AdnNfseClient {
     senhaCertificado: string,
     documentoTitular: string
   ): Promise<ResultadoConsultaAdn> {
-    const loteInicial = await this.consultarLote(0, pfxBuffer, senhaCertificado);
+    const titular = documentoTitular.replace(/\D/g, '');
+    const loteInicial = await this.consultarLote(0, pfxBuffer, senhaCertificado, titular);
     let documentos = loteInicial.documentos;
 
     const maiorNsuRecebido = documentos.reduce((maior, item) => Math.max(maior, item.nsu), 0);
@@ -50,13 +51,14 @@ export class AdnNfseClient {
       // A API entrega no maximo 50 DF-e. Consultar perto do maxNSU evita
       // percorrer todo o historico apenas para obter a nota mais recente.
       const inicioUltimoLote = Math.max(0, loteInicial.maxNsu - 50);
-      const loteFinal = await this.consultarLote(inicioUltimoLote, pfxBuffer, senhaCertificado);
+      const loteFinal = await this.consultarLote(inicioUltimoLote, pfxBuffer, senhaCertificado, titular);
       documentos = [...documentos, ...loteFinal.documentos];
     }
 
-    const notas = documentos
-      .filter((item) => item.xml.includes('<NFSe') || item.xml.includes(':NFSe'))
-      .filter((item) => this.extrairDocumentoPrestador(item.xml) === documentoTitular.replace(/\D/g, ''))
+    const notasLocalizadas = documentos
+      .filter((item) => /<(?:\w+:)?NFSe\b/i.test(item.xml));
+    const notas = notasLocalizadas
+      .filter((item) => this.extrairDocumentoPrestador(item.xml) === titular)
       .sort((a, b) => {
         const dataA = a.dataHoraGeracao ? Date.parse(a.dataHoraGeracao) : 0;
         const dataB = b.dataHoraGeracao ? Date.parse(b.dataHoraGeracao) : 0;
@@ -64,7 +66,13 @@ export class AdnNfseClient {
       });
 
     if (notas.length === 0) {
-      throw new Error('Nenhuma NFS-e emitida pelo titular deste certificado foi localizada no ADN.');
+      if (documentos.length === 0) {
+        throw new Error('O ADN não retornou documentos fiscais para o titular deste certificado.');
+      }
+      if (notasLocalizadas.length === 0) {
+        throw new Error(`O ADN retornou ${documentos.length} documento(s), mas nenhum deles é uma NFS-e.`);
+      }
+      throw new Error(`O ADN retornou ${notasLocalizadas.length} NFS-e(s), mas nenhuma foi emitida pelo titular deste certificado.`);
     }
 
     return { documento: notas[0], maxNsu: loteInicial.maxNsu };
@@ -86,9 +94,14 @@ export class AdnNfseClient {
   private async consultarLote(
     ultimoNsu: number,
     pfxBuffer: Buffer,
-    senhaCertificado: string
+    senhaCertificado: string,
+    documentoTitular: string
   ): Promise<LoteAdn> {
-    const url = `${this.baseUrl.replace(/\/$/, '')}/DFe/${ultimoNsu}?lote=true`;
+    const parametros = new URLSearchParams({ lote: 'true' });
+    if (documentoTitular.length === 14) {
+      parametros.set('cnpjConsulta', documentoTitular);
+    }
+    const url = `${this.baseUrl.replace(/\/$/, '')}/DFe/${ultimoNsu}?${parametros.toString()}`;
     const resposta = this.transmissorHttp
       ? await this.transmissorHttp(url, pfxBuffer, senhaCertificado)
       : await this.executarRequisicaoMtls(url, pfxBuffer, senhaCertificado);
