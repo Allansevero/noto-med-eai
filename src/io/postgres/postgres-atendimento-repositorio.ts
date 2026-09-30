@@ -423,4 +423,38 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     const res = await this.pool.query(sql, [medicoId, pacienteId]);
     return res.rowCount ?? 0;
   }
+
+  async salvarMensagem(params: {
+    conversaId: string;
+    direcao: 'recebida' | 'enviada';
+    tipoMensagem?: string;
+    conteudo: string;
+    payloadBruto?: unknown;
+    comandoDetectado?: string | null;
+  }): Promise<void> {
+    const sql = `
+      insert into whatsapp_mensagens (conversa_id, direcao, tipo_mensagem, conteudo, payload_bruto, comando_detectado, criado_em)
+      values ($1, $2, coalesce($3, 'texto'), $4, $5, $6, now())
+    `;
+    await this.pool.query(sql, [
+      params.conversaId,
+      params.direcao,
+      params.tipoMensagem || 'texto',
+      params.conteudo,
+      params.payloadBruto ? JSON.stringify(params.payloadBruto) : null,
+      params.comandoDetectado || null
+    ]);
+  }
+
+  async buscarMensagensRecentesConversa(conversaId: string, limite: number = 20): Promise<string[]> {
+    const sql = `
+      select conteudo
+      from whatsapp_mensagens
+      where conversa_id = $1 and conteudo is not null and trim(conteudo) != ''
+      order by criado_em desc
+      limit $2
+    `;
+    const { rows } = await this.pool.query(sql, [conversaId, limite]);
+    return rows.map((r: { conteudo: string }) => r.conteudo).reverse();
+  }
 }

@@ -40,7 +40,13 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     this.pacientes.push(novo);
     return novo;
   }
-  async atualizarCpfPaciente(): Promise<void> {}
+  async atualizarCpfPaciente(params: { pacienteId: string; cpfHash: string; cpf?: string; nome?: string | null }): Promise<void> {
+    const pac = this.pacientes.find((p) => p.id === params.pacienteId);
+    if (pac) {
+      pac.cpfHash = params.cpfHash;
+      if (params.nome !== undefined) pac.nome = params.nome;
+    }
+  }
   async vincularPacienteConversa(conversaId: string, pacienteId: string): Promise<void> {
     const conv = this.conversas.find((c) => c.id === conversaId);
     if (conv) conv.pacienteId = pacienteId;
@@ -49,7 +55,11 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     const conv = this.conversas.find((c) => c.id === conversaId);
     if (conv) conv.aguardandoCpfDesde = aguardandoDesde;
   }
-  async criarAgendamento(): Promise<{ id: string }> { return { id: 'ag-1' }; }
+  async criarAgendamento(params?: any): Promise<{ id: string }> {
+    const novo = { id: `ag-${this.consultas.length + 1}`, dataHora: params?.dataHora ?? new Date(), valorConsultaCentavos: params?.valorConsultaCentavos ?? null };
+    this.consultas.push(novo);
+    return { id: novo.id };
+  }
   async buscarConsultasEmAberto(): Promise<ConsultaEmAbertoRegistro[]> {
     return this.consultas;
   }
@@ -64,6 +74,8 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   async buscarSolicitacaoAguardandoData(): Promise<any> { return null; }
   async atualizarDataDescricaoSolicitacao(): Promise<void> {}
   async liberarSolicitacoesPendentesCpf(): Promise<number> { return 0; }
+  async salvarMensagem(params: any): Promise<void> {}
+  async buscarMensagensRecentesConversa(): Promise<string[]> { return []; }
 }
 
 

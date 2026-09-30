@@ -112,4 +112,13 @@ export interface AtendimentoRepositorio {
     fila: 'pronta' | 'pendente_cadastro';
   }): Promise<void>;
   liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number>;
+  salvarMensagem?(params: {
+    conversaId: string;
+    direcao: 'recebida' | 'enviada';
+    tipoMensagem?: string;
+    conteudo: string;
+    payloadBruto?: unknown;
+    comandoDetectado?: string | null;
+  }): Promise<void>;
+  buscarMensagensRecentesConversa?(conversaId: string, limite?: number): Promise<string[]>;
 }

@@ -98,6 +98,15 @@ export async function processarMensagemWebhook(
       conversa.pacienteId = paciente.id;
     }
   }
+  if (deps.repositorio.salvarMensagem) {
+    await deps.repositorio.salvarMensagem({
+      conversaId: conversa.id,
+      direcao: payload.data.key.fromMe ? 'enviada' : 'recebida',
+      tipoMensagem: 'texto',
+      conteudo: texto,
+      payloadBruto: payload.data
+    });
+  }
   return rotearMensagem(conversa, texto, payload, deps, telefone);
 }
 
@@ -160,6 +169,9 @@ async function rotearMensagem(
     repositorio: deps.repositorio,
     enviarMensagemPaciente: deps.enviarMensagemPaciente,
     billingRepositorio: deps.billingRepositorio,
+    consultaCpfProvider: deps.consultaCpfProvider,
+    iaService: deps.iaService,
+    pepper: deps.pepper,
     instanciaNome: payload.instance,
     instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
   });
