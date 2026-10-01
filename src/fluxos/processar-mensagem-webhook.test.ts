@@ -88,8 +88,9 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     return this.medico;
   }
   async criarSolicitacaoNota(params: any): Promise<{ id: string }> {
-    this.solicitacoes.push(params);
-    return { id: `sol-${this.solicitacoes.length}` };
+    const sol = { id: `sol-${this.solicitacoes.length + 1}`, ...params };
+    this.solicitacoes.push(sol);
+    return { id: sol.id };
   }
   async buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null> {
     if (this.medico && (this.medico.telefone === telefone || `55${this.medico.telefone}` === telefone)) {
@@ -433,5 +434,67 @@ describe('processarMensagemWebhook', () => {
     if (res.ok) {
       assert.strictEqual(res.acao, 'resposta_cpf');
     }
+  });
+
+  it('deve rotear comando de emissão com data da consulta direto no gatilho para fila pronta', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.instancias.push({
+      id: 'inst-1',
+      medicoId: 'med-1',
+      nomeInstancia: 'consultorio_dr_joao',
+      oficial: false
+    });
+    repo.medico = {
+      id: 'med-1',
+      telefone: '5551993527271',
+      nomeCompleto: 'Dr. Roberto Santos',
+      especialidade: 'Cardiologia',
+      crm: '12345/SP',
+      rqe: '6789',
+      ctribNacPadrao: '041601'
+    };
+
+    const paciente = await repo.criarPacienteMinimo({
+      medicoId: 'med-1',
+      telefone: '5511999998888',
+      nome: 'Carlos Souza',
+      cpfHash: 'hash-existente'
+    });
+
+    repo.conversas.push({
+      id: 'conv-1',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511999998888',
+      pacienteId: paciente.id,
+      aguardandoCpfDesde: null
+    });
+
+    const payload = {
+      event: 'messages.upsert',
+      instance: 'consultorio_dr_joao',
+      data: {
+        key: {
+          remoteJid: '5511999998888@s.whatsapp.net',
+          fromMe: true,
+          id: 'MSG-EMISSAO-DATA'
+        },
+        message: {
+          conversation: 'Vou enviar em instantes a sua NF no valor de R$ 350 da consulta de 25/09/2026'
+        }
+      }
+    };
+
+    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.acao, 'comando_emissao');
+      assert.strictEqual(res.detalhe.solicitacaoId, repo.solicitacoes[0].id);
+      assert.strictEqual(res.detalhe.fila, 'pronta');
+      assert.strictEqual(res.detalhe.aguardandoData, false);
+    }
+    assert.strictEqual(repo.solicitacoes.length, 1);
+    assert.strictEqual(repo.solicitacoes[0].fila, 'pronta');
+    assert.ok(repo.solicitacoes[0].xdescServ.includes('NAS DATAS 25/09/2026'));
   });
 });

@@ -207,6 +207,46 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
           }
         }
 
+        if (
+          resSefin.codigoErro === 'E0160' ||
+          resSefin.motivo?.includes('E0160') ||
+          resSefin.motivo?.includes('opção de situação perante o Simples Nacional')
+        ) {
+          const eraMei = prestadorConfig.regTrib.opSimpNac === 2;
+          if (eraMei) {
+            console.warn(
+              `[PostgresEmissorDpsService] Prestador não é MEI no mês de competência (E0160). Ajustando perfil fiscal automaticamente para ME/EPP (opSimpNac = 3) e retransmitindo...`
+            );
+            prestadorConfig.regTrib.opSimpNac = 3;
+            prestadorConfig.regTrib.regApTribSN = 1;
+            await this.pool.query(
+              `update medico_perfil_fiscal
+               set opcao_simples_nacional = 'me_epp',
+                   regime_apuracao_sn = 'regime_1',
+                   atualizado_em = now()
+               where medico_id = $1`,
+              [item.medicoId]
+            );
+          } else {
+            console.warn(
+              `[PostgresEmissorDpsService] Prestador não é ME/EPP no mês de competência (E0160). Ajustando perfil fiscal automaticamente para MEI (opSimpNac = 2) e retransmitindo...`
+            );
+            prestadorConfig.regTrib.opSimpNac = 2;
+            delete (prestadorConfig.regTrib as any).regApTribSN;
+            await this.pool.query(
+              `update medico_perfil_fiscal
+               set opcao_simples_nacional = 'mei',
+                   regime_apuracao_sn = null,
+                   atualizado_em = now()
+               where medico_id = $1`,
+              [item.medicoId]
+            );
+          }
+          if (seq < MAX_INCREMENTOS_SEQUENCIA) {
+            continue;
+          }
+        }
+
         break;
       }
 

@@ -342,5 +342,101 @@ describe('processarComandoEmissao', () => {
     assert.strictEqual(enviador.envios.length, 1);
     assert.match(enviador.envios[0].texto, /limite de 5 notas fiscais gratuitas de hoje/);
   });
+
+  it('deve aceitar condição de data direto na mensagem de gatilho sem perguntar ao médico', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const enviador = new EnviarMensagemPacienteFake();
+    repo.medico = { ...medicoPadrao, telefone: '5551993527271' };
+
+    const paciente: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '5511999998888',
+      nome: 'Carlos Souza',
+      cpfHash: 'hash-existente'
+    };
+    repo.pacientes.push(paciente);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-1',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511999998888',
+      pacienteId: 'pac-1',
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversa);
+    repo.consultas = []; // Nenhuma consulta agendada previamente no banco!
+
+    const res = await processarComandoEmissao(conversa, 35000, {
+      repositorio: repo,
+      enviarMensagemPaciente: enviador,
+      instanciaNome: 'dr_roberto',
+      instanciaOficialNome: 'notomed_oficial',
+      textoComando: 'Vou enviar em instantes a sua NF no valor de R$ 350 da consulta de 25/09/2026',
+      agora: () => new Date(2026, 8, 30)
+    });
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.fila, 'pronta');
+      assert.strictEqual(res.aguardandoData, false);
+      assert.strictEqual(res.aguardandoCpf, false);
+    }
+    // Deve criar a solicitação pronta e agendamento vinculado com a data do gatilho
+    assert.strictEqual(repo.solicitacoesCriadas.length, 1);
+    assert.strictEqual(repo.solicitacoesCriadas[0].fila, 'pronta');
+    assert.strictEqual(repo.solicitacoesCriadas[0].aguardandoDataConsulta, false);
+    assert.match(repo.solicitacoesCriadas[0].xdescServ, /NAS DATAS 25\/09\/2026/);
+    assert.strictEqual(repo.consultas.length, 1);
+    assert.strictEqual(repo.consultas[0].dataHora.getDate(), 25);
+
+    // NÃO deve enviar mensagem ao médico perguntando a data
+    assert.strictEqual(enviador.envios.length, 0);
+  });
+
+  it('deve aceitar condição de múltiplas datas no gatilho e incluir todas na descrição da nota', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const enviador = new EnviarMensagemPacienteFake();
+    repo.medico = { ...medicoPadrao, telefone: '5551993527271' };
+
+    const paciente: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '5511999998888',
+      nome: 'Carlos Souza',
+      cpfHash: 'hash-existente'
+    };
+    repo.pacientes.push(paciente);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-1',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511999998888',
+      pacienteId: 'pac-1',
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversa);
+    repo.consultas = [];
+
+    const res = await processarComandoEmissao(conversa, 70000, {
+      repositorio: repo,
+      enviarMensagemPaciente: enviador,
+      instanciaNome: 'dr_roberto',
+      instanciaOficialNome: 'notomed_oficial',
+      textoComando: 'Vou enviar sua NF no valor de R$ 700 referente as consultas de 10/09 e 15/09',
+      agora: () => new Date(2026, 8, 30)
+    });
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.fila, 'pronta');
+      assert.strictEqual(res.aguardandoData, false);
+    }
+    assert.strictEqual(repo.consultas.length, 2);
+    assert.match(repo.solicitacoesCriadas[0].xdescServ, /NAS DATAS 10\/09\/2026, 15\/09\/2026/);
+    assert.strictEqual(enviador.envios.length, 0);
+  });
 });
 

@@ -11,7 +11,9 @@ export function extrairValorMoedaCentavos(texto?: string | null): number | null 
 
   // Prioriza número precedido por R$ (evita confundir com datas como 15/10/2026)
   const matchPrefixo = texto.match(/R\$\s*(\d[\d.,]*)/i);
-  const raw = matchPrefixo ? matchPrefixo[1] : texto.match(/\d[\d.,]*/)?.[0];
+  // Remove datas (ex: 25/09 ou 25/09/2026) para não confundir com valor numérico sem prefixo
+  const textoSemDatas = texto.replace(/\b\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/g, ' ');
+  const raw = matchPrefixo ? matchPrefixo[1] : textoSemDatas.match(/\d[\d.,]*/)?.[0];
   if (!raw) {
     return null;
   }

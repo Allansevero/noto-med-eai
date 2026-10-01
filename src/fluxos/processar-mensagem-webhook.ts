@@ -173,7 +173,9 @@ async function rotearMensagem(
     iaService: deps.iaService,
     pepper: deps.pepper,
     instanciaNome: payload.instance,
-    instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
+    instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial',
+    textoComando: texto,
+    datasComando: casamento.datas
   });
   return { ok: true, acao: 'comando_emissao', detalhe: res };
 }

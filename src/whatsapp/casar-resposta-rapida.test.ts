@@ -76,5 +76,37 @@ describe('casarRespostaRapida', () => {
       assert.strictEqual(res.motivo, 'nenhum_modelo_casado');
     }
   });
+
+  it('deve casar comando de emissão contendo data de consulta no gatilho', () => {
+    const texto = 'Vou enviar em instantes a sua NF no valor de R$ 350 da consulta de 25/09';
+    const res = casarRespostaRapida(texto, true);
+    assert.strictEqual(res.casou, true);
+    if (res.casou && res.tipo === 'emissao') {
+      assert.strictEqual(res.valorDigitadoCentavos, 35000);
+      assert.strictEqual(res.datas?.length, 1);
+      assert.strictEqual(res.datasTexto, `25/09/${new Date().getFullYear()}`);
+    }
+  });
+
+  it('deve casar comando de emissão com data antes do valor', () => {
+    const texto = 'Vou enviar em instantes a sua NF da consulta de 25/09 no valor de R$ 350';
+    const res = casarRespostaRapida(texto, true);
+    assert.strictEqual(res.casou, true);
+    if (res.casou && res.tipo === 'emissao') {
+      assert.strictEqual(res.valorDigitadoCentavos, 35000);
+      assert.strictEqual(res.datas?.length, 1);
+      assert.strictEqual(res.datasTexto, `25/09/${new Date().getFullYear()}`);
+    }
+  });
+
+  it('deve casar comando /emissao com valor e múltiplas datas', () => {
+    const texto = '/emissao 700 consultas de 10/09 e 15/09';
+    const res = casarRespostaRapida(texto, true);
+    assert.strictEqual(res.casou, true);
+    if (res.casou && res.tipo === 'emissao') {
+      assert.strictEqual(res.valorDigitadoCentavos, 70000);
+      assert.strictEqual(res.datas?.length, 2);
+    }
+  });
 });
 

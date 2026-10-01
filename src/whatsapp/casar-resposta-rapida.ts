@@ -5,6 +5,7 @@
  */
 
 import { extrairValorMoedaCentavos } from './extrair-valor-moeda.js';
+import { extrairDatasConsulta } from '../emissao/regras/extrair-datas-consulta.js';
 import {
   TEXTO_MODELO_PADRAO_AGENDADO,
   TEXTO_MODELO_PADRAO_EMISSAO,
@@ -17,8 +18,15 @@ export interface RespostaRapidaModelo {
 }
 
 export type ResultadoCasamento =
-  | { casou: true; tipo: 'agendado' }
-  | { casou: true; tipo: 'emissao'; valorDigitadoCentavos: number | null }
+  | { casou: true; tipo: 'agendado'; textoComando?: string }
+  | {
+      casou: true;
+      tipo: 'emissao';
+      valorDigitadoCentavos: number | null;
+      datas?: Date[];
+      datasTexto?: string | null;
+      textoComando?: string;
+    }
   | { casou: false; motivo: 'nao_e_from_me' | 'sem_texto' | 'nenhum_modelo_casado' };
 
 export function casarRespostaRapida(
@@ -59,18 +67,34 @@ export function casarRespostaRapida(
     if (indice !== -1) {
       const resto = textoLimpo.slice(indice + alvo.length);
       const valorDigitadoCentavos = extrairValorMoedaCentavos(resto);
-      return { casou: true, tipo: 'emissao', valorDigitadoCentavos };
+      const extracaoDatas = extrairDatasConsulta(textoLimpo);
+      return {
+        casou: true,
+        tipo: 'emissao',
+        valorDigitadoCentavos,
+        datas: extracaoDatas.datas,
+        datasTexto: extracaoDatas.textoFormatado,
+        textoComando: textoLimpo
+      };
     }
   }
 
   // 3. Fallback inteligente para variações de emissão da NF
   // Ex: "Vou enviar em instantes a sua NF no valor de R$ 350", "sua NF no valor de R$ 200" ou "/emissao 200" / "/emissão 200"
-  const regexEmissaoNatural = /(?:vou(?:\s+lhe)?\s+enviar\s+em\s+instantes?\s+(?:a\s+)?sua\s+nf(?:\s+no\s+valor\s+de\s*(?:r\$)?)?|\/emiss[aã]o)/i;
+  const regexEmissaoNatural = /(?:vou(?:\s+lhe)?\s+enviar\s+(?:em\s+instantes?\s+)?(?:a\s+)?sua\s+nf(?:\s+no\s+valor\s+de\s*(?:r\$)?)?|\/emiss[aã]o)/i;
   const match = textoLimpo.match(regexEmissaoNatural);
   if (match && match.index !== undefined) {
     const resto = textoLimpo.slice(match.index + match[0].length);
     const valorDigitadoCentavos = extrairValorMoedaCentavos(resto);
-    return { casou: true, tipo: 'emissao', valorDigitadoCentavos };
+    const extracaoDatas = extrairDatasConsulta(textoLimpo);
+    return {
+      casou: true,
+      tipo: 'emissao',
+      valorDigitadoCentavos,
+      datas: extracaoDatas.datas,
+      datasTexto: extracaoDatas.textoFormatado,
+      textoComando: textoLimpo
+    };
   }
 
   return { casou: false, motivo: 'nenhum_modelo_casado' };

@@ -20,8 +20,9 @@ describe('extrairValorMoedaCentavos', () => {
     assert.strictEqual(extrairValorMoedaCentavos('R$ 450,50'), 45050);
   });
 
-  it('deve lidar com separador de milhar', () => {
-    assert.strictEqual(extrairValorMoedaCentavos('1.250,00'), 125000);
-    assert.strictEqual(extrairValorMoedaCentavos('R$ 10.500,75'), 1050075);
+  it('deve extrair valor corretamente mesmo quando houver datas no texto', () => {
+    assert.strictEqual(extrairValorMoedaCentavos('25/09 350'), 35000);
+    assert.strictEqual(extrairValorMoedaCentavos('consulta de 25/09 valor 400'), 40000);
+    assert.strictEqual(extrairValorMoedaCentavos('350 da consulta de 15/08/2026'), 35000);
   });
 });

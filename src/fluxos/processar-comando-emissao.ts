@@ -18,6 +18,7 @@ import { gerarHashCpf } from '../paciente/hash-cpf.js';
 
 import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
 import { ehNomeCivilValido } from '../paciente/regras/validar-nome-civil.js';
+import { extrairDatasConsulta } from '../emissao/regras/extrair-datas-consulta.js';
 
 export interface ProcessarEmissaoDeps {
   repositorio: AtendimentoRepositorio;
@@ -29,6 +30,8 @@ export interface ProcessarEmissaoDeps {
   instanciaNome: string;
   instanciaOficialNome?: string;
   agora?: () => Date;
+  textoComando?: string | null;
+  datasComando?: Date[];
 }
 
 export type ResultadoProcessarEmissao =
@@ -85,6 +88,50 @@ export async function processarComandoEmissao(
 
   let paciente = await deps.repositorio.buscarPacientePorId(pacienteId);
   let consultas = await deps.repositorio.buscarConsultasEmAberto(medicoId, pacienteId);
+
+  // 1. Processa condição de datas informada diretamente na mensagem do gatilho
+  const agoraRef = deps.agora ? deps.agora() : new Date();
+  const datasDoGatilho: Date[] = deps.datasComando && deps.datasComando.length > 0
+    ? deps.datasComando
+    : (deps.textoComando ? extrairDatasConsulta(deps.textoComando, agoraRef).datas : []);
+
+  if (datasDoGatilho.length > 0) {
+    const consultasVinculadas: typeof consultas = [];
+    const valorPorConsulta = valorDigitadoCentavos
+      ? Math.round(valorDigitadoCentavos / datasDoGatilho.length)
+      : null;
+
+    for (const dataGatilho of datasDoGatilho) {
+      const existente = consultas.find((c) => {
+        const d = new Date(c.dataHora);
+        return (
+          d.getDate() === dataGatilho.getDate() &&
+          d.getMonth() === dataGatilho.getMonth() &&
+          d.getFullYear() === dataGatilho.getFullYear()
+        );
+      });
+
+      if (existente) {
+        consultasVinculadas.push(existente);
+      } else {
+        const novo = await deps.repositorio.criarAgendamento({
+          medicoId,
+          pacienteId,
+          conversaId: conversa.id,
+          dataHora: dataGatilho,
+          valorConsultaCentavos: valorPorConsulta
+        });
+        consultasVinculadas.push({
+          id: novo.id,
+          dataHora: dataGatilho,
+          valorConsultaCentavos: valorPorConsulta
+        });
+      }
+    }
+
+    consultas = consultasVinculadas;
+  }
+
   let calculo = calcularValorEmissao(valorDigitadoCentavos, consultas.map((c) => c.valorConsultaCentavos));
 
   let possuiCpf = Boolean(paciente?.cpfHash);
