@@ -30,6 +30,7 @@ export interface PacienteRegistro {
   cpfHash: string | null;
   email?: string | null;
   dataNascimento?: Date | null;
+  nomeValidado?: boolean;
 }
 
 export interface MedicoDadosRegistro {
@@ -65,6 +66,7 @@ export interface AtendimentoRepositorio {
   buscarRespostasRapidasMedico(medicoId: string): Promise<RespostaRapidaModelo[]>;
   buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null>;
   buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null>;
+  buscarPacientePorCpfHash?(medicoId: string, cpfHash: string): Promise<PacienteRegistro | null>;
   criarPacienteMinimo(params: {
     medicoId: string;
     telefone: string;
@@ -81,6 +83,7 @@ export interface AtendimentoRepositorio {
     cpf?: string | null;
     nome?: string | null;
     dataNascimento?: Date | null;
+    nomeValidado?: boolean;
   }): Promise<void>;
 
   vincularPacienteConversa(conversaId: string, pacienteId: string): Promise<void>;

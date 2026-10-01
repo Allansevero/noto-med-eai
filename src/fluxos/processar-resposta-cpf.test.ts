@@ -11,6 +11,7 @@ import type {
 } from '../atendimento/atendimento-repositorio.js';
 import type { RespostaRapidaModelo } from '../whatsapp/casar-resposta-rapida.js';
 import type { ConsultaCpfProvider, DadosConsultaCpf } from '../paciente/consulta-cpf-provider.js';
+import { gerarHashCpf } from '../paciente/hash-cpf.js';
 
 class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   public conversas: ConversaRegistro[] = [];
@@ -24,12 +25,27 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     return this.pacientes.find((p) => p.id === id) ?? null;
   }
   async buscarPacientePorTelefone(): Promise<PacienteRegistro | null> { return null; }
-  async criarPacienteMinimo(): Promise<PacienteRegistro> { throw new Error('Not implemented'); }
-  async atualizarCpfPaciente(params: { pacienteId: string; cpfHash: string; nome?: string | null }): Promise<void> {
+  async buscarPacientePorCpfHash(medicoId: string, cpfHash: string): Promise<PacienteRegistro | null> {
+    return this.pacientes.find((p) => p.medicoId === medicoId && p.cpfHash === cpfHash) ?? null;
+  }
+  async criarPacienteMinimo(params: any): Promise<PacienteRegistro> {
+    const pac: PacienteRegistro = {
+      id: `pac-${this.pacientes.length + 1}`,
+      medicoId: params.medicoId,
+      telefone: params.telefone,
+      nome: params.nome ?? null,
+      cpfHash: params.cpfHash ?? null,
+      nomeValidado: false
+    };
+    this.pacientes.push(pac);
+    return pac;
+  }
+  async atualizarCpfPaciente(params: { pacienteId: string; cpfHash: string; nome?: string | null; nomeValidado?: boolean }): Promise<void> {
     const pac = this.pacientes.find((p) => p.id === params.pacienteId);
     if (pac) {
       pac.cpfHash = params.cpfHash;
-      if (params.nome) pac.nome = params.nome;
+      if (params.nome && !pac.nomeValidado) pac.nome = params.nome;
+      pac.nomeValidado = Boolean(params.nomeValidado);
     }
   }
   async vincularPacienteConversa(): Promise<void> {}
@@ -152,5 +168,96 @@ describe('processarRespostaCpf', () => {
 
     assert.strictEqual(res.ok, true);
     assert.strictEqual(paciente.nome, 'EMELLYN ANTUNES RODRIGUES SEVERO');
+    assert.strictEqual(paciente.nomeValidado, false); // Permanece false até a 2ª verificação na emissão da nota
+  });
+
+  it('nunca deve chamar a API se o paciente já possuir nomeValidado = true', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const paciente: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '5511999999999',
+      nome: 'Maria Santos Silva',
+      cpfHash: 'hash-anterior',
+      nomeValidado: true
+    };
+    repo.pacientes.push(paciente);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-1',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511999999999',
+      pacienteId: 'pac-1',
+      aguardandoCpfDesde: new Date()
+    };
+    repo.conversas.push(conversa);
+
+    let chamadasApi = 0;
+    const provedorReceita: ConsultaCpfProvider = {
+      async consultar() {
+        chamadasApi++;
+        return { nome: 'Outro Nome' };
+      }
+    };
+
+    const res = await processarRespostaCpf(conversa, '529.982.247-25', {
+      repositorio: repo,
+      consultaCpfProvider: provedorReceita,
+      pepper
+    });
+
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(chamadasApi, 0); // ZERO chamadas à API!
+    assert.strictEqual(paciente.nome, 'Maria Santos Silva'); // Nome imutável
+  });
+
+  it('deve reaproveitar nome validado de outro cadastro com mesmo CPF sem chamar a API', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const pacienteOriginal: PacienteRegistro = {
+      id: 'pac-1',
+      medicoId: 'med-1',
+      telefone: '555195611075',
+      nome: 'EMELLYN ANTUNES RODRIGUES SEVERO',
+      cpfHash: gerarHashCpf('04457117013', pepper),
+      nomeValidado: true
+    };
+    const pacienteNovo: PacienteRegistro = {
+      id: 'pac-2',
+      medicoId: 'med-1',
+      telefone: '555193527271', // Telefone novo/diferente
+      nome: null,
+      cpfHash: null
+    };
+    repo.pacientes.push(pacienteOriginal, pacienteNovo);
+
+    const conversa: ConversaRegistro = {
+      id: 'conv-2',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '555193527271',
+      pacienteId: 'pac-2',
+      aguardandoCpfDesde: new Date()
+    };
+    repo.conversas.push(conversa);
+
+    let chamadasApi = 0;
+    const provedorReceita: ConsultaCpfProvider = {
+      async consultar() {
+        chamadasApi++;
+        return { nome: 'NOME DA API' };
+      }
+    };
+
+    const res = await processarRespostaCpf(conversa, '04457117013', {
+      repositorio: repo,
+      consultaCpfProvider: provedorReceita,
+      pepper
+    });
+
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(chamadasApi, 0); // Reaproveitou o cadastro existente no banco, zero chamadas à API
+    assert.strictEqual(pacienteNovo.nome, 'EMELLYN ANTUNES RODRIGUES SEVERO');
+    assert.strictEqual(pacienteNovo.nomeValidado, true);
   });
 });

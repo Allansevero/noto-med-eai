@@ -6,6 +6,7 @@
 
 import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
 import { gerarHashCpf } from '../paciente/hash-cpf.js';
+import { ehNomeCivilValido } from '../paciente/regras/validar-nome-civil.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
 
@@ -38,6 +39,7 @@ export async function sincronizarHistoricoConversa(
   const dadosConsulta = cpfValido && deps.consultaCpfProvider
     ? await deps.consultaCpfProvider.consultar(cpfValido)
     : null;
+  const nomeValido = dadosConsulta?.nome && ehNomeCivilValido(dadosConsulta.nome) ? dadosConsulta.nome : null;
 
   let paciente = await deps.repositorio.buscarPacientePorTelefone(
     medicoId,
@@ -50,15 +52,16 @@ export async function sincronizarHistoricoConversa(
         pacienteId: paciente.id,
         cpfHash,
         cpf: cpfValido,
-        nome: dadosConsulta?.nome || paciente.nome || null,
-        dataNascimento: dadosConsulta?.dataNascimento
+        nome: nomeValido || paciente.nome || null,
+        dataNascimento: dadosConsulta?.dataNascimento,
+        nomeValidado: Boolean(paciente.nomeValidado)
       });
     }
   } else {
     paciente = await deps.repositorio.criarPacienteMinimo({
       medicoId,
       telefone: conversa.contatoTelefone,
-      nome: dadosConsulta?.nome || null,
+      nome: nomeValido || null,
       cpfHash,
       cpf: cpfValido,
       origemCadastro: 'historico_whatsapp'

@@ -94,7 +94,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
 
   async buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null> {
     const sql = `
-      select id, medico_id, telefone, nome, cpf_cnpj_hash, email, data_nascimento
+      select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
       from pacientes
       where id = $1
       limit 1
@@ -106,6 +106,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       medicoId: rows[0].medico_id,
       telefone: rows[0].telefone,
       nome: rows[0].nome,
+      nomeValidado: Boolean(rows[0].nome_validado),
       cpfHash: rows[0].cpf_cnpj_hash,
       email: rows[0].email,
       dataNascimento: rows[0].data_nascimento ? new Date(rows[0].data_nascimento) : null
@@ -114,7 +115,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
 
   async buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null> {
     const sql = `
-      select id, medico_id, telefone, nome, cpf_cnpj_hash, email, data_nascimento
+      select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
       from pacientes
       where medico_id = $1 and telefone = $2
       limit 1
@@ -126,6 +127,29 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       medicoId: rows[0].medico_id,
       telefone: rows[0].telefone,
       nome: rows[0].nome,
+      nomeValidado: Boolean(rows[0].nome_validado),
+      cpfHash: rows[0].cpf_cnpj_hash,
+      email: rows[0].email,
+      dataNascimento: rows[0].data_nascimento ? new Date(rows[0].data_nascimento) : null
+    };
+  }
+
+  async buscarPacientePorCpfHash(medicoId: string, cpfHash: string): Promise<PacienteRegistro | null> {
+    const sql = `
+      select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
+      from pacientes
+      where medico_id = $1 and cpf_cnpj_hash = $2
+      order by nome_validado desc, atualizado_em desc
+      limit 1
+    `;
+    const { rows } = await this.pool.query(sql, [medicoId, cpfHash]);
+    if (rows.length === 0) return null;
+    return {
+      id: rows[0].id,
+      medicoId: rows[0].medico_id,
+      telefone: rows[0].telefone,
+      nome: rows[0].nome,
+      nomeValidado: Boolean(rows[0].nome_validado),
       cpfHash: rows[0].cpf_cnpj_hash,
       email: rows[0].email,
       dataNascimento: rows[0].data_nascimento ? new Date(rows[0].data_nascimento) : null
@@ -146,6 +170,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       values ($1, $2, $3, $4, $5, case when $7::text is not null then pgp_sym_encrypt($7, $8) else null end, coalesce($6, 'conversa'))
       on conflict (medico_id, telefone) do update set
         nome = case
+          when pacientes.nome_validado = true then pacientes.nome
           when pacientes.nome is not null and trim(pacientes.nome) != '' and upper(trim(pacientes.nome)) != 'PACIENTE'
           then pacientes.nome
           else coalesce(excluded.nome, pacientes.nome)
@@ -153,7 +178,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         email = coalesce(excluded.email, pacientes.email),
         cpf_cnpj_hash = coalesce(excluded.cpf_cnpj_hash, pacientes.cpf_cnpj_hash),
         cpf_cnpj_encriptado = coalesce(excluded.cpf_cnpj_encriptado, pacientes.cpf_cnpj_encriptado)
-      returning id, medico_id, telefone, nome, cpf_cnpj_hash, email
+      returning id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email
     `;
     const values = [
       params.medicoId,
@@ -171,11 +196,11 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       medicoId: rows[0].medico_id,
       telefone: rows[0].telefone,
       nome: rows[0].nome,
+      nomeValidado: Boolean(rows[0].nome_validado),
       cpfHash: rows[0].cpf_cnpj_hash,
       email: rows[0].email
     };
   }
-
 
   async atualizarCpfPaciente(params: {
     pacienteId: string;
@@ -183,13 +208,23 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     cpf?: string | null;
     nome?: string | null;
     dataNascimento?: Date | null;
+    nomeValidado?: boolean;
   }): Promise<void> {
     const sql = `
       update pacientes
       set cpf_cnpj_hash = $2,
           cpf_cnpj_encriptado = case when $5::text is not null then pgp_sym_encrypt($5, $6) else cpf_cnpj_encriptado end,
-          nome = coalesce($3, nome),
-          data_nascimento = coalesce($4, data_nascimento)
+          nome = case
+            when pacientes.nome_validado = true then pacientes.nome
+            when $7::boolean = true then coalesce($3, pacientes.nome)
+            else coalesce($3, pacientes.nome)
+          end,
+          nome_validado = case
+            when pacientes.nome_validado = true then true
+            else coalesce($7, false)
+          end,
+          data_nascimento = coalesce($4, data_nascimento),
+          atualizado_em = now()
       where id = $1
     `;
     await this.pool.query(sql, [
@@ -198,7 +233,8 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       params.nome,
       params.dataNascimento,
       params.cpf ?? null,
-      this.chaveCriptografia
+      this.chaveCriptografia,
+      Boolean(params.nomeValidado)
     ]);
   }
 

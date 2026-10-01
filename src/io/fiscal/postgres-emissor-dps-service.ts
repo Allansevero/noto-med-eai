@@ -22,6 +22,7 @@ import { comporChaveAcessoNacional } from '../../fiscal/danfse/formatadores-fisc
 import { montarXmlNfse } from '../../fiscal/danfse/montar-xml-nfse.js';
 import type { MeuDanfeClient } from '../meudanfe/meu-danfe-client.js';
 import type { ConsultaCpfProvider } from '../../paciente/consulta-cpf-provider.js';
+import { ehNomeCivilValido } from '../../paciente/regras/validar-nome-civil.js';
 
 export type ConfigPrestadorCompleto = ConfigPrestador & {
   serie: string;
@@ -54,20 +55,46 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       return { sucesso: false, erro: `Paciente ${item.pacienteId} sem CPF válido para emissão` };
     }
 
-    // Garante que o nome completo do tomador seja obtido via API oficial da Receita
-    if (this.consultaCpfProvider && tomador.cpf) {
-      try {
-        const dadosCpf = await this.consultaCpfProvider.consultar(tomador.cpf);
-        if (dadosCpf?.nome) {
-          tomador.nome = dadosCpf.nome;
-          await this.pool.query(
-            `update pacientes set nome = $1, data_nascimento = coalesce(data_nascimento, $2), atualizado_em = now() where id = $3`,
-            [dadosCpf.nome, dadosCpf.dataNascimento || null, item.pacienteId]
-          );
+    // Se o nome ainda não foi validado, tenta obter via cadastro existente no banco ou API da Receita
+    if (!tomador.nomeValidado || !ehNomeCivilValido(tomador.nome)) {
+      // 1. Tenta reaproveitar de outro cadastro com o mesmo CPF que já tenha nome validado
+      const { rows: pacientesMesmoCpf } = await this.pool.query(
+        `select nome, data_nascimento from pacientes
+         where medico_id = $1 and cpf_cnpj_hash = (select cpf_cnpj_hash from pacientes where id = $2)
+           and nome_validado = true and nome is not null
+         limit 1`,
+        [item.medicoId, item.pacienteId]
+      );
+      if (pacientesMesmoCpf.length > 0 && ehNomeCivilValido(pacientesMesmoCpf[0].nome)) {
+        tomador.nome = pacientesMesmoCpf[0].nome;
+        tomador.nomeValidado = true;
+        await this.pool.query(
+          `update pacientes set nome = $1, nome_validado = true, data_nascimento = coalesce(data_nascimento, $2), atualizado_em = now() where id = $3`,
+          [tomador.nome, pacientesMesmoCpf[0].data_nascimento || null, item.pacienteId]
+        );
+      } else if (this.consultaCpfProvider && tomador.cpf) {
+        // 2. Se não encontrou no banco, consulta a API oficial da Receita Federal
+        try {
+          const dadosCpf = await this.consultaCpfProvider.consultar(tomador.cpf);
+          if (dadosCpf?.nome && ehNomeCivilValido(dadosCpf.nome)) {
+            tomador.nome = dadosCpf.nome;
+            tomador.nomeValidado = true;
+            await this.pool.query(
+              `update pacientes set nome = $1, nome_validado = true, data_nascimento = coalesce(data_nascimento, $2), atualizado_em = now() where id = $3`,
+              [dadosCpf.nome, dadosCpf.dataNascimento || null, item.pacienteId]
+            );
+          }
+        } catch (err: any) {
+          console.warn('[PostgresEmissorDpsService] Falha ao consultar CPF do tomador:', err?.message || err);
         }
-      } catch (err: any) {
-        console.warn('[PostgresEmissorDpsService] Falha ao consultar CPF do tomador:', err?.message || err);
       }
+    }
+
+    if (!ehNomeCivilValido(tomador.nome)) {
+      return {
+        sucesso: false,
+        erro: `Paciente ${item.pacienteId} sem nome civil completo válido para emissão de NFS-e (nome atual: '${tomador.nome || 'nulo'}').`
+      };
     }
 
     const ndps = await this.obterProximoNdps(item.medicoId, prestadorConfig.proximoNumeroDps);
@@ -75,7 +102,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       nDPS: String(ndps),
       tomador: {
         CPF: tomador.cpf,
-        xNome: tomador.nome || 'PACIENTE',
+        xNome: tomador.nome!,
         end: tomador.endereco
       },
       xDescServ: item.xdescServ,
@@ -234,7 +261,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         simplesNacional: prestadorConfig.regTrib.opSimpNac !== 1
       },
       tomador: {
-        nome: tomador.nome || 'PACIENTE',
+        nome: tomador.nome!,
         cpf: tomador.cpf,
         telefone: tomador.telefone,
         endereco: tomador.enderecoCompleto
@@ -371,6 +398,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
   private async carregarDadosTomador(pacienteId: string): Promise<{
     cpf: string;
     nome: string | null;
+    nomeValidado?: boolean;
     telefone?: string;
     enderecoCompleto?: string;
     endereco?: any;
@@ -378,7 +406,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const sql = `
       select
         pgp_sym_decrypt(cpf_cnpj_encriptado, $2) as cpf_limpo,
-        nome, telefone, cep, cod_municipio_ibge, logradouro, numero, complemento, bairro
+        nome, nome_validado, telefone, cep, cod_municipio_ibge, logradouro, numero, complemento, bairro
       from pacientes
       where id = $1
       limit 1
@@ -405,6 +433,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     return {
       cpf: r.cpf_limpo,
       nome: r.nome,
+      nomeValidado: Boolean(r.nome_validado),
       telefone: r.telefone || undefined,
       enderecoCompleto,
       endereco

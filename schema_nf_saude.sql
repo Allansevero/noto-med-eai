@@ -395,6 +395,7 @@ create table pacientes (
   -- conversa, são extraídos por oportunidade — nenhum deles bloqueia a
   -- criação do registro.
   nome                  text,
+  nome_validado         boolean not null default false, -- true quando o nome civil completo foi verificado via CPF/Receita (imutável a partir daí)
   data_nascimento       date,        -- só vem preenchido quando veio do provedor de CPF (paciente antigo)
   cpf_cnpj_hash         text,        -- hmac-sha256(cpf_cnpj, pepper) — indexado, usado na busca
   cpf_cnpj_encriptado   bytea,       -- pgp_sym_encrypt(cpf_cnpj, chave_da_aplicacao) — tomador da nota

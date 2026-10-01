@@ -17,6 +17,7 @@ import { extrairDadosAgendamentoComIa } from '../agendamento/extrair-dados-agend
 import { gerarHashCpf } from '../paciente/hash-cpf.js';
 
 import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
+import { ehNomeCivilValido } from '../paciente/regras/validar-nome-civil.js';
 
 export interface ProcessarEmissaoDeps {
   repositorio: AtendimentoRepositorio;
@@ -105,23 +106,41 @@ export async function processarComandoEmissao(
       if (!possuiCpf && dadosExtraidos.cpfPaciente) {
         const cpfLimpo = extrairCpfTexto(dadosExtraidos.cpfPaciente);
         if (cpfLimpo) {
-          let dadosConsulta = null;
-          if (deps.consultaCpfProvider) {
+          const pepper = deps.pepper || 'pepper_padrao';
+          const cpfHash = gerarHashCpf(cpfLimpo, pepper);
+
+          let nomeFinal: string | null = null;
+          let dataNascFinal: Date | null = null;
+          let nomeValidado = false;
+
+          if (deps.repositorio.buscarPacientePorCpfHash) {
+            const existente = await deps.repositorio.buscarPacientePorCpfHash(medicoId, cpfHash);
+            if (existente?.nomeValidado && ehNomeCivilValido(existente.nome)) {
+              nomeFinal = existente.nome;
+              dataNascFinal = existente.dataNascimento ?? null;
+              nomeValidado = true;
+            }
+          }
+
+          if (!nomeValidado && deps.consultaCpfProvider) {
             try {
-              dadosConsulta = await deps.consultaCpfProvider.consultar(cpfLimpo);
+              const dadosConsulta = await deps.consultaCpfProvider.consultar(cpfLimpo);
+              if (dadosConsulta?.nome && ehNomeCivilValido(dadosConsulta.nome)) {
+                nomeFinal = dadosConsulta.nome;
+                dataNascFinal = dadosConsulta.dataNascimento ?? null;
+              }
             } catch (err: any) {
               console.warn('[processarComandoEmissao] Falha ao consultar provedor de CPF:', err?.message || err);
             }
           }
 
-          const pepper = deps.pepper || 'pepper_padrao';
-          const cpfHash = gerarHashCpf(cpfLimpo, pepper);
           await deps.repositorio.atualizarCpfPaciente({
             pacienteId,
             cpfHash,
             cpf: cpfLimpo,
-            nome: dadosConsulta?.nome ?? null,
-            dataNascimento: dadosConsulta?.dataNascimento
+            nome: nomeFinal,
+            dataNascimento: dataNascFinal,
+            nomeValidado
           });
           possuiCpf = true;
           paciente = await deps.repositorio.buscarPacientePorId(pacienteId);

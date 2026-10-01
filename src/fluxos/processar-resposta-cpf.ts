@@ -6,6 +6,7 @@
 
 import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
 import { gerarHashCpf } from '../paciente/hash-cpf.js';
+import { ehNomeCivilValido } from '../paciente/regras/validar-nome-civil.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
 
@@ -30,15 +31,38 @@ export async function processarRespostaCpf(
   }
 
   const cpfHash = gerarHashCpf(cpfValido, deps.pepper);
-  let dadosConsulta = null;
-  if (deps.consultaCpfProvider) {
-    try {
-      dadosConsulta = await deps.consultaCpfProvider.consultar(cpfValido);
-      if (dadosConsulta?.nome) {
-        console.log(`[processarRespostaCpf] Nome civil oficial obtido da Receita Federal: ${dadosConsulta.nome}`);
+  const pacienteAtual = await deps.repositorio.buscarPacientePorId(conversa.pacienteId);
+
+  let nomeFinal: string | null = pacienteAtual?.nome ?? null;
+  let dataNascFinal: Date | null = pacienteAtual?.dataNascimento ?? null;
+  let nomeValidado = Boolean(pacienteAtual?.nomeValidado);
+
+  // 1. Se já está validado com TAG 'válido' de uma emissão prévia, mantém e não faz requisição
+  if (nomeValidado && ehNomeCivilValido(nomeFinal)) {
+    // Mantém nome e validação existentes
+  } else {
+    // 2. Se outro cadastro deste mesmo médico já possui esse CPF com TAG 'válido', reaproveita
+    if (deps.repositorio.buscarPacientePorCpfHash) {
+      const existente = await deps.repositorio.buscarPacientePorCpfHash(conversa.medicoId, cpfHash);
+      if (existente?.nomeValidado && ehNomeCivilValido(existente.nome)) {
+        nomeFinal = existente.nome;
+        dataNascFinal = existente.dataNascimento ?? dataNascFinal;
+        nomeValidado = true;
       }
-    } catch (err: any) {
-      console.warn('[processarRespostaCpf] Falha ao consultar provedor de CPF:', err?.message || err);
+    }
+
+    // 3. Se ainda não possui nome validado, faz a 1ª verificação na API da Receita Federal
+    if (!nomeValidado && deps.consultaCpfProvider) {
+      try {
+        const dadosConsulta = await deps.consultaCpfProvider.consultar(cpfValido);
+        if (dadosConsulta?.nome && ehNomeCivilValido(dadosConsulta.nome)) {
+          nomeFinal = dadosConsulta.nome;
+          dataNascFinal = dadosConsulta.dataNascimento ?? dataNascFinal;
+          console.log(`[processarRespostaCpf] 1ª verificação: nome civil obtido da Receita Federal: ${nomeFinal}`);
+        }
+      } catch (err: any) {
+        console.warn('[processarRespostaCpf] Falha na 1ª consulta de CPF:', err?.message || err);
+      }
     }
   }
 
@@ -46,8 +70,9 @@ export async function processarRespostaCpf(
     pacienteId: conversa.pacienteId,
     cpfHash,
     cpf: cpfValido,
-    nome: dadosConsulta?.nome,
-    dataNascimento: dadosConsulta?.dataNascimento
+    nome: nomeFinal,
+    dataNascimento: dataNascFinal,
+    nomeValidado
   });
 
 

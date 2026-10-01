@@ -500,4 +500,196 @@ describe('PostgresEmissorDpsService', () => {
       )
     );
   });
+
+  it('deve retornar erro impeditivo se o paciente não possuir nome civil válido e consulta externa falhar', async () => {
+    const fakePool: any = {
+      async query(sql: string) {
+        if (sql.includes('medico_perfil_fiscal')) {
+          return {
+            rows: [
+              {
+                nome_completo: 'Dr. João Silva',
+                razao_social: 'João Silva Serviços Médicos',
+                documento_limpo: '12345678000195',
+                inscricao_municipal: '104467',
+                uf: 'SP',
+                cod_municipio_ibge: '3550308',
+                serie_dps: '00001',
+                ambiente: 'producao',
+                opcao_simples_nacional: 'me_epp',
+                regime_apuracao_sn: 'regime_1',
+                regime_especial_tributacao: 0,
+                percentual_tot_trib_sn: '6.00'
+              }
+            ]
+          };
+        }
+        if (sql.includes('from pacientes')) {
+          return {
+            rows: [
+              {
+                cpf_limpo: '12345678909',
+                nome: null, // Sem nome
+                nome_validado: false,
+                telefone: '11988887777'
+              }
+            ]
+          };
+        }
+        return { rows: [] };
+      }
+    };
+
+    const service = new PostgresEmissorDpsService(
+      fakePool,
+      chaveCriptografia
+    );
+
+    const resultado = await service.emitir(itemMock);
+    assert.equal(resultado.sucesso, false);
+    assert.ok(resultado.erro?.includes('sem nome civil completo válido'));
+  });
+
+  it('não deve consultar a API de CPF se o paciente já possuir nomeValidado = true', async () => {
+    const fakePool: any = {
+      async query(sql: string) {
+        if (sql.includes('medico_perfil_fiscal')) {
+          return {
+            rows: [
+              {
+                nome_completo: 'Dr. João Silva',
+                razao_social: 'João Silva Serviços Médicos',
+                documento_limpo: '12345678000195',
+                inscricao_municipal: '104467',
+                uf: 'SP',
+                cod_municipio_ibge: '3550308',
+                serie_dps: '00001',
+                ambiente: 'producao',
+                opcao_simples_nacional: 'me_epp',
+                regime_apuracao_sn: 'regime_1',
+                regime_especial_tributacao: 0,
+                percentual_tot_trib_sn: '6.00'
+              }
+            ]
+          };
+        }
+        if (sql.includes('from pacientes')) {
+          return {
+            rows: [
+              {
+                cpf_limpo: '12345678909',
+                nome: 'Maria Souza Silva',
+                nome_validado: true,
+                telefone: '11988887777',
+                cep: '01001000',
+                cod_municipio_ibge: '3550308',
+                logradouro: 'Rua A',
+                numero: '10',
+                bairro: 'Centro'
+              }
+            ]
+          };
+        }
+        if (sql.includes('notas_fiscais')) {
+          return { rows: [{ proximo: 1 }] };
+        }
+        return { rows: [] };
+      }
+    };
+
+    let chamadasCpf = 0;
+    const fakeCpfProvider: any = {
+      async consultar() {
+        chamadasCpf++;
+        return { nome: 'OUTRO NOME' };
+      }
+    };
+
+    const service = new PostgresEmissorDpsService(
+      fakePool,
+      chaveCriptografia,
+      undefined,
+      fakeCpfProvider
+    );
+
+    const resultado = await service.emitir(itemMock);
+    assert.equal(resultado.sucesso, true);
+    assert.equal(chamadasCpf, 0); // ZERO consultas à API pois já estava validado!
+  });
+
+  it('deve realizar a 2ª verificação quando o paciente tiver CPF mas não tiver nome (ex: puxado do histórico), gravando o nome e a TAG válido na emissão', async () => {
+    let pacienteNoBanco = {
+      cpf_limpo: '12345678909',
+      nome: null as string | null,
+      nome_validado: false,
+      telefone: '11988887777',
+      cep: '01001000',
+      cod_municipio_ibge: '3550308',
+      logradouro: 'Rua A',
+      numero: '10',
+      bairro: 'Centro'
+    };
+
+    let queriesExecutadas: string[] = [];
+    const fakePool: any = {
+      async query(sql: string, params?: any[]) {
+        queriesExecutadas.push(sql);
+        if (sql.includes('medico_perfil_fiscal')) {
+          return {
+            rows: [
+              {
+                nome_completo: 'Dr. João Silva',
+                razao_social: 'João Silva Serviços Médicos',
+                documento_limpo: '12345678000195',
+                inscricao_municipal: '104467',
+                uf: 'SP',
+                cod_municipio_ibge: '3550308',
+                serie_dps: '00001',
+                ambiente: 'producao',
+                opcao_simples_nacional: 'me_epp',
+                regime_apuracao_sn: 'regime_1',
+                regime_especial_tributacao: 0,
+                percentual_tot_trib_sn: '6.00'
+              }
+            ]
+          };
+        }
+        if (sql.includes('from pacientes')) {
+          return {
+            rows: [pacienteNoBanco]
+          };
+        }
+        if (sql.includes('update pacientes set nome = $1, nome_validado = true')) {
+          pacienteNoBanco.nome = params![0];
+          pacienteNoBanco.nome_validado = true;
+          return { rowCount: 1 };
+        }
+        if (sql.includes('notas_fiscais')) {
+          return { rows: [{ proximo: 1 }] };
+        }
+        return { rows: [] };
+      }
+    };
+
+    let chamadasCpf = 0;
+    const fakeCpfProvider: any = {
+      async consultar() {
+        chamadasCpf++;
+        return { nome: 'Carlos Eduardo Oliveira' };
+      }
+    };
+
+    const service = new PostgresEmissorDpsService(
+      fakePool,
+      chaveCriptografia,
+      undefined,
+      fakeCpfProvider
+    );
+
+    const resultado = await service.emitir(itemMock);
+    assert.equal(resultado.sucesso, true);
+    assert.equal(chamadasCpf, 1); // Realizou a 2ª verificação com sucesso
+    assert.equal(pacienteNoBanco.nome, 'Carlos Eduardo Oliveira');
+    assert.equal(pacienteNoBanco.nome_validado, true); // TAG 'válido' inserida!
+  });
 });
