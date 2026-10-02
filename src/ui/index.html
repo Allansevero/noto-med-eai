@@ -52,8 +52,8 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 2.5rem 1.5rem;
+      justify-content: flex-start;
+      padding: 3rem 1.5rem 5rem;
     }
 
     .page-wrapper {
@@ -61,7 +61,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
     }
 
     /* Container de Acesso / Login */
@@ -73,7 +73,7 @@
       align-items: flex-start;
       text-align: left;
       gap: var(--gap);
-      margin: auto;
+      margin: 2rem auto;
     }
 
     .access-header {
@@ -203,8 +203,8 @@
     .btn-action {
       width: 100%;
       background: var(--primary);
-      border: 1px solid var(--border-line);
-      border-radius: 9999px; /* radium 100% */
+      border: none;
+      border-radius: 12px; /* radium médio */
       color: var(--text);
       font-family: inherit;
       font-size: var(--font-size-base);
@@ -315,7 +315,7 @@
       align-items: flex-start;
       text-align: left;
       gap: var(--gap);
-      margin: auto;
+      margin: 0 auto;
       background: transparent;
       border: none;
       box-shadow: none;
@@ -519,9 +519,9 @@
 
     .btn-logout-small {
       background: transparent;
-      border: 1px solid var(--border-line);
-      border-radius: 9999px;
-      padding: 0.35rem 1rem;
+      border: 1px solid rgba(18, 28, 34, 0.2);
+      border-radius: 8px; /* radium médio */
+      padding: 0.35rem 0.85rem;
       font-size: 13px;
       font-weight: 600;
       color: var(--text);
@@ -535,16 +535,40 @@
     }
 
     .btn-logout {
-      background: #FFFFFF !important;
-      border: 1px solid var(--border-line) !important;
-      color: var(--text) !important;
+      background: #E53E3E !important;
+      color: #FFFFFF !important;
+      border: none !important;
+      border-radius: 12px !important;
     }
 
     .btn-logout:hover {
-      background: #FAF8F5 !important;
+      background: #DC2626 !important;
     }
 
-    /* Segmented Control / Tabs com Radium 100% (Pill) */
+    .btn-danger {
+      background: #E53E3E !important; /* Vermelho */
+      color: #FFFFFF !important;
+      border: none !important;
+      border-radius: 12px !important; /* Radium médio */
+      font-weight: 600;
+    }
+
+    .btn-danger:hover {
+      background: #DC2626 !important;
+    }
+
+    .btn-secondary {
+      background: #E4E4E7 !important;
+      color: var(--text) !important;
+      border: none !important;
+      border-radius: 12px !important; /* Radium médio */
+      font-weight: 600;
+    }
+
+    .btn-secondary:hover {
+      background: #D4D4D8 !important;
+    }
+
     /* Segmented Control / Tabs com Radium 100% (Pill) */
     .tabs-wrapper {
       width: 100%;
@@ -553,7 +577,7 @@
 
     .segmented-control {
       width: 100%;
-      background: #BDBDBD; /* Tag com fundo #BDBDBD */
+      background: #D2D2D2; /* Fundo alterado para #D2D2D2 */
       border-radius: 9999px; /* radium 100% */
       padding: 3px;
       display: flex;
@@ -570,7 +594,7 @@
       padding: 0.6rem 0.5rem;
       font-size: 14px;
       font-weight: 500;
-      color: #374151;
+      color: #2D3748;
       cursor: pointer;
       font-family: inherit;
       text-align: center;
@@ -583,7 +607,7 @@
 
     .tab-btn:hover:not(.active) {
       color: #111827;
-      background: rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.3);
     }
 
     .tab-btn.active {
@@ -601,113 +625,87 @@
       gap: var(--gap);
     }
 
-    /* Estilos dos Dados da Conta / Edição Inline */
-    .account-item {
-      padding: 0.85rem 0;
-      border-bottom: 1px solid rgba(18, 28, 34, 0.08);
+    /* Lista de dados da conta (fundo normal, sem divs brancas com linhas) */
+    .account-fields-list {
+      width: 100%;
       display: flex;
       flex-direction: column;
-      gap: 0.35rem;
+      gap: 1.15rem;
     }
 
-    .account-item-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .account-field-group {
       width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
     }
 
-    .account-label {
+    .field-label-data {
       font-size: 13px;
-      font-weight: 500;
-      color: var(--text-secondary);
-    }
-
-    .account-val {
-      font-size: 15px;
       font-weight: 600;
-      color: var(--text);
-      word-break: break-word;
-    }
-
-    .btn-icon-edit {
-      background: rgba(18, 28, 34, 0.05);
-      border: none;
-      cursor: pointer;
       color: var(--text-secondary);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 30px;
-      height: 30px;
-      border-radius: 8px; /* radium médio */
-      transition: all 0.15s ease;
-      padding: 0;
+      text-align: left;
     }
 
-    .btn-icon-edit:hover {
-      background: rgba(18, 28, 34, 0.12);
-      color: var(--text);
-      transform: scale(1.05);
-    }
-
-    .account-edit-box {
-      margin-top: 0.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .input-text-edit {
+    .input-with-action {
+      position: relative;
       width: 100%;
-      height: 44px;
-      padding: 0 0.85rem;
-      background: #FFFFFF;
-      border: 1px solid rgba(18, 28, 34, 0.15);
-      border-radius: 10px;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-data-field {
+      width: 100%;
+      height: 52px;
+      padding: 0 3.5rem 0 1.15rem;
+      background: #E4E4E7; /* Cor neutra um pouco mais forte que o fundo #F4F4F5 */
+      border: none;
+      border-radius: 12px; /* Radium médio */
       font-family: inherit;
-      font-size: 14px;
+      font-size: 15px;
+      font-weight: 500;
       color: var(--text);
       outline: none;
       box-sizing: border-box;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: background-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .input-text-edit:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.2);
+    .input-data-field.is-editing,
+    .input-data-field:not([readonly]) {
+      background: #FFFFFF;
+      box-shadow: 0 0 0 2px var(--primary), 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
-    .edit-btns-row {
+    .btn-input-action {
+      position: absolute;
+      right: 8px;
+      height: 36px;
+      padding: 0 0.75rem;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
       display: flex;
-      gap: 0.5rem;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
     }
 
-    .btn-save-edit {
-      background: var(--primary);
-      border: none;
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 600;
-      padding: 0.45rem 1.1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-
-    .btn-save-edit:hover {
-      opacity: 0.9;
-    }
-
-    .btn-cancel-edit {
+    .btn-input-action:hover {
       background: rgba(18, 28, 34, 0.08);
-      border: none;
       color: var(--text);
+    }
+
+    .btn-input-action.is-saving {
+      background: var(--primary);
+      color: var(--text);
+      font-weight: 600;
       font-size: 13px;
-      font-weight: 500;
-      padding: 0.45rem 1rem;
-      border-radius: 8px;
-      cursor: pointer;
+    }
+
+    .btn-input-action.is-saving:hover {
+      background: var(--primary-hover);
     }
   </style>
 </head>
@@ -1034,10 +1032,10 @@
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
-          <button type="button" class="btn-action" style="background: transparent;" onclick="location.reload()">
+          <button type="button" class="btn-action btn-secondary" onclick="location.reload()">
             Atualizar Painel
           </button>
-          <button type="button" class="btn-action btn-logout" id="btnLogoutDash">
+          <button type="button" class="btn-action btn-danger" id="btnLogoutDash">
             Sair (Logout)
           </button>
         </div>
@@ -1069,73 +1067,88 @@
         <p class="access-subtitle">Dados profissionais e configurações do consultório.</p>
       </div>
 
-      <div class="params-card" style="width: 100%;">
-        <!-- NOME COMPLETO COM ÍCONE DE EDITAR -->
-        <div class="account-item">
-          <div class="account-item-top">
-            <span class="account-label">Nome Completo</span>
-            <button type="button" class="btn-icon-edit" id="btnEditNome" title="Editar Nome Completo">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+      <div class="account-fields-list">
+        <!-- NOME COMPLETO -->
+        <div class="account-field-group">
+          <label class="field-label-data">Nome Completo</label>
+          <div class="input-with-action">
+            <input 
+              type="text" 
+              id="inputContaNome" 
+              class="input-data-field" 
+              placeholder="Nome Completo do Médico" 
+              readonly 
+            />
+            <button type="button" class="btn-input-action" id="btnActionNome" title="Editar Nome Completo">
+              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              <span class="btn-save-inline-text hidden">Salvar</span>
             </button>
-          </div>
-          <div class="account-val" id="contaNomeMedico">—</div>
-          <div class="account-edit-box hidden" id="boxEditNome">
-            <input type="text" class="input-text-edit" id="inputEditNome" placeholder="Ex: Dr. Allan Severo" />
-            <div class="edit-btns-row">
-              <button type="button" class="btn-save-edit" id="btnSalvarNome">Salvar</button>
-              <button type="button" class="btn-cancel-edit" id="btnCancelarNome">Cancelar</button>
-            </div>
           </div>
         </div>
 
-        <!-- CRM COM ÍCONE DE EDITAR -->
-        <div class="account-item">
-          <div class="account-item-top">
-            <span class="account-label">CRM</span>
-            <button type="button" class="btn-icon-edit" id="btnEditCrm" title="Editar CRM">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+        <!-- CRM -->
+        <div class="account-field-group">
+          <label class="field-label-data">CRM</label>
+          <div class="input-with-action">
+            <input 
+              type="text" 
+              id="inputContaCrm" 
+              class="input-data-field" 
+              placeholder="Ex: 12345/SP" 
+              readonly 
+            />
+            <button type="button" class="btn-input-action" id="btnActionCrm" title="Editar CRM">
+              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              <span class="btn-save-inline-text hidden">Salvar</span>
             </button>
-          </div>
-          <div class="account-val" id="contaCrmMedico">Não informado</div>
-          <div class="account-edit-box hidden" id="boxEditCrm">
-            <input type="text" class="input-text-edit" id="inputEditCrm" placeholder="Ex: 12345/SP" />
-            <div class="edit-btns-row">
-              <button type="button" class="btn-save-edit" id="btnSalvarCrm">Salvar</button>
-              <button type="button" class="btn-cancel-edit" id="btnCancelarCrm">Cancelar</button>
-            </div>
           </div>
         </div>
 
-        <!-- RQE COM ÍCONE DE EDITAR -->
-        <div class="account-item">
-          <div class="account-item-top">
-            <span class="account-label">RQE</span>
-            <button type="button" class="btn-icon-edit" id="btnEditRqe" title="Editar RQE">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+        <!-- RQE -->
+        <div class="account-field-group">
+          <label class="field-label-data">RQE</label>
+          <div class="input-with-action">
+            <input 
+              type="text" 
+              id="inputContaRqe" 
+              class="input-data-field" 
+              placeholder="Ex: 6789" 
+              readonly 
+            />
+            <button type="button" class="btn-input-action" id="btnActionRqe" title="Editar RQE">
+              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              <span class="btn-save-inline-text hidden">Salvar</span>
             </button>
-          </div>
-          <div class="account-val" id="contaRqeMedico">Não informado</div>
-          <div class="account-edit-box hidden" id="boxEditRqe">
-            <input type="text" class="input-text-edit" id="inputEditRqe" placeholder="Ex: 6789" />
-            <div class="edit-btns-row">
-              <button type="button" class="btn-save-edit" id="btnSalvarRqe">Salvar</button>
-              <button type="button" class="btn-cancel-edit" id="btnCancelarRqe">Cancelar</button>
-            </div>
           </div>
         </div>
 
         <!-- NÚMERO DE TELEFONE DA PESSOA -->
-        <div class="account-item" style="border-bottom: none;">
-          <div class="account-item-top">
-            <span class="account-label">Número de Telefone</span>
+        <div class="account-field-group">
+          <label class="field-label-data">Número de Telefone</label>
+          <div class="input-with-action">
+            <input 
+              type="text" 
+              id="inputContaTelefone" 
+              class="input-data-field" 
+              placeholder="Telefone vinculado" 
+              readonly 
+            />
           </div>
-          <div class="account-val" id="contaTelefone">—</div>
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
-        <button type="button" class="btn-action btn-logout" id="btnLogoutConta">
-          Sair da Conta (Logout)
+      <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%; margin-top: 0.5rem;">
+        <button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">
+          Atualizar
+        </button>
+        <button type="button" class="btn-action btn-danger" id="btnLogoutConta">
+          Sair da Conta
         </button>
       </div>
     </div>
@@ -1908,15 +1921,15 @@
     }
 
     async function atualizarVisualizacaoConta() {
-      const nome = sessaoAtual?.usuario?.nome || '—';
-      const tel = sessaoAtual?.usuario?.telefone || telefoneAtual || '—';
-      const elNome = document.getElementById('contaNomeMedico');
-      const elTel = document.getElementById('contaTelefone');
-      const elCrm = document.getElementById('contaCrmMedico');
-      const elRqe = document.getElementById('contaRqeMedico');
+      const nome = sessaoAtual?.usuario?.nome || '';
+      const tel = sessaoAtual?.usuario?.telefone || telefoneAtual || '';
+      const inputNome = document.getElementById('inputContaNome');
+      const inputTel = document.getElementById('inputContaTelefone');
+      const inputCrm = document.getElementById('inputContaCrm');
+      const inputRqe = document.getElementById('inputContaRqe');
 
-      if (elNome) elNome.textContent = nome;
-      if (elTel) elTel.textContent = tel ? (formatarCom55(tel) || tel) : '—';
+      if (inputNome && inputNome.readOnly) inputNome.value = nome;
+      if (inputTel) inputTel.value = tel ? (formatarCom55(tel) || tel) : '';
 
       const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
       if (medicoId) {
@@ -1924,80 +1937,121 @@
           const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
           const data = await res.json();
           if (data.ok && data.status) {
-            if (data.status.nomeUsuario && elNome) elNome.textContent = data.status.nomeUsuario;
-            if (elCrm) elCrm.textContent = data.status.crm || 'Não informado';
-            if (elRqe) elRqe.textContent = data.status.rqe || 'Não informado';
-            if (data.status.telefone && elTel) elTel.textContent = formatarCom55(data.status.telefone);
+            if (data.status.nomeUsuario && inputNome && inputNome.readOnly) inputNome.value = data.status.nomeUsuario;
+            if (inputCrm && inputCrm.readOnly) inputCrm.value = data.status.crm || '';
+            if (inputRqe && inputRqe.readOnly) inputRqe.value = data.status.rqe || '';
+            if (data.status.telefone && inputTel) inputTel.value = formatarCom55(data.status.telefone);
           }
         } catch {}
       }
     }
 
-    // Configuração de edição inline (Nome, CRM, RQE)
-    function configurarEdicaoInline(btnEditId, boxEditId, inputEditId, btnSalvarId, btnCancelarId, campo, elValorId) {
-      const btnEdit = document.getElementById(btnEditId);
-      const boxEdit = document.getElementById(boxEditId);
-      const inputEdit = document.getElementById(inputEditId);
-      const btnSalvar = document.getElementById(btnSalvarId);
-      const btnCancelar = document.getElementById(btnCancelarId);
-      const elValor = document.getElementById(elValorId);
+    // Configuração de campo editável inline (Nome, CRM, RQE)
+    function configurarCampoEditavel(inputId, btnId, campo) {
+      const input = document.getElementById(inputId);
+      const btn = document.getElementById(btnId);
+      if (!input || !btn) return;
 
-      if (!btnEdit || !boxEdit || !inputEdit || !btnSalvar || !btnCancelar) return;
+      const icon = btn.querySelector('.icon-edit');
+      const txtSalvar = btn.querySelector('.btn-save-inline-text');
 
-      btnEdit.addEventListener('click', () => {
-        const valAtual = elValor ? elValor.textContent.trim() : '';
-        inputEdit.value = (valAtual !== '—' && valAtual !== 'Não informado') ? valAtual : '';
-        boxEdit.classList.remove('hidden');
-        inputEdit.focus();
-      });
+      let valorOriginal = input.value;
 
-      btnCancelar.addEventListener('click', () => {
-        boxEdit.classList.add('hidden');
-      });
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (input.readOnly) {
+          // Entrar em modo de edição
+          valorOriginal = input.value;
+          input.readOnly = false;
+          input.classList.add('is-editing');
+          btn.classList.add('is-saving');
+          if (icon) icon.classList.add('hidden');
+          if (txtSalvar) txtSalvar.classList.remove('hidden');
+          input.focus();
+        } else {
+          // Salvar
+          const novoValor = input.value.trim();
+          const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+          const usuarioId = sessaoAtual?.usuario?.usuarioId;
+          if (!medicoId) return;
 
-      btnSalvar.addEventListener('click', async () => {
-        const novoValor = inputEdit.value.trim();
-        const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
-        const usuarioId = sessaoAtual?.usuario?.usuarioId;
-        if (!medicoId) return;
+          btn.disabled = true;
+          if (txtSalvar) txtSalvar.textContent = '...';
 
-        btnSalvar.disabled = true;
-        btnSalvar.textContent = 'Salvando...';
-
-        try {
-          const payload = { medicoId, usuarioId };
-          payload[campo] = novoValor;
-          const res = await fetch('/api/conta/perfil', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          if (data.ok) {
-            if (elValor) elValor.textContent = novoValor || 'Não informado';
-            if (campo === 'nome') {
-              if (!sessaoAtual.usuario) sessaoAtual.usuario = {};
-              sessaoAtual.usuario.nome = novoValor;
-              localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
-              const resNome = document.getElementById('resumoNomeMedico');
-              if (resNome) resNome.textContent = novoValor;
+          try {
+            const payload = { medicoId, usuarioId };
+            payload[campo] = novoValor;
+            const res = await fetch('/api/conta/perfil', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.ok) {
+              input.value = novoValor;
+              input.readOnly = true;
+              input.classList.remove('is-editing');
+              btn.classList.remove('is-saving');
+              if (icon) icon.classList.remove('hidden');
+              if (txtSalvar) {
+                txtSalvar.textContent = 'Salvar';
+                txtSalvar.classList.add('hidden');
+              }
+              if (campo === 'nome') {
+                if (!sessaoAtual.usuario) sessaoAtual.usuario = {};
+                sessaoAtual.usuario.nome = novoValor;
+                localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
+                const resNome = document.getElementById('resumoNomeMedico');
+                if (resNome) resNome.textContent = novoValor;
+              }
+            } else {
+              alert(data.detalhe || 'Erro ao salvar');
+              input.value = valorOriginal;
             }
-            boxEdit.classList.add('hidden');
-          } else {
-            alert(data.detalhe || 'Erro ao atualizar.');
+          } catch {
+            alert('Erro ao conectar com servidor');
+            input.value = valorOriginal;
+          } finally {
+            btn.disabled = false;
+            if (txtSalvar) txtSalvar.textContent = 'Salvar';
           }
-        } catch {
-          alert('Erro de conexão ao salvar.');
-        } finally {
-          btnSalvar.disabled = false;
-          btnSalvar.textContent = 'Salvar';
+        }
+      });
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          btn.click();
+        } else if (e.key === 'Escape' && !input.readOnly) {
+          input.value = valorOriginal;
+          input.readOnly = true;
+          input.classList.remove('is-editing');
+          btn.classList.remove('is-saving');
+          if (icon) icon.classList.remove('hidden');
+          if (txtSalvar) {
+            txtSalvar.textContent = 'Salvar';
+            txtSalvar.classList.add('hidden');
+          }
         }
       });
     }
 
-    configurarEdicaoInline('btnEditNome', 'boxEditNome', 'inputEditNome', 'btnSalvarNome', 'btnCancelarNome', 'nome', 'contaNomeMedico');
-    configurarEdicaoInline('btnEditCrm', 'boxEditCrm', 'inputEditCrm', 'btnSalvarCrm', 'btnCancelarCrm', 'crm', 'contaCrmMedico');
-    configurarEdicaoInline('btnEditRqe', 'boxEditRqe', 'inputEditRqe', 'btnSalvarRqe', 'btnCancelarRqe', 'rqe', 'contaRqeMedico');
+    configurarCampoEditavel('inputContaNome', 'btnActionNome', 'nome');
+    configurarCampoEditavel('inputContaCrm', 'btnActionCrm', 'crm');
+    configurarCampoEditavel('inputContaRqe', 'btnActionRqe', 'rqe');
+
+    const btnAtualizarConta = document.getElementById('btnAtualizarConta');
+    if (btnAtualizarConta) {
+      btnAtualizarConta.addEventListener('click', async () => {
+        btnAtualizarConta.disabled = true;
+        btnAtualizarConta.textContent = 'Atualizando...';
+        await atualizarVisualizacaoConta();
+        setTimeout(() => {
+          btnAtualizarConta.disabled = false;
+          btnAtualizarConta.textContent = 'Atualizar';
+        }, 600);
+      });
+    }
 
     tabBtns.forEach(btn => {
       btn.addEventListener('click', () => {
