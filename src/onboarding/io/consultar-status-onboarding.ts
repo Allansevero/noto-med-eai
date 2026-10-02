@@ -10,6 +10,9 @@ export type StatusOnboardingMedico = {
   medicoId: string;
   usuarioId: string;
   nomeUsuario: string;
+  crm?: string | null;
+  rqe?: string | null;
+  telefone?: string | null;
   passos: {
     passo1Nome: boolean;
     passo2XmlEnviado: boolean;
@@ -44,7 +47,10 @@ export async function consultarStatusOnboarding(
       m.usuario_id,
       m.nome_completo as medico_nome,
       m.especialidade,
+      m.crm,
+      m.rqe,
       u.nome as usuario_nome,
+      u.telefone,
       pf.razao_social,
       pf.inscricao_municipal,
       pf.uf,
@@ -84,6 +90,9 @@ export async function consultarStatusOnboarding(
     medicoId: r.medico_id,
     usuarioId: r.usuario_id,
     nomeUsuario: nomeExibicao || 'Dr(a).',
+    crm: r.crm || null,
+    rqe: r.rqe || null,
+    telefone: r.telefone || null,
     passos: {
       passo1Nome,
       passo2XmlEnviado,

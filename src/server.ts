@@ -204,6 +204,34 @@ export function criarAppExpress() {
     }
   });
 
+  // Atualizar Perfil do Médico (Nome, CRM, RQE) na aba Conta
+  app.post('/api/conta/perfil', async (req: Request, res: Response) => {
+    try {
+      const { usuarioId, medicoId: medicoIdRaw, nome, crm, rqe } = req.body || {};
+      const medicoIdFinal = await resolverMedicoId(pool, medicoIdRaw || usuarioId);
+
+      if (nome && typeof nome === 'string') {
+        const nomeLimpo = nome.trim();
+        if (usuarioId) {
+          await pool.query('update usuarios set nome = $2, atualizado_em = now() where id = $1', [usuarioId, nomeLimpo]);
+        }
+        await pool.query('update medicos set nome_completo = $2, atualizado_em = now() where id = $1', [medicoIdFinal, nomeLimpo]);
+      }
+      if (crm !== undefined) {
+        const crmLimpo = typeof crm === 'string' && crm.trim() ? crm.trim() : null;
+        await pool.query('update medicos set crm = $2, atualizado_em = now() where id = $1', [medicoIdFinal, crmLimpo]);
+      }
+      if (rqe !== undefined) {
+        const rqeLimpo = typeof rqe === 'string' && rqe.trim() ? rqe.trim() : null;
+        await pool.query('update medicos set rqe = $2, atualizado_em = now() where id = $1', [medicoIdFinal, rqeLimpo]);
+      }
+
+      return res.json({ ok: true, medicoId: medicoIdFinal, nome, crm, rqe });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao atualizar perfil' });
+    }
+  });
+
   // Passo 3 (fallback): Upload e extracao manual do XML de referencia
   app.post('/api/onboarding/xml', async (req: Request, res: Response) => {
     try {

@@ -4,59 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Noto — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet">
   <style>
-    @font-face {
-      font-family: 'WhatsApp Sans';
-      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
-      font-weight: 100 900;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'WhatsApp Sans';
-      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
-      font-weight: 400;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'WhatsApp Sans';
-      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
-      font-weight: 500;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'WhatsApp Sans';
-      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
-      font-weight: 600;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'WhatsApp Sans';
-      src: url('/assets/WhatsAppSans-Regular.ttf') format('truetype');
-      font-weight: 700;
-      font-style: normal;
-      font-display: swap;
-    }
-
     :root {
-      --bg: #FCF5EB;
+      --bg: #F4F4F5;
       --text: #121C22;
       --text-secondary: rgba(18, 28, 34, 0.72);
       --text-muted: rgba(18, 28, 34, 0.45);
       --primary: #25D366;
       --primary-hover: #20ba5a;
       --border-line: #121C22;
-      --font-family: 'WhatsApp Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-family: "Geist", sans-serif;
       --font-size-base: 15px;
       --title-size: 45px;
       --gap: 2rem;
+    }
+
+    .geist-font {
+      font-family: "Geist", sans-serif;
+      font-optical-sizing: auto;
+      font-style: normal;
     }
 
     * {
@@ -64,12 +33,14 @@
       margin: 0;
       padding: 0;
       font-family: var(--font-family);
+      font-optical-sizing: auto;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
     input, button, select, textarea {
       font-family: var(--font-family);
+      font-optical-sizing: auto;
     }
 
     body {
@@ -151,18 +122,19 @@
       width: 100%;
       height: 58px;
       background: #FFFFFF;
-      border: 1px solid var(--border-line);
-      border-radius: 9999px;
+      border: none;
+      border-radius: 12px; /* radium médio não 100% */
       display: flex;
       align-items: center;
       padding: 0 1.25rem;
       gap: 0.85rem;
       box-sizing: border-box;
-      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: box-shadow 0.2s ease;
     }
 
     .phone-input-wrapper:focus-within {
-      box-shadow: 0 0 0 3px rgba(18, 28, 34, 0.1);
+      box-shadow: 0 0 0 2px var(--primary), 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
     .flag-icon-container {
@@ -185,7 +157,7 @@
       border: none;
       background: transparent;
       outline: none;
-      font-family: 'WhatsApp Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+      font-family: var(--font-family) !important;
       font-size: 20px !important;
       color: var(--text);
       width: 100%;
@@ -197,7 +169,7 @@
     }
 
     .phone-input::placeholder {
-      font-family: 'WhatsApp Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+      font-family: var(--font-family) !important;
       font-size: 20px !important;
       color: var(--text-muted);
       font-weight: 400;
@@ -305,14 +277,15 @@
       font-weight: 700;
       color: var(--text);
       background: #FFFFFF;
-      border: 1px solid var(--border-line);
-      border-radius: 12px;
+      border: none;
+      border-radius: 12px; /* radium médio não 100% */
       outline: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
       transition: box-shadow 0.15s ease;
     }
 
     .otp-inputs input:focus {
-      box-shadow: 0 0 0 3px rgba(18, 28, 34, 0.12);
+      box-shadow: 0 0 0 2px var(--primary), 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
     .btn-link {
@@ -373,19 +346,20 @@
       height: 58px;
       padding: 0 1.25rem;
       background: #FFFFFF;
-      border: 1px solid var(--border-line);
-      border-radius: 9999px;
+      border: none;
+      border-radius: 12px; /* radium médio não 100% */
       font-family: inherit;
       font-size: 16px;
       color: var(--text);
       outline: none;
       box-sizing: border-box;
-      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: box-shadow 0.2s ease;
       text-align: left;
     }
 
     .input-text:focus {
-      box-shadow: 0 0 0 3px rgba(18, 28, 34, 0.1);
+      box-shadow: 0 0 0 2px var(--primary), 0 1px 3px rgba(0, 0, 0, 0.05);
     }
 
     .drop-zone {
@@ -569,6 +543,172 @@
     .btn-logout:hover {
       background: #FAF8F5 !important;
     }
+
+    /* Segmented Control / Tabs com Radium 100% (Pill) */
+    /* Segmented Control / Tabs com Radium 100% (Pill) */
+    .tabs-wrapper {
+      width: 100%;
+      margin-bottom: 0.25rem;
+    }
+
+    .segmented-control {
+      width: 100%;
+      background: #BDBDBD; /* Tag com fundo #BDBDBD */
+      border-radius: 9999px; /* radium 100% */
+      padding: 3px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      box-sizing: border-box;
+    }
+
+    .tab-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      border-radius: 9999px; /* radium 100% */
+      padding: 0.6rem 0.5rem;
+      font-size: 14px;
+      font-weight: 500;
+      color: #374151;
+      cursor: pointer;
+      font-family: inherit;
+      text-align: center;
+      line-height: 1.2;
+      transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+      white-space: nowrap;
+      user-select: none;
+      outline: none;
+    }
+
+    .tab-btn:hover:not(.active) {
+      color: #111827;
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .tab-btn.active {
+      background: #FFFFFF; /* selecionado branco */
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .tab-content {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--gap);
+    }
+
+    /* Estilos dos Dados da Conta / Edição Inline */
+    .account-item {
+      padding: 0.85rem 0;
+      border-bottom: 1px solid rgba(18, 28, 34, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .account-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .account-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .account-val {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .btn-icon-edit {
+      background: rgba(18, 28, 34, 0.05);
+      border: none;
+      cursor: pointer;
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px; /* radium médio */
+      transition: all 0.15s ease;
+      padding: 0;
+    }
+
+    .btn-icon-edit:hover {
+      background: rgba(18, 28, 34, 0.12);
+      color: var(--text);
+      transform: scale(1.05);
+    }
+
+    .account-edit-box {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .input-text-edit {
+      width: 100%;
+      height: 44px;
+      padding: 0 0.85rem;
+      background: #FFFFFF;
+      border: 1px solid rgba(18, 28, 34, 0.15);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      box-sizing: border-box;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .input-text-edit:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.2);
+    }
+
+    .edit-btns-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn-save-edit {
+      background: var(--primary);
+      border: none;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 0.45rem 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-save-edit:hover {
+      opacity: 0.9;
+    }
+
+    .btn-cancel-edit {
+      background: rgba(18, 28, 34, 0.08);
+      border: none;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 0.45rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -661,10 +801,27 @@
         </button>
       </div>
 
-      <div id="alertOnboarding" class="alert alert-error hidden"></div>
+      <!-- TABS DE NAVEGAÇÃO SEGMENTADAS (RADIUM 100%) -->
+      <div class="tabs-wrapper" id="tabsNavigation">
+        <div class="segmented-control" role="tablist" aria-label="Navegação Noto">
+          <button type="button" class="tab-btn active" data-tab="painel" role="tab" aria-selected="true" id="tabBtnPainel">
+            Painel
+          </button>
+          <button type="button" class="tab-btn" data-tab="emissoes" role="tab" aria-selected="false" id="tabBtnEmissoes">
+            Emissões
+          </button>
+          <button type="button" class="tab-btn" data-tab="conta" role="tab" aria-selected="false" id="tabBtnConta">
+            Conta
+          </button>
+        </div>
+      </div>
 
-      <!-- ETAPA 1: NOME DO MÉDICO -->
-      <div id="step1View" class="step-view">
+      <!-- CONTEÚDO DA ABA PAINEL (TUDO ATUALMENTE AQUI) -->
+      <div id="tabContentPainel" class="tab-content" role="tabpanel" aria-labelledby="tabBtnPainel">
+        <div id="alertOnboarding" class="alert alert-error hidden"></div>
+
+        <!-- ETAPA 1: NOME DO MÉDICO -->
+        <div id="step1View" class="step-view">
         <div class="access-header">
           <h2 class="access-title" style="font-size: 34px;">Identificação</h2>
           <p class="access-subtitle">
@@ -885,7 +1042,104 @@
           </button>
         </div>
       </div>
-    </section>
+    </div>
+
+    <!-- CONTEÚDO DA ABA EMISSÕES -->
+    <div id="tabContentEmissoes" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnEmissoes">
+      <div class="access-header">
+        <h2 class="access-title" style="font-size: 34px;">Emissões</h2>
+        <p class="access-subtitle">Histórico e comprovantes das notas fiscais emitidas no consultório.</p>
+      </div>
+
+      <div class="params-card" style="text-align: center; padding: 2.25rem 1.25rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: 100%;">
+        <div style="width: 48px; height: 48px; border-radius: 9999px; background: rgba(37, 211, 102, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px;">
+          📄
+        </div>
+        <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">Nenhuma emissão recente</h3>
+        <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+          As notas emitidas automaticamente pelo WhatsApp com <code>/emissao [valor]</code> ficarão listadas aqui para download de PDF e XML.
+        </p>
+      </div>
+    </div>
+
+    <!-- CONTEÚDO DA ABA CONTA -->
+    <div id="tabContentConta" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnConta">
+      <div class="access-header">
+        <h2 class="access-title" style="font-size: 34px;">Sua Conta</h2>
+        <p class="access-subtitle">Dados profissionais e configurações do consultório.</p>
+      </div>
+
+      <div class="params-card" style="width: 100%;">
+        <!-- NOME COMPLETO COM ÍCONE DE EDITAR -->
+        <div class="account-item">
+          <div class="account-item-top">
+            <span class="account-label">Nome Completo</span>
+            <button type="button" class="btn-icon-edit" id="btnEditNome" title="Editar Nome Completo">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+            </button>
+          </div>
+          <div class="account-val" id="contaNomeMedico">—</div>
+          <div class="account-edit-box hidden" id="boxEditNome">
+            <input type="text" class="input-text-edit" id="inputEditNome" placeholder="Ex: Dr. Allan Severo" />
+            <div class="edit-btns-row">
+              <button type="button" class="btn-save-edit" id="btnSalvarNome">Salvar</button>
+              <button type="button" class="btn-cancel-edit" id="btnCancelarNome">Cancelar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CRM COM ÍCONE DE EDITAR -->
+        <div class="account-item">
+          <div class="account-item-top">
+            <span class="account-label">CRM</span>
+            <button type="button" class="btn-icon-edit" id="btnEditCrm" title="Editar CRM">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+            </button>
+          </div>
+          <div class="account-val" id="contaCrmMedico">Não informado</div>
+          <div class="account-edit-box hidden" id="boxEditCrm">
+            <input type="text" class="input-text-edit" id="inputEditCrm" placeholder="Ex: 12345/SP" />
+            <div class="edit-btns-row">
+              <button type="button" class="btn-save-edit" id="btnSalvarCrm">Salvar</button>
+              <button type="button" class="btn-cancel-edit" id="btnCancelarCrm">Cancelar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RQE COM ÍCONE DE EDITAR -->
+        <div class="account-item">
+          <div class="account-item-top">
+            <span class="account-label">RQE</span>
+            <button type="button" class="btn-icon-edit" id="btnEditRqe" title="Editar RQE">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+            </button>
+          </div>
+          <div class="account-val" id="contaRqeMedico">Não informado</div>
+          <div class="account-edit-box hidden" id="boxEditRqe">
+            <input type="text" class="input-text-edit" id="inputEditRqe" placeholder="Ex: 6789" />
+            <div class="edit-btns-row">
+              <button type="button" class="btn-save-edit" id="btnSalvarRqe">Salvar</button>
+              <button type="button" class="btn-cancel-edit" id="btnCancelarRqe">Cancelar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- NÚMERO DE TELEFONE DA PESSOA -->
+        <div class="account-item" style="border-bottom: none;">
+          <div class="account-item-top">
+            <span class="account-label">Número de Telefone</span>
+          </div>
+          <div class="account-val" id="contaTelefone">—</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+        <button type="button" class="btn-action btn-logout" id="btnLogoutConta">
+          Sair da Conta (Logout)
+        </button>
+      </div>
+    </div>
+  </section>
 
   </div>
 
@@ -941,6 +1195,7 @@
       // Alterna visibilidade dos containers
       cardOnboarding.classList.add('hidden');
       cardAuth.classList.remove('hidden');
+      alternarAba('painel');
 
       // Reseta botões
       const btnEnviar = document.getElementById('btnEnviarOtp');
@@ -1628,6 +1883,131 @@
           btnGerenciarAssinatura.textContent = 'Gerenciar Assinatura (Stripe)';
         }
       });
+    }
+
+    // --- GERENCIADOR DE ABAS (RADIUM 100%) ---
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPainel = document.getElementById('tabContentPainel');
+    const tabEmissoes = document.getElementById('tabContentEmissoes');
+    const tabConta = document.getElementById('tabContentConta');
+
+    function alternarAba(abaDestino) {
+      tabBtns.forEach(btn => {
+        const ativo = btn.dataset.tab === abaDestino;
+        btn.classList.toggle('active', ativo);
+        btn.setAttribute('aria-selected', ativo ? 'true' : 'false');
+      });
+
+      if (tabPainel) tabPainel.classList.toggle('hidden', abaDestino !== 'painel');
+      if (tabEmissoes) tabEmissoes.classList.toggle('hidden', abaDestino !== 'emissoes');
+      if (tabConta) tabConta.classList.toggle('hidden', abaDestino !== 'conta');
+
+      if (abaDestino === 'conta') {
+        atualizarVisualizacaoConta();
+      }
+    }
+
+    async function atualizarVisualizacaoConta() {
+      const nome = sessaoAtual?.usuario?.nome || '—';
+      const tel = sessaoAtual?.usuario?.telefone || telefoneAtual || '—';
+      const elNome = document.getElementById('contaNomeMedico');
+      const elTel = document.getElementById('contaTelefone');
+      const elCrm = document.getElementById('contaCrmMedico');
+      const elRqe = document.getElementById('contaRqeMedico');
+
+      if (elNome) elNome.textContent = nome;
+      if (elTel) elTel.textContent = tel ? (formatarCom55(tel) || tel) : '—';
+
+      const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+      if (medicoId) {
+        try {
+          const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+          const data = await res.json();
+          if (data.ok && data.status) {
+            if (data.status.nomeUsuario && elNome) elNome.textContent = data.status.nomeUsuario;
+            if (elCrm) elCrm.textContent = data.status.crm || 'Não informado';
+            if (elRqe) elRqe.textContent = data.status.rqe || 'Não informado';
+            if (data.status.telefone && elTel) elTel.textContent = formatarCom55(data.status.telefone);
+          }
+        } catch {}
+      }
+    }
+
+    // Configuração de edição inline (Nome, CRM, RQE)
+    function configurarEdicaoInline(btnEditId, boxEditId, inputEditId, btnSalvarId, btnCancelarId, campo, elValorId) {
+      const btnEdit = document.getElementById(btnEditId);
+      const boxEdit = document.getElementById(boxEditId);
+      const inputEdit = document.getElementById(inputEditId);
+      const btnSalvar = document.getElementById(btnSalvarId);
+      const btnCancelar = document.getElementById(btnCancelarId);
+      const elValor = document.getElementById(elValorId);
+
+      if (!btnEdit || !boxEdit || !inputEdit || !btnSalvar || !btnCancelar) return;
+
+      btnEdit.addEventListener('click', () => {
+        const valAtual = elValor ? elValor.textContent.trim() : '';
+        inputEdit.value = (valAtual !== '—' && valAtual !== 'Não informado') ? valAtual : '';
+        boxEdit.classList.remove('hidden');
+        inputEdit.focus();
+      });
+
+      btnCancelar.addEventListener('click', () => {
+        boxEdit.classList.add('hidden');
+      });
+
+      btnSalvar.addEventListener('click', async () => {
+        const novoValor = inputEdit.value.trim();
+        const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+        const usuarioId = sessaoAtual?.usuario?.usuarioId;
+        if (!medicoId) return;
+
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = 'Salvando...';
+
+        try {
+          const payload = { medicoId, usuarioId };
+          payload[campo] = novoValor;
+          const res = await fetch('/api/conta/perfil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (data.ok) {
+            if (elValor) elValor.textContent = novoValor || 'Não informado';
+            if (campo === 'nome') {
+              if (!sessaoAtual.usuario) sessaoAtual.usuario = {};
+              sessaoAtual.usuario.nome = novoValor;
+              localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
+              const resNome = document.getElementById('resumoNomeMedico');
+              if (resNome) resNome.textContent = novoValor;
+            }
+            boxEdit.classList.add('hidden');
+          } else {
+            alert(data.detalhe || 'Erro ao atualizar.');
+          }
+        } catch {
+          alert('Erro de conexão ao salvar.');
+        } finally {
+          btnSalvar.disabled = false;
+          btnSalvar.textContent = 'Salvar';
+        }
+      });
+    }
+
+    configurarEdicaoInline('btnEditNome', 'boxEditNome', 'inputEditNome', 'btnSalvarNome', 'btnCancelarNome', 'nome', 'contaNomeMedico');
+    configurarEdicaoInline('btnEditCrm', 'boxEditCrm', 'inputEditCrm', 'btnSalvarCrm', 'btnCancelarCrm', 'crm', 'contaCrmMedico');
+    configurarEdicaoInline('btnEditRqe', 'boxEditRqe', 'inputEditRqe', 'btnSalvarRqe', 'btnCancelarRqe', 'rqe', 'contaRqeMedico');
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        alternarAba(btn.dataset.tab);
+      });
+    });
+
+    const btnLogoutConta = document.getElementById('btnLogoutConta');
+    if (btnLogoutConta) {
+      btnLogoutConta.addEventListener('click', efetuarLogout);
     }
 
     // Auto carregar se logado
