@@ -11,6 +11,7 @@ RUN npm ci
 # Copia código-fonte e configurações
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts ./scripts
 
 # Porta padrão da aplicação HTTP
 EXPOSE 3000

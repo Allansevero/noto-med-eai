@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import forge from 'node-forge';
+import { gunzipSync } from 'node:zlib';
 import { PostgresEmissorDpsService } from './postgres-emissor-dps-service.js';
 import { SefinNacionalClient } from './sefin-nacional-client.js';
 import type { SolicitacaoEmissaoItem } from '../../worker/emissor-dps-service.js';
@@ -363,6 +364,16 @@ describe('PostgresEmissorDpsService', () => {
     assert.equal(resultado.ndps, 13);
     assert.equal(resultado.chaveAcesso, chaveOficialSefin);
     assert.ok(queriesExecutadas.some((q) => q.includes('update medico_perfil_fiscal')));
+
+    chamadasTransmissor = 0;
+    queriesExecutadas.length = 0;
+    const conservador = new PostgresEmissorDpsService(fakePool, chaveCriptografia,
+      undefined, undefined, fakeSupabase, fakeSefinClient, true);
+    const rejeicao = await conservador.emitir(itemMock);
+    assert.equal(rejeicao.sucesso, false);
+    if (!rejeicao.sucesso) assert.equal(rejeicao.codigoErroSefin, 'E0014');
+    assert.equal(chamadasTransmissor, 1);
+    assert.ok(!queriesExecutadas.some(q => q.includes('update medico_perfil_fiscal')));
   });
 
   it('deve auto-recuperar erro E0676 atualizando perfil para MEI e retransmitindo com sucesso', async () => {
@@ -453,7 +464,9 @@ describe('PostgresEmissorDpsService', () => {
 
     let chamadasTransmissor = 0;
     const chaveOficialSefin = '35260912345678000195550010000000201234567890123456';
-    const fakeTransmissor = async () => {
+    const xmlsTransmitidos: string[] = [];
+    const fakeTransmissor = async (_url: string, payload: string) => {
+      xmlsTransmitidos.push(gunzipSync(Buffer.from(JSON.parse(payload).dpsXmlGZipB64, 'base64')).toString());
       chamadasTransmissor++;
       if (chamadasTransmissor === 1) {
         return {
@@ -499,6 +512,32 @@ describe('PostgresEmissorDpsService', () => {
         (q) => q.includes('update medico_perfil_fiscal') && q.includes("opcao_simples_nacional = 'mei'")
       )
     );
+
+    chamadasTransmissor = 0;
+    queriesExecutadas.length = 0;
+    const conservador = new PostgresEmissorDpsService(fakePool, chaveCriptografia,
+      undefined, undefined, fakeSupabase, fakeSefinClient, true);
+    const rejeicao = await conservador.emitir(itemMock);
+    assert.equal(rejeicao.sucesso, false);
+    if (!rejeicao.sucesso) assert.equal(rejeicao.codigoErroSefin, 'E0676');
+    assert.equal(chamadasTransmissor, 1);
+    assert.ok(!queriesExecutadas.some(q => q.includes('update medico_perfil_fiscal')));
+
+    if (rejeicao.sucesso) throw new Error('Esperava rejeição');
+    const corrigida = await conservador.corrigirRejeicao(itemMock, rejeicao);
+    assert.equal(corrigida.sucesso, true);
+    assert.equal(chamadasTransmissor, 2);
+    const antes = xmlsTransmitidos.at(-2)!;
+    const depois = xmlsTransmitidos.at(-1)!;
+    assert.ok(antes.includes('<tribFed>'));
+    assert.ok(!depois.includes('<tribFed>'));
+    assert.equal(antes.match(/<opSimpNac>.*?<\/opSimpNac>/)?.[0], depois.match(/<opSimpNac>.*?<\/opSimpNac>/)?.[0]);
+    assert.equal(antes.match(/<nDPS>.*?<\/nDPS>/)?.[0], depois.match(/<nDPS>.*?<\/nDPS>/)?.[0]);
+    assert.ok(!queriesExecutadas.some(q => q.includes('update medico_perfil_fiscal')));
+
+    const alterada = await conservador.corrigirRejeicao({ ...itemMock, valorServicoCentavos: 99999 }, rejeicao);
+    assert.equal(alterada.sucesso, false);
+    assert.equal(chamadasTransmissor, 2, 'Mudança de dados bloqueia envio');
   });
 
   it('deve auto-recuperar erro E0160 atualizando perfil para ME/EPP quando prestador estava como MEI e retransmitindo com sucesso', async () => {

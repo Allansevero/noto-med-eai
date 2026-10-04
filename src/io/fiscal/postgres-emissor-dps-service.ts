@@ -5,6 +5,8 @@
  */
 
 import type pg from 'pg';
+import { BLOCO_FEDERAL_AUTOMATICO, podeCorrigirTributosFederais } from '../../agente-fiscal/analisar-rejeicao.js';
+import type { FalhaEmissao } from '../../agente-fiscal/investigacao.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   EmissorDpsService,
@@ -41,10 +43,25 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     private readonly meuDanfeClient?: MeuDanfeClient,
     private readonly consultaCpfProvider?: ConsultaCpfProvider,
     private readonly supabaseClient?: SupabaseClient,
-    private readonly sefinClient?: SefinNacionalClient
+    private readonly sefinClient?: SefinNacionalClient,
+    private readonly modoAgenteConservador = false
   ) {}
 
   async emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps> {
+    return this.emitirPreparado(item);
+  }
+
+  async corrigirRejeicao(item: SolicitacaoEmissaoItem, falha: FalhaEmissao): Promise<ResultadoEmissaoDps> {
+    if (!this.modoAgenteConservador || !podeCorrigirTributosFederais(falha)) {
+      return { sucesso: false, erro: 'Correção não autorizada pelas evidências da rejeição.' };
+    }
+    return this.emitirPreparado(item, falha);
+  }
+
+  private async emitirPreparado(item: SolicitacaoEmissaoItem, correcao?: FalhaEmissao): Promise<ResultadoEmissaoDps> {
+    if (this.modoAgenteConservador && (!this.supabaseClient || !this.sefinClient)) {
+      return { sucesso: false, erro: 'Emissão real indisponível: integração fiscal não configurada.' };
+    }
     const prestadorConfig = await this.carregarPerfilFiscal(item.medicoId);
     if (!prestadorConfig) {
       return { sucesso: false, erro: `Perfil fiscal não cadastrado para o médico ${item.medicoId}` };
@@ -113,7 +130,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       cClassTrib: item.cclassTrib || '000001'
     };
 
-    let ndpsAtual = ndps;
+    let ndpsAtual = correcao ? Number(correcao.contextoTecnico!.ndps) : ndps;
+    const dataGeracao = correcao ? new Date(String(correcao.contextoTecnico!.dataGeracao)) : new Date();
+    let xmlDpsOriginal: string | undefined;
     const anoMes = new Date().toISOString().slice(0, 7);
     let chaveAcessoFinal = '';
     let respostaSefinRaw: Record<string, unknown> | undefined;
@@ -144,7 +163,12 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
       for (let seq = 0; seq <= MAX_INCREMENTOS_SEQUENCIA; seq++) {
         emissaoInput.nDPS = String(ndpsAtual);
-        const { dpsId, xml: xmlDps } = gerarXmlDps(emissaoInput, prestadorConfig);
+        const { dpsId, xml: xmlGerado } = gerarXmlDps(emissaoInput, prestadorConfig, dataGeracao);
+        xmlDpsOriginal = xmlGerado;
+        if (correcao && xmlGerado !== correcao.xmlDpsOriginal) {
+          return { sucesso: false, erro: 'Dados da emissão mudaram desde a rejeição. Correção interrompida sem transmitir.' };
+        }
+        const xmlDps = correcao ? xmlGerado.replace(BLOCO_FEDERAL_AUTOMATICO, '') : xmlGerado;
         const xmlAssinado = assinarXmlDps({
           xml: xmlDps,
           dpsId,
@@ -165,6 +189,8 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         if (resSefin.sucesso) {
           break;
         }
+
+        if (this.modoAgenteConservador) break;
 
         if (resSefin.codigoErro === 'E0014' || resSefin.motivo?.includes('E0014')) {
           console.warn(`[PostgresEmissorDpsService] DPS ${ndpsAtual} duplicada (E0014). Avançando para ${ndpsAtual + 1}...`);
@@ -255,6 +281,16 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
           sucesso: false,
           erro: resSefinFinal?.motivo || 'Erro na transmissão à SEFIN',
           codigoErroSefin: resSefinFinal?.codigoErro,
+          httpStatus: resSefinFinal?.httpStatus,
+          xmlDpsOriginal: correcao ? undefined : xmlDpsOriginal,
+          falhaAntesDoEnvio: resSefinFinal?.falhaAntesDoEnvio,
+          contextoTecnico: {
+            dataGeracao: dataGeracao.toISOString(),
+            provedor: 'sefin_nacional', municipio: prestadorConfig.codMunicipio,
+            ambiente: prestadorConfig.ambiente, ndps: ndpsAtual, serie: prestadorConfig.serie,
+            valorCentavos: item.valorServicoCentavos, ctribNac: item.ctribNac,
+            cnbs: emissaoInput.cNBS, cclassTrib: emissaoInput.cClassTrib, cindOp: emissaoInput.cIndOp
+          },
           respostaSefinRaw: resSefinFinal?.respostaRaw
         };
       }

@@ -13,7 +13,7 @@ import type {
 } from '../../worker/fila-repositorio.js';
 
 export class PostgresFilaRepositorio implements FilaRepositorio {
-  constructor(private readonly pool: pg.Pool) {}
+  constructor(private readonly pool: pg.Pool, private readonly modoAgente = false) {}
 
   async buscarETravarProximoItem(workerId: string): Promise<ItemFilaComTentativas | null> {
     const sql = `
@@ -22,8 +22,9 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         from solicitacoes_nota
         where fila = 'pronta'
           and status not in ('simulada', 'emitida')
+          ${this.modoAgente ? `and not exists (select 1 from investigacoes_emissao i where i.solicitacao_id = solicitacoes_nota.id)` : ''}
           and (proxima_tentativa_em is null or proxima_tentativa_em <= now())
-          and (bloqueada_em is null or bloqueada_em < now() - interval '5 minutes')
+          and (bloqueada_em is null or (not $2 and bloqueada_em < now() - interval '5 minutes'))
         order by criado_em asc
         limit 1
         for update skip locked
@@ -36,7 +37,7 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
       returning sn.id, sn.medico_id, sn.paciente_id, sn.xdesc_serv, sn.valor_servico_centavos,
                 sn.ctrib_nac, sn.cnbs, sn.cclass_trib, sn.cind_op, sn.tentativas
     `;
-    const { rows } = await this.pool.query(sql, [workerId]);
+    const { rows } = await this.pool.query(sql, [workerId, this.modoAgente]);
     if (rows.length === 0) return null;
 
     const r = rows[0];

@@ -104,3 +104,13 @@ describe('SefinNacionalClient', () => {
     assert.ok(urlChamada.includes('producaorestrita.nfse.gov.br'));
   });
 });
+
+for (const codigo of ['EAI_AGAIN', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET']) {
+  it(`classifica evidência de envio para ${codigo}`, async () => {
+    const client = new SefinNacionalClient(async () => { throw Object.assign(new Error('rede'), { code: codigo }); });
+    const resultado = await client.transmitirDps({ xmlAssinado: '<DPS/>', pfxBuffer: Buffer.from('pfx'), senhaCertificado: 'senha', ambiente: 2 });
+    assert.equal(resultado.sucesso, false);
+    if (!resultado.sucesso) assert.equal(resultado.falhaAntesDoEnvio,
+      ['EAI_AGAIN', 'ECONNREFUSED'].includes(codigo) ? codigo : undefined);
+  });
+}

@@ -4,6 +4,9 @@
  * a fila 'pronta' sem depender de um processo daemon separado ou cron externo.
  */
 
+import { PostgresInvestigacaoRepositorio } from '../io/postgres/postgres-investigacao-repositorio.js';
+import { GroqDecisorFiscal } from '../io/groq/groq-decisor-fiscal.js';
+
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import type { AppConfig } from '../config.js';
@@ -19,7 +22,7 @@ import { formatarMensagemErroMedico, type NotificadorAlertas } from './notificar
 
 export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
   const workerId = `embedded-${process.pid}-${randomUUID().slice(0, 6)}`;
-  const filaRepo = new PostgresFilaRepositorio(pool);
+  const filaRepo = new PostgresFilaRepositorio(pool, config.agenteFiscalAtivo);
   const meuDanfeClient = config.meuDanfeApiKey ? new MeuDanfeClient(config.meuDanfeApiKey) : undefined;
   const hubCpfClient = config.hubDesenvolvedorToken ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken) : undefined;
   const supabaseClient = config.supabaseUrl && config.supabaseServiceRoleKey
@@ -35,7 +38,8 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     meuDanfeClient,
     hubCpfClient,
     supabaseClient,
-    sefinClient
+    sefinClient,
+    config.agenteFiscalAtivo
   );
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
@@ -75,7 +79,11 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
           filaRepositorio: filaRepo,
           emissorDps,
           enviarPdfDanfse: evolutionClient,
-          notificadorAlertas
+          notificadorAlertas,
+          agenteFiscal: config.agenteFiscalAtivo ? {
+            repositorio: new PostgresInvestigacaoRepositorio(pool),
+            decisor: new GroqDecisorFiscal(config.groqApiKey, config.groqModel)
+          } : undefined
         });
         console.log(`[WorkerEmbutido] Solicitação ${item.id} finalizada com status: ${res.status}`);
       } catch (err: any) {

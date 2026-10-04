@@ -30,6 +30,8 @@ export interface ResultadoSefinAutorizacao {
 
 export interface ResultadoSefinRejeicao {
   sucesso: false;
+  falhaAntesDoEnvio?: 'EAI_AGAIN' | 'ECONNREFUSED';
+  httpStatus?: number;
   codigoErro?: string;
   motivo: string;
   respostaRaw?: Record<string, unknown>;
@@ -86,6 +88,7 @@ export class SefinNacionalClient {
     } catch (err: any) {
       return {
         sucesso: false,
+        falhaAntesDoEnvio: ['EAI_AGAIN', 'ECONNREFUSED'].includes(err?.code) ? err.code : undefined,
         motivo: `Falha de conexão com SEFIN Nacional (${url}): ${err?.message || err}`
       };
     }
@@ -122,6 +125,7 @@ export class SefinNacionalClient {
         return {
           sucesso: false,
           codigoErro: cod,
+          httpStatus: status,
           motivo: `SEFIN rejeitou a emissão [${cod}]: ${msg}`,
           respostaRaw: json
         };

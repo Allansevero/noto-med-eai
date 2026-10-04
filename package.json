@@ -10,7 +10,9 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "start": "node --import tsx src/server.ts",
-    "worker": "node --import tsx src/worker-runner.ts"
+    "worker": "node --import tsx src/worker-runner.ts",
+    "migrate:agente": "node scripts/migrar-investigacoes-emissao.mjs",
+    "check:agente": "node scripts/verificar-agente-fiscal.mjs"
   },
   "keywords": [
     "nfse",

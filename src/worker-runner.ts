@@ -4,6 +4,9 @@
  * aplicando lock otimista e retentativas automáticas (seção 1 e 3.2 do plano).
  */
 
+import { PostgresInvestigacaoRepositorio } from './io/postgres/postgres-investigacao-repositorio.js';
+import { GroqDecisorFiscal } from './io/groq/groq-decisor-fiscal.js';
+
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { pool } from './io/postgres/pool.js';
@@ -18,7 +21,7 @@ import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolv
 import { formatarMensagemErroMedico, type NotificadorAlertas } from './worker/notificar-erro-medico.js';
 
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 6)}`;
-const filaRepo = new PostgresFilaRepositorio(pool);
+const filaRepo = new PostgresFilaRepositorio(pool, config.agenteFiscalAtivo);
 const meuDanfeClient = config.meuDanfeApiKey ? new MeuDanfeClient(config.meuDanfeApiKey) : undefined;
 const hubCpfClient = config.hubDesenvolvedorToken ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken) : undefined;
 const supabaseClient = config.supabaseUrl && config.supabaseServiceRoleKey
@@ -34,7 +37,8 @@ const emissorDps = new PostgresEmissorDpsService(
   meuDanfeClient,
   hubCpfClient,
   supabaseClient,
-  sefinClient
+  sefinClient,
+  config.agenteFiscalAtivo
 );
 const evolutionClient = new EvolutionApiClient(
   config.evolutionApiUrl,
@@ -72,7 +76,11 @@ async function cicloWorker() {
           filaRepositorio: filaRepo,
           emissorDps,
           enviarPdfDanfse: evolutionClient,
-          notificadorAlertas
+          notificadorAlertas,
+          agenteFiscal: config.agenteFiscalAtivo ? {
+            repositorio: new PostgresInvestigacaoRepositorio(pool),
+            decisor: new GroqDecisorFiscal(config.groqApiKey, config.groqModel)
+          } : undefined
         });
         console.log(`[Worker ${workerId}] Solicitação ${item.id} finalizada com status: ${res.status}`);
       } else {

@@ -33,9 +33,14 @@ export type ResultadoEmissaoDps =
       sucesso: false;
       erro: string;
       codigoErroSefin?: string;
+      httpStatus?: number;
+      xmlDpsOriginal?: string;
+      falhaAntesDoEnvio?: 'EAI_AGAIN' | 'ECONNREFUSED';
+      contextoTecnico?: Record<string, unknown>;
       respostaSefinRaw?: Record<string, unknown>;
     };
 
 export interface EmissorDpsService {
   emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps>;
+  corrigirRejeicao?(item: SolicitacaoEmissaoItem, falha: Extract<ResultadoEmissaoDps, { sucesso: false }>): Promise<ResultadoEmissaoDps>;
 }

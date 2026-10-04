@@ -22,6 +22,7 @@ export interface AppConfig {
   devEmailAlerta?: string;
   groqApiKey: string;
   groqModel: string;
+  agenteFiscalAtivo?: boolean;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -47,6 +48,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
     groqApiKey: env['GROQ_API_KEY'] || '',
     groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
+    agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

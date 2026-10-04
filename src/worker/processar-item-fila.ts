@@ -4,6 +4,8 @@
  * e notificações de falha ao médico ou desenvolvedor (seção 3.2, itens 5 a 8).
  */
 
+import { investigarFalha, type AgenteFiscalDeps } from '../agente-fiscal/investigar-falha.js';
+import type { FalhaEmissao } from '../agente-fiscal/investigacao.js';
 import {
   excedeuTentativasEmissao,
   calcularProximaTentativa
@@ -19,11 +21,12 @@ export interface ProcessarItemFilaDeps {
   enviarPdfDanfse: EnviarPdfDanfse;
   notificadorAlertas: NotificadorAlertas;
   agora?: () => Date;
+  agenteFiscal?: AgenteFiscalDeps;
 }
 
 export type ResultadoProcessarItem =
   | { ok: true; status: 'emitida'; chaveAcesso: string }
-  | { ok: false; status: 'reagendada' | 'erro_definitivo' | 'erro_inesperado'; motivo?: string };
+  | { ok: false; status: 'reagendada' | 'erro_definitivo' | 'erro_inesperado' | 'necessita_intervencao'; motivo?: string };
 
 export async function processarItemFila(
   item: ItemFilaComTentativas,
@@ -31,6 +34,8 @@ export async function processarItemFila(
 ): Promise<ResultadoProcessarItem> {
   const dataAtual = deps.agora ? deps.agora() : new Date();
   const tentativaAtual = item.tentativas + 1;
+
+  if (deps.agenteFiscal) return processarComAgente(item, deps);
 
   try {
     const emissao = await deps.emissorDps.emitir(item);
@@ -60,13 +65,15 @@ async function tratarSucessoEmissao(item: ItemFilaComTentativas, emissao: any, d
   });
 
   const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
+  if (!contexto && deps.agenteFiscal) throw new Error('Contato para entrega não localizado');
   if (contexto) {
-    await deps.enviarPdfDanfse.enviarPdf({
+    const entrega = await deps.enviarPdfDanfse.enviarPdf({
       instanciaNome: contexto.instanciaNome,
       contatoTelefone: contexto.contatoTelefone,
       pdfPathOuUrl: emissao.pdfStoragePath,
       nomeArquivo: `DANFSe-${emissao.ndps}.pdf`
     });
+    if (deps.agenteFiscal && !entrega.sucesso) throw new Error('Entrega do PDF pendente');
   }
 }
 
@@ -111,4 +118,42 @@ async function tratarExcecaoInesperada(
     medicoId: item.medicoId
   });
   return tratarFalhaEmissao(item, tentativaAtual, mensagemErro, dataAtual, deps);
+}
+
+/** Mantém exceções do agente fora do catch que reagenda emissões legadas. */
+async function processarComAgente(item: ItemFilaComTentativas, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
+  let emissao;
+  try {
+    emissao = await deps.emissorDps.emitir(item);
+  } catch {
+    emissao = { sucesso: false as const, erro: 'Falha inesperada; resultado da transmissão desconhecido.' };
+  }
+  if (!emissao.sucesso) return tratarComAgente(item, emissao, deps);
+  try {
+    await tratarSucessoEmissao(item, emissao, deps);
+    return { ok: true, status: 'emitida', chaveAcesso: emissao.chaveAcesso };
+  } catch {
+    // Nunca converter erro de gravação/entrega após autorização em nova emissão.
+    return tratarComAgente(item, { sucesso: false,
+      erro: 'Autorização recebida; falha na persistência ou entrega. Conciliar sem retransmitir.',
+      contextoTecnico: { chaveAcesso: emissao.chaveAcesso, etapa: 'pos_autorizacao' }
+    }, deps);
+  }
+}
+async function tratarComAgente(item: ItemFilaComTentativas, falha: FalhaEmissao, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
+  const resultado = await investigarFalha({ item, falha }, {
+    ...deps.agenteFiscal!, emissor: deps.emissorDps,
+    concluir: (nota) => tratarSucessoEmissao(item, nota, deps),
+    notificar: async () => {
+      const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
+      if (!contexto) throw new Error('Contato do médico não localizado');
+      await deps.notificadorAlertas.notificarMedicoWhatsApp({
+        telefoneMedico: contexto.telefoneMedico, nomePaciente: contexto.nomePaciente,
+        valorCentavos: item.valorServicoCentavos,
+        motivoErro: 'O Noto encontrou uma pendência e interrompeu novas tentativas para evitar uma emissão incorreta ou duplicada. O caso está registrado para revisão.'
+      });
+    }
+  });
+  return resultado ? { ok: true, status: 'emitida', chaveAcesso: resultado.chaveAcesso }
+    : { ok: false, status: 'necessita_intervencao' };
 }
