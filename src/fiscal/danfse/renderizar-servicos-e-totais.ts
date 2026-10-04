@@ -24,12 +24,13 @@ export function renderizarServico(
   let y = ctx.currentY;
 
   // Linha 1: Título | Código Trib Nac/Mun | Código NBS | Local da Prestação
-  const munNome = resolverNomeMunicipio(prestador.municipio, prestador.municipio);
-  const locPrest = `${munNome} / ${(prestador.uf || 'RS').toUpperCase()} / -`;
+  const municipio = servico.municipioPrestacao ?? prestador.municipio;
+  const munNome = resolverNomeMunicipio(municipio, municipio);
+  const locPrest = `${munNome} / ${(servico.ufPrestacao || prestador.uf || '-').toUpperCase()} / -`;
 
   desenharCelula(ctx, ctx.marginX, y, 130, rowH, '', 'SERVIÇO PRESTADO', true);
-  desenharCelula(ctx, ctx.marginX + 130, y, 140, rowH, 'Código de Tributação Nacional/Municipal', `${servico.cTribNac || '04.16.01'} / -`);
-  desenharCelula(ctx, ctx.marginX + 270, y, 145, rowH, 'Código da NBS', servico.cNBS || '1.2301.13.00');
+  desenharCelula(ctx, ctx.marginX + 130, y, 140, rowH, 'Código de Tributação Nacional/Municipal', `${servico.cTribNac || '-'} / -`);
+  desenharCelula(ctx, ctx.marginX + 270, y, 145, rowH, 'Código da NBS', servico.cNBS || '-');
   desenharCelula(ctx, ctx.marginX + 415, y, ctx.contentWidth - 415, rowH, 'Local da Prestação / Sigla UF / País', locPrest);
   y -= rowH;
 
@@ -75,7 +76,7 @@ export function renderizarServico(
 
 export function renderizarTributacaoMunicipal(
   ctx: ContextoRenderizacaoDanfse,
-  _servico: DanfseServico = {},
+  servico: DanfseServico = {},
   prestador: DanfsePrestador = {}
 ): void {
   const rowH = 16;
@@ -84,15 +85,15 @@ export function renderizarTributacaoMunicipal(
 
   // Linha 1
   desenharCelula(ctx, ctx.marginX, y, 170, rowH, '', 'TRIBUTAÇÃO MUNICIPAL (ISSQN)', true);
-  desenharCelula(ctx, ctx.marginX + 170, y, 175, rowH, 'Tipo de Tributação do ISSQN', 'Operação Tributável');
-  desenharCelula(ctx, ctx.marginX + 345, y, ctx.contentWidth - 345, rowH, 'Município / Sigla UF / País de Incidência do ISSQN', `${munNome} / ${(prestador.uf || 'RS').toUpperCase()} / -`);
+  desenharCelula(ctx, ctx.marginX + 170, y, 175, rowH, 'Tipo de Tributação do ISSQN', servico.tipoTributacao ?? '-');
+  desenharCelula(ctx, ctx.marginX + 345, y, ctx.contentWidth - 345, rowH, 'Município / Sigla UF / País de Incidência do ISSQN', '-');
   y -= rowH;
 
   // Linha 2
   const cW4 = ctx.contentWidth / 4;
   desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'BC ISSQN', '-');
   desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'Alíquota Aplicada', '-');
-  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Retenção do ISSQN', 'Não Retido');
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Retenção do ISSQN', servico.tipoRetencao ?? '-');
   desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'ISSQN Apurado', '-');
   y -= rowH;
 
@@ -132,7 +133,7 @@ export function renderizarTributacaoIbsCbs(ctx: ContextoRenderizacaoDanfse): voi
 
   // Linha 2
   const cW4 = ctx.contentWidth / 4;
-  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Exclusões e Reduções da Base de Cálculo', 'R$ 0,00');
+  desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Exclusões e Reduções da Base de Cálculo', '-');
   desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'Base de Cálculo Após Exclusões e Reduções', '-');
   desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Red. Alíquota IBS / Red. Alíquota CBS', '- / - / -');
   desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'Alíquota - IBS UF / IBS Mun', '- / -');
@@ -171,8 +172,8 @@ export function renderizarValoresTotais(ctx: ContextoRenderizacaoDanfse, servico
   // Linha 2
   desenharCelula(ctx, ctx.marginX, y, cW4, rowH, 'Total das Retenções (ISSQN / Federais)', '-');
   desenharCelula(ctx, ctx.marginX + cW4, y, cW4, rowH, 'VALOR LÍQUIDO DA NFS-e', `R$ ${vServ}`, true);
-  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Total do IBS/CBS', 'R$ 0,00');
-  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'VALOR LÍQUIDO DA NFS-e + IBS/CBS', 'R$ 0,00');
+  desenharCelula(ctx, ctx.marginX + cW4 * 2, y, cW4, rowH, 'Total do IBS/CBS', '-');
+  desenharCelula(ctx, ctx.marginX + cW4 * 3, y, ctx.contentWidth - cW4 * 3, rowH, 'VALOR LÍQUIDO DA NFS-e + IBS/CBS', '-');
   y -= rowH;
 
   ctx.currentY = y;

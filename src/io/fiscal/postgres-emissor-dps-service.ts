@@ -5,6 +5,10 @@
  */
 
 import type pg from 'pg';
+import { carregarEvidenciasEmissao } from './carregar-evidencias-emissao.js';
+import { prepararEmissao } from '../../fiscal/preparacao/preparar-emissao.js';
+import { inferirUfDeMunicipioIbge } from '../../onboarding/regras/inferir-uf-de-municipio-ibge.js';
+import { validarDadosDps } from '../../fiscal/preparacao/validar-dados-dps.js';
 import { BLOCO_FEDERAL_AUTOMATICO, podeCorrigirTributosFederais } from '../../agente-fiscal/analisar-rejeicao.js';
 import type { FalhaEmissao } from '../../agente-fiscal/investigacao.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -44,7 +48,8 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     private readonly consultaCpfProvider?: ConsultaCpfProvider,
     private readonly supabaseClient?: SupabaseClient,
     private readonly sefinClient?: SefinNacionalClient,
-    private readonly modoAgenteConservador = false
+    private readonly modoAgenteConservador = false,
+    private readonly preparacaoFiscalAtiva = false
   ) {}
 
   async emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps> {
@@ -59,7 +64,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
   }
 
   private async emitirPreparado(item: SolicitacaoEmissaoItem, correcao?: FalhaEmissao): Promise<ResultadoEmissaoDps> {
-    if (this.modoAgenteConservador && (!this.supabaseClient || !this.sefinClient)) {
+    if ((this.modoAgenteConservador || this.preparacaoFiscalAtiva) && (!this.supabaseClient || !this.sefinClient)) {
       return { sucesso: false, erro: 'Emissão real indisponível: integração fiscal não configurada.' };
     }
     const prestadorConfig = await this.carregarPerfilFiscal(item.medicoId);
@@ -67,6 +72,13 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       return { sucesso: false, erro: `Perfil fiscal não cadastrado para o médico ${item.medicoId}` };
     }
 
+    const preparacao = this.preparacaoFiscalAtiva
+      ? prepararEmissao(item, await carregarEvidenciasEmissao(this.pool, item), new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }))
+      : undefined;
+    if (preparacao && !preparacao.ok) {
+      return { sucesso: false, erro: 'Há parâmetros fiscais pendentes de revisão antes do envio.',
+        pendenciasFiscais: preparacao.pendencias, contextoTecnico: { etapa: 'preparacao', transmitida: false } };
+    }
     const tomador = await this.carregarDadosTomador(item.pacienteId);
     if (!tomador || !tomador.cpf) {
       return { sucesso: false, erro: `Paciente ${item.pacienteId} sem CPF válido para emissão` };
@@ -124,16 +136,28 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       },
       xDescServ: item.xdescServ,
       vServ: item.valorServicoCentavos / 100,
-      cTribNac: item.ctribNac,
-      cNBS: item.cnbs || '122051900',
-      cIndOp: item.cindOp || '100301',
-      cClassTrib: item.cclassTrib || '000001'
+      cTribNac: preparacao?.ok ? preparacao.servico.ctribNac : item.ctribNac,
+      cNBS: preparacao?.ok ? (preparacao.servico.cnbs ?? '') : (item.cnbs || '122051900'),
+      cIndOp: preparacao?.ok ? (item.cindOp ?? '') : (item.cindOp || '100301'),
+      cClassTrib: preparacao?.ok ? (item.cclassTrib ?? '') : (item.cclassTrib || '000001'),
+      cTribMun: preparacao?.ok ? preparacao.servico.ctribMun ?? undefined : undefined,
+      fiscal: preparacao?.ok ? { ...preparacao.parametros, competencia: preparacao.competencia } : undefined
     };
 
+    if (preparacao?.ok) {
+      const p = preparacao.parametros;
+      prestadorConfig.regTrib.opSimpNac = p.opcaoSimplesNacional === 'mei' ? 2 : 3;
+      prestadorConfig.regTrib.regApTribSN = ({ regime_1: 1, regime_2: 2, regime_3: 3 } as const)[p.regimeApuracaoSn!];
+      prestadorConfig.regTrib.regEspTrib = p.regimeEspecialTributacao;
+      prestadorConfig.pTotTribSN = p.percentualTotTribSN ?? 0; // MEI não serializa percentual.
+      const pendencias = validarDadosDps(emissaoInput, prestadorConfig);
+      if (pendencias.length) return { sucesso: false, erro: 'Dados da DPS precisam de revisão antes do envio.',
+        pendenciasFiscais: pendencias, contextoTecnico: { etapa: 'validacao', transmitida: false, origem: preparacao.origem } };
+    }
     let ndpsAtual = correcao ? Number(correcao.contextoTecnico!.ndps) : ndps;
     const dataGeracao = correcao ? new Date(String(correcao.contextoTecnico!.dataGeracao)) : new Date();
     let xmlDpsOriginal: string | undefined;
-    const anoMes = new Date().toISOString().slice(0, 7);
+    const anoMes = (preparacao?.ok ? preparacao.competencia : dataGeracao.toISOString()).slice(0, 7);
     let chaveAcessoFinal = '';
     let respostaSefinRaw: Record<string, unknown> | undefined;
     let xmlAutorizadoFinal: string | undefined;
@@ -190,7 +214,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
           break;
         }
 
-        if (this.modoAgenteConservador) break;
+        if (this.modoAgenteConservador || this.preparacaoFiscalAtiva) break;
 
         if (resSefin.codigoErro === 'E0014' || resSefin.motivo?.includes('E0014')) {
           console.warn(`[PostgresEmissorDpsService] DPS ${ndpsAtual} duplicada (E0014). Avançando para ${ndpsAtual + 1}...`);
@@ -285,6 +309,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
           xmlDpsOriginal: correcao ? undefined : xmlDpsOriginal,
           falhaAntesDoEnvio: resSefinFinal?.falhaAntesDoEnvio,
           contextoTecnico: {
+            origem: preparacao?.ok ? preparacao.origem : undefined,
             dataGeracao: dataGeracao.toISOString(),
             provedor: 'sefin_nacional', municipio: prestadorConfig.codMunicipio,
             ambiente: prestadorConfig.ambiente, ndps: ndpsAtual, serie: prestadorConfig.serie,
@@ -315,8 +340,8 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     }
 
     const valorServico = item.valorServicoCentavos / 100;
-    const aliquotaIss = prestadorConfig.regTrib.opSimpNac === 1 ? 2.0 : 2.0;
-    const issApurado = (valorServico * aliquotaIss) / 100;
+    const aliquotaIss = this.preparacaoFiscalAtiva ? undefined : 2.0;
+    const issApurado = aliquotaIss === undefined ? undefined : (valorServico * aliquotaIss) / 100;
 
     const dadosDanfse = {
       chaveAcesso: chaveAcessoFinal,
@@ -343,25 +368,25 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         endereco: tomador.enderecoCompleto
       },
       servico: {
-        cTribNac: item.ctribNac,
-        cNBS: item.cnbs || '122051900',
+        municipioPrestacao: emissaoInput.fiscal?.municipioPrestacao,
+        ufPrestacao: emissaoInput.fiscal ? inferirUfDeMunicipioIbge(emissaoInput.fiscal.municipioPrestacao) ?? undefined : undefined,
+        tipoTributacao: emissaoInput.fiscal ? 'Operação Tributável' : undefined,
+        tipoRetencao: emissaoInput.fiscal ? 'Não Retido' : undefined,
+        cTribNac: emissaoInput.cTribNac,
+        cNBS: emissaoInput.cNBS || undefined,
         discriminacao: item.xdescServ,
         valor: valorServico,
         aliquota: aliquotaIss,
         issApurado,
-        cstIbsCbs: '000 - Tributável Integralmente',
-        cClassTrib: item.cclassTrib || '000001',
-        cIndOp: item.cindOp || '030101',
-        aliquotaCbs: 0.00,
-        valorCbs: 0.00,
-        aliquotaIbs: 0.00,
-        valorIbs: 0.00
+        cstIbsCbs: this.preparacaoFiscalAtiva ? undefined : '000 - Tributável Integralmente',
+        cClassTrib: this.preparacaoFiscalAtiva ? undefined : emissaoInput.cClassTrib,
+        cIndOp: this.preparacaoFiscalAtiva ? undefined : emissaoInput.cIndOp
       }
     };
 
     let pdfBytes: Uint8Array | Buffer | undefined;
 
-    if (this.meuDanfeClient) {
+    if (this.meuDanfeClient && (!this.preparacaoFiscalAtiva || xmlAutorizadoFinal)) {
       try {
         const xmlString = xmlAutorizadoFinal || montarXmlNfse({
           chaveAcesso: chaveAcessoFinal,
@@ -372,7 +397,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
           codigoMunicipio: prestadorConfig.codMunicipio,
           prestador: dadosDanfse.prestador,
           tomador: dadosDanfse.tomador,
-          servico: dadosDanfse.servico
+          servico: { ...dadosDanfse.servico, aliquota: aliquotaIss ?? 0, issApurado: issApurado ?? 0 }
         });
 
         const resMeuDanfe = await this.meuDanfeClient.converterXmlParaPdf(xmlString);
@@ -414,7 +439,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       valorServicosCentavos: item.valorServicoCentavos,
       xmlStoragePath,
       pdfStoragePath: pdfBase64,
-      respostaSefinRaw
+      respostaSefinRaw: preparacao?.ok ? { ...respostaSefinRaw, _notoPreparacao: preparacao.origem } : respostaSefinRaw
     };
   }
 
@@ -454,11 +479,11 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       cnpj: r.documento_limpo,
       im: r.inscricao_municipal,
       codMunicipio: r.cod_municipio_ibge,
-      ambiente: r.ambiente === 'producao' ? 1 : 2,
-      serie: r.serie_dps || '00001',
+      ambiente: (this.preparacaoFiscalAtiva ? ({ producao: 1, homologacao: 2 } as any)[r.ambiente] : r.ambiente === 'producao' ? 1 : 2),
+      serie: this.preparacaoFiscalAtiva ? r.serie_dps : r.serie_dps || '00001',
       razaoSocial: r.razao_social || r.nome_completo,
       nomeFantasia: r.nome_fantasia || undefined,
-      uf: r.uf || 'RS',
+      uf: this.preparacaoFiscalAtiva ? r.uf : r.uf || 'RS',
       email: r.email,
       telefone: r.telefone,
       proximoNumeroDps: r.proximo_numero_dps ? Number(r.proximo_numero_dps) : undefined,

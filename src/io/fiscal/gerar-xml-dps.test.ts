@@ -109,3 +109,22 @@ describe('gerarXmlDps', () => {
   });
 });
 
+
+it('serializa parâmetros revisados e competência do serviço, sem percentual ou CST fixos', () => {
+  const input: EmissaoInput = { nDPS: '12', tomador: { CPF: '52998224725', xNome: 'Maria Silva' }, xDescServ: 'Consulta', vServ: 200,
+    cTribNac: '040101', cTribMun: '001', cNBS: '122051900', cClassTrib: '', cIndOp: '',
+    fiscal: { ambiente: 'homologacao', competencia: '2026-09-15', vigenciaInicio: '2026-01-01', municipioPrestacao: '3304557',
+      opcaoSimplesNacional: 'me_epp', regimeApuracaoSn: 'regime_2', regimeEspecialTributacao: 0,
+      tribISSQN: 1, tpRetISSQN: 1, cstPisCofins: '06', percentualTotTribSN: 0 } };
+  const cfg: ConfigPrestador = { cnpj: '52998224725', im: '', codMunicipio: '3550308', ambiente: 2, serie: '1',
+    regTrib: { opSimpNac: 3, regApTribSN: 2, regEspTrib: 0 }, pTotTribSN: 0 };
+  const { xml } = gerarXmlDps(input, cfg, new Date('2026-10-04T12:00:00Z'));
+  assert.match(xml, /<dCompet>2026-09-15<\/dCompet>/);
+  assert.match(xml, /<prest><CPF>52998224725<\/CPF>/);
+  assert.match(xml, /<cLocPrestacao>3304557<\/cLocPrestacao>/);
+  assert.match(xml, /<CST>06<\/CST>/);
+  assert.match(xml, /<pTotTribSN>0.00<\/pTotTribSN>/);
+  assert.match(xml, /<cTribMun>001<\/cTribMun>/);
+  assert.match(xml, /<cNBS>122051900<\/cNBS>/);
+  assert.doesNotMatch(xml, /<CST>08<\/CST>/);
+});

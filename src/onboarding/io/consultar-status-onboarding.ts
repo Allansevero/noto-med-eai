@@ -5,6 +5,7 @@
  */
 
 import type pg from 'pg';
+import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
 
 export type StatusOnboardingMedico = {
   medicoId: string;
@@ -22,6 +23,7 @@ export type StatusOnboardingMedico = {
   };
   liberadoParaEmitir: boolean;
   perfilFiscal?: {
+    parametrosEmissao?: unknown;
     razaoSocial: string | null;
     cnpjCpfMask: string | null;
     inscricaoMunicipal: string | null;
@@ -39,7 +41,8 @@ export type StatusOnboardingMedico = {
 
 export async function consultarStatusOnboarding(
   pool: pg.Pool,
-  medicoId: string
+  medicoId: string,
+  preparacaoFiscalAtiva = false
 ): Promise<StatusOnboardingMedico> {
   const sql = `
     select
@@ -61,6 +64,7 @@ export async function consultarStatusOnboarding(
       pf.extraido_automaticamente,
       pf.confirmado_pelo_medico,
       msf.aliquota_iss,
+      to_jsonb(msf)->'parametros_emissao' as parametros_emissao,
       (select count(*) from medico_certificados c where c.medico_id = m.id and c.status = 'ativo') as cert_ativos,
       (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado') as whats_conectados
     from medicos m
@@ -80,7 +84,8 @@ export async function consultarStatusOnboarding(
   const nomeExibicao = (r.medico_nome || r.usuario_nome || '').trim();
   const passo1Nome = Boolean(nomeExibicao.length > 2 && nomeExibicao !== 'Médico');
   const passo2XmlEnviado = Boolean(r.extraido_automaticamente || r.confirmado_pelo_medico);
-  const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico);
+  const politicaRevisada = Boolean(r.parametros_emissao?.confirmadoEm) && parametrosEmissaoSchema.safeParse(r.parametros_emissao?.parametros).success;
+  const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico) && (!preparacaoFiscalAtiva || politicaRevisada);
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
 
@@ -102,6 +107,7 @@ export async function consultarStatusOnboarding(
     },
     liberadoParaEmitir,
     perfilFiscal: r.razao_social ? {
+      parametrosEmissao: r.parametros_emissao,
       razaoSocial: r.razao_social,
       cnpjCpfMask: 'Cadastrado / Seguro',
       inscricaoMunicipal: r.inscricao_municipal,

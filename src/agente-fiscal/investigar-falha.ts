@@ -40,6 +40,7 @@ export async function investigarFalha(
       codigo: falha.codigoErroSefin, falhaAntesDoEnvio: falha.falhaAntesDoEnvio,
       transmissao: falha.contextoTecnico, retentativaPermitida: permitido,
       diagnostico: diagnosticarRejeicao(falha),
+      pendenciasFiscais: falha.pendenciasFiscais,
       retornoProvedor: descreverRetornoProvedor(falha),
       ferramentasPermitidas: [...(permitido ? ['tentar_novamente'] : []),
         ...(correcaoPermitida ? ['corrigir_tributos_federais'] : []), 'escalar']

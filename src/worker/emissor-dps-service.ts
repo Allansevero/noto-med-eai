@@ -32,6 +32,7 @@ export type ResultadoEmissaoDps =
   | {
       sucesso: false;
       erro: string;
+      pendenciasFiscais?: Array<{ campo: string; codigo: string; mensagem: string }>;
       codigoErroSefin?: string;
       httpStatus?: number;
       xmlDpsOriginal?: string;

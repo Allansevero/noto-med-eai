@@ -66,8 +66,8 @@ export function gerarXmlDps(
     : '';
 
   const vServFmt = Number(input.vServ).toFixed(2);
-  const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN ?? 6.0).toFixed(2);
-  const tribFedXml = ehMei ? '' : `<tribFed><piscofins><CST>08</CST></piscofins></tribFed>`;
+  const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN).toFixed(2);
+  const tribFedXml = ehMei ? '' : `<tribFed><piscofins><CST>${input.fiscal ? input.fiscal.cstPisCofins : '08'}</CST></piscofins></tribFed>`;
   const totTribXml = ehMei
     ? `<totTrib><indTotTrib>0</indTotTrib></totTrib>`
     : `<totTrib><pTotTribSN>${pTotTribFmt}</pTotTribSN></totTrib>`;
@@ -80,11 +80,11 @@ export function gerarXmlDps(
         `<verAplic>1.0</verAplic>` +
         `<serie>${serie}</serie>` +
         `<nDPS>${input.nDPS}</nDPS>` +
-        `<dCompet>${dCompet}</dCompet>` +
+        `<dCompet>${input.fiscal?.competencia ?? dCompet}</dCompet>` +
         `<tpEmit>1</tpEmit>` +
         `<cLocEmi>${codMun}</cLocEmi>` +
         `<prest>` +
-          `<CNPJ>${cnpjLimpo}</CNPJ>` +
+          (cnpjLimpo.length === 11 ? `<CPF>${cnpjLimpo}</CPF>` : `<CNPJ>${cnpjLimpo}</CNPJ>`) +
           `${inscricaoMunicipalXml}` +
           `<regTrib>${regTribXml}</regTrib>` +
         `</prest>` +
@@ -96,16 +96,18 @@ export function gerarXmlDps(
           `${emailXml}` +
         `</toma>` +
         `<serv>` +
-          `<locPrest><cLocPrestacao>${codMun}</cLocPrestacao></locPrest>` +
+          `<locPrest><cLocPrestacao>${input.fiscal?.municipioPrestacao ?? codMun}</cLocPrestacao></locPrest>` +
           `<cServ>` +
             `<cTribNac>${input.cTribNac.replace(/\D/g, '')}</cTribNac>` +
+            (input.fiscal && input.cTribMun ? `<cTribMun>${escaparXml(input.cTribMun)}</cTribMun>` : '') +
             `<xDescServ>${escaparXml(input.xDescServ)}</xDescServ>` +
+            (input.fiscal && input.cNBS ? `<cNBS>${escaparXml(input.cNBS)}</cNBS>` : '') +
           `</cServ>` +
         `</serv>` +
         `<valores>` +
           `<vServPrest><vServ>${vServFmt}</vServ></vServPrest>` +
           `<trib>` +
-            `<tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>` +
+            `<tribMun><tribISSQN>${input.fiscal?.tribISSQN ?? 1}</tribISSQN><tpRetISSQN>${input.fiscal?.tpRetISSQN ?? 1}</tpRetISSQN></tribMun>` +
             `${tribFedXml}` +
             `${totTribXml}` +
           `</trib>` +

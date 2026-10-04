@@ -22,6 +22,11 @@ if (ausentes.length) {
       throw new Error('MIGRACAO_OU_PERMISSOES_PENDENTES');
     }
     await pool.query('select solicitacao_id, medico_id, estado, problema, eventos, retentativas from investigacoes_emissao limit 0');
+    if (process.env.PREPARACAO_FISCAL_ATIVA === 'true') {
+      await pool.query('select parametros_emissao from medico_servicos_fiscais limit 0');
+      await pool.query('select competencia_emissao from solicitacoes_nota limit 0');
+      console.log('Preparação fiscal habilitada; colunas verificadas. A revisão dos cadastros é validada por emissão.');
+    }
     console.log('Flag, variáveis obrigatórias e tabela verificadas. Não testa APIs externas nem confirma workers em execução.');
   } catch (erro) {
     console.error('Checagem não concluída:', erro.code || 'BANCO_OU_MIGRACAO_INDISPONIVEL');

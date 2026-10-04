@@ -4,6 +4,7 @@
  * validação com dados do prestador vindos do PostgreSQL em vez de .env local.
  */
 
+import type { ParametrosEmissao } from '../../fiscal/preparacao/parametros-emissao.js';
 import type { LayoutDPS } from '@nfewizard/types';
 
 export interface TomadorEndereco {
@@ -32,6 +33,8 @@ export interface EmissaoInput {
   cIndOp: string;
   cClassTrib: string;
   pTotTribSN?: number;
+  cTribMun?: string;
+  fiscal?: ParametrosEmissao & { competencia: string };
 }
 
 export interface ConfigPrestador {
@@ -72,11 +75,11 @@ export function montarDps(
       verAplic: '1.0',
       serie: cfg.serie || '00001',
       nDPS: input.nDPS,
-      dCompet,
+      dCompet: input.fiscal?.competencia ?? dCompet,
       tpEmit: 1,
       cLocEmi: cfg.codMunicipio,
       prest: {
-        CNPJ: cfg.cnpj,
+        ...(cfg.cnpj.replace(/\D/g, '').length === 11 ? { CPF: cfg.cnpj } : { CNPJ: cfg.cnpj }),
         IM: cfg.im,
         regTrib: {
           opSimpNac: cfg.regTrib.opSimpNac,
@@ -105,18 +108,19 @@ export function montarDps(
         ...(input.tomador.email ? { email: input.tomador.email } : {})
       },
       serv: {
-        locPrest: { cLocPrestacao: cfg.codMunicipio },
+        locPrest: { cLocPrestacao: input.fiscal?.municipioPrestacao ?? cfg.codMunicipio },
         cServ: {
           cTribNac: input.cTribNac,
-          cNBS: input.cNBS,
+          ...(input.cNBS ? { cNBS: input.cNBS } : {}),
+          ...(input.cTribMun ? { cTribMun: input.cTribMun } : {}),
           xDescServ: input.xDescServ
         }
       },
       valores: {
         vServPrest: { vServ: input.vServ },
         trib: {
-          tribMun: { tribISSQN: 1, tpRetISSQN: 1 },
-          ...(ehMei ? {} : { tribFed: { piscofins: { CST: '08' } } }),
+          tribMun: { tribISSQN: input.fiscal?.tribISSQN ?? 1, tpRetISSQN: input.fiscal?.tpRetISSQN ?? 1 },
+          ...(ehMei ? {} : { tribFed: { piscofins: { CST: input.fiscal ? input.fiscal.cstPisCofins : '08' } } }),
           totTrib: ehMei ? { indTotTrib: 0 } : { pTotTribSN: input.pTotTribSN ?? cfg.pTotTribSN }
         }
       }

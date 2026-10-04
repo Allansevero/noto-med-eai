@@ -31,6 +31,10 @@ export interface DanfseTomador {
 }
 
 export interface DanfseServico {
+  municipioPrestacao?: string;
+  ufPrestacao?: string;
+  tipoTributacao?: string;
+  tipoRetencao?: string;
   cTribNac?: string;
   cNBS?: string;
   discriminacao?: string;

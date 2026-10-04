@@ -4,10 +4,12 @@
  * para a confirmação manual no onboarding (seções 3.2 e 5.1 do plano).
  */
 
+import { extrairSugestaoEmissao } from './extrair-sugestao-emissao.js';
 import { inferirEspecialidadeDeXdescserv } from './inferir-especialidade-de-xdescserv.js';
 
 export type ServicoFiscalExtraido = {
   nomeServico: string;
+  parametrosSugeridos?: Record<string, unknown>;
   ctribNac: string;
   ctribMun: string | null;
   cnbs: string | null;
@@ -44,6 +46,7 @@ export function mapearServicoFiscalDoXml(xmlObj: any): ServicoFiscalExtraido {
     : null;
 
   return {
+    parametrosSugeridos: extrairSugestaoEmissao(xmlObj),
     nomeServico: especialidadeSugerida ? `Consulta - ${especialidadeSugerida}` : 'Consulta Médica',
     ctribNac,
     ctribMun,

@@ -1,0 +1,62 @@
+/**
+ * Resolve os dados usando evidências persistidas; inconsistências viram pendências
+ * estruturadas antes de carregar certificado, assinar ou transmitir uma DPS.
+ */
+import { parametrosEmissaoSchema, type PoliticaEmissao } from './parametros-emissao.js';
+import type { SolicitacaoEmissaoItem } from '../../worker/emissor-dps-service.js';
+export interface PendenciaFiscal { campo: string; codigo: string; mensagem: string }
+export interface EvidenciasEmissao {
+  perfil: { ambiente: string; confirmado: boolean; opcao: string; regime: string | null; especial: number; municipio: string; serie: string; referencia: string | null };
+  servicos: Array<{ id: string; ctribNac: string; cnbs: string | null; ctribMun: string | null; politica: PoliticaEmissao | null }>;
+  competenciaInformada: string | null;
+  datasConsultas: string[];
+}
+export function prepararEmissao(item: SolicitacaoEmissaoItem, evidencias: EvidenciasEmissao, hoje: string) {
+  const pendencias: PendenciaFiscal[] = [];
+  const adicionar = (campo: string, codigo: string, mensagem: string) => pendencias.push({ campo, codigo, mensagem });
+  if (!evidencias.perfil.confirmado) adicionar('perfil', 'PERFIL_NAO_CONFIRMADO', 'Revisar e confirmar os parâmetros do emitente.');
+  if (evidencias.servicos.length !== 1) adicionar('servico', 'SERVICO_AMBIGUO', 'Vincular um único serviço fiscal ativo a esta solicitação.');
+  const servico = evidencias.servicos.length === 1 ? evidencias.servicos[0] : undefined;
+  const politica = servico?.politica;
+  const validado = parametrosEmissaoSchema.safeParse(politica?.parametros);
+  if (!politica?.confirmadoEm || !Number.isFinite(Date.parse(politica.confirmadoEm)) || politica.origem !== 'revisao_onboarding') {
+    adicionar('parametros', 'PARAMETROS_NAO_CONFIRMADOS', 'Revisar os parâmetros de emissão do serviço e confirmar sua validade.');
+  }
+  if (!validado.success) for (const erro of validado.error.issues) adicionar(erro.path.join('.'), 'PARAMETRO_INVALIDO', erro.message);
+  const datas = [...new Set(evidencias.datasConsultas)];
+  const competencia = evidencias.competenciaInformada ?? (datas.length === 1 ? datas[0] : undefined);
+  if (!competencia || !/^\d{4}-\d{2}-\d{2}$/.test(competencia) || !Number.isFinite(Date.parse(competencia)) ||
+      new Date(competencia).toISOString().slice(0, 10) !== competencia || competencia > hoje) {
+    adicionar('competencia', 'COMPETENCIA_INDEFINIDA', 'Definir uma competência válida. Consultas em datas diferentes exigem confirmação específica.');
+  }
+  if (validado.success && competencia && (competencia < validado.data.vigenciaInicio ||
+      (validado.data.vigenciaFim && competencia > validado.data.vigenciaFim))) {
+    adicionar('vigencia', 'FORA_DA_VIGENCIA', 'Revisar os parâmetros aplicáveis à competência da nota.');
+  }
+  if (politica && servico) {
+    if (politica.ctribNac !== servico.ctribNac || politica.cnbs !== servico.cnbs || politica.ctribMun !== servico.ctribMun ||
+        (item.ctribNac && item.ctribNac !== servico.ctribNac) || (item.cnbs && item.cnbs !== servico.cnbs)) {
+      adicionar('servico', 'CLASSIFICACAO_DIVERGENTE', 'A classificação da solicitação, do serviço e da revisão fiscal precisa coincidir.');
+    }
+    const perfil = evidencias.perfil;
+    for (const campo of ['ambiente', 'opcao', 'regime', 'especial', 'municipio', 'serie', 'referencia'] as const) {
+      if (politica.perfil?.[campo] !== perfil[campo]) adicionar(`perfil.${campo}`, 'PERFIL_ALTERADO', 'O perfil mudou após a revisão dos parâmetros. Confirmar novamente.');
+    }
+    if (validado.success && (validado.data.ambiente !== perfil.ambiente || validado.data.opcaoSimplesNacional !== perfil.opcao ||
+      validado.data.regimeEspecialTributacao !== perfil.especial ||
+      (perfil.opcao === 'me_epp' && validado.data.regimeApuracaoSn !== perfil.regime))) {
+      adicionar('regime', 'REGIME_DIVERGENTE', 'Os parâmetros confirmados precisam corresponder ao perfil fiscal.');
+    }
+  }
+  if (!servico || !/^\d{6}$/.test(servico.ctribNac)) adicionar('ctribNac', 'CODIGO_INVALIDO', 'Informar o código nacional do serviço com seis dígitos.');
+  if (servico?.cnbs && !/^\d{9}$/.test(servico.cnbs)) adicionar('cnbs', 'CODIGO_INVALIDO', 'Conferir o código NBS do serviço.');
+  if (servico?.ctribMun && !/^\d{3}$/.test(servico.ctribMun)) adicionar('ctribMun', 'CODIGO_INVALIDO', 'Conferir o código municipal do serviço.');
+  if (item.cindOp || item.cclassTrib) adicionar('IBSCBS', 'LAYOUT_NAO_SUPORTADO', 'A solicitação exige campos IBS/CBS que este emissor ainda não transmite. Revisão necessária.');
+  if (!Number.isSafeInteger(item.valorServicoCentavos) || item.valorServicoCentavos <= 0) adicionar('valor', 'VALOR_INVALIDO', 'Informar o valor positivo do serviço em centavos.');
+  if (!item.xdescServ.trim()) adicionar('descricao', 'DESCRICAO_AUSENTE', 'Informar a descrição do serviço realizado.');
+  if (pendencias.length || !validado.success || !servico || !competencia) return { ok: false as const, pendencias };
+  return { ok: true as const, parametros: validado.data, competencia, servico,
+    origem: { versao: 1, servicoId: servico.id, parametrosConfirmadosEm: politica!.confirmadoEm,
+      competencia: evidencias.competenciaInformada ? 'solicitacao' : 'consulta_vinculada', classificacao: 'servico_revisado',
+      dadosAplicados: { competencia, ctribNac: servico.ctribNac, cnbs: servico.cnbs, ctribMun: servico.ctribMun, parametros: validado.data } } };
+}

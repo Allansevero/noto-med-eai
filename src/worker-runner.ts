@@ -38,7 +38,8 @@ const emissorDps = new PostgresEmissorDpsService(
   hubCpfClient,
   supabaseClient,
   sefinClient,
-  config.agenteFiscalAtivo
+  config.agenteFiscalAtivo,
+  config.preparacaoFiscalAtiva
 );
 const evolutionClient = new EvolutionApiClient(
   config.evolutionApiUrl,

@@ -39,7 +39,8 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     hubCpfClient,
     supabaseClient,
     sefinClient,
-    config.agenteFiscalAtivo
+    config.agenteFiscalAtivo,
+    config.preparacaoFiscalAtiva
   );
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,

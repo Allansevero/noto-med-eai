@@ -23,6 +23,7 @@ export interface AppConfig {
   groqApiKey: string;
   groqModel: string;
   agenteFiscalAtivo?: boolean;
+  preparacaoFiscalAtiva?: boolean;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -32,6 +33,9 @@ export interface AppConfig {
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  if (env['PREPARACAO_FISCAL_ATIVA'] === 'true' && env['AGENTE_FISCAL_ATIVO'] !== 'true') {
+    throw new Error('PREPARACAO_FISCAL_ATIVA requer AGENTE_FISCAL_ATIVO para tratar pendências sem retentativas cegas.');
+  }
   return {
     porta: Number.parseInt(env['PORT'] || '3000', 10),
     host: env['HOST'] || '0.0.0.0',
@@ -49,6 +53,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     groqApiKey: env['GROQ_API_KEY'] || '',
     groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
+    preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

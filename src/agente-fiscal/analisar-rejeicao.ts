@@ -8,7 +8,8 @@ export const BLOCO_FEDERAL_AUTOMATICO = '<tribFed><piscofins><CST>08</CST></pisc
 export function podeCorrigirTributosFederais(falha: FalhaEmissao): boolean {
   const raw = falha.respostaSefinRaw;
   const erros = raw?.erros ?? raw?.mensagens;
-  return falha.codigoErroSefin === 'E0676' && falha.httpStatus === 422 &&
+  // Uma política revisada não é um bloco genérico: divergência requer nova revisão.
+  return !falha.contextoTecnico?.origem && falha.codigoErroSefin === 'E0676' && falha.httpStatus === 422 &&
     Array.isArray(erros) && erros.length === 1 &&
     (erros[0]?.codigo ?? erros[0]?.Codigo) === 'E0676' &&
     typeof falha.xmlDpsOriginal === 'string' &&

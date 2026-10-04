@@ -886,13 +886,31 @@
             </div>
             <div class="param-item">
               <span class="param-label">Série da DPS</span>
-              <input type="text" id="inputSerieDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" value="900" />
+              <input type="text" id="inputSerieDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" value="" />
             </div>
             <div class="param-item">
               <span class="param-label">Próximo Número da DPS</span>
               <input type="number" id="inputProximoNumeroDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" min="1" value="1" />
             </div>
           </div>
+
+          <details class="params-card" id="revisaoEmissao">
+            <summary>Revisar regras para emissão automática</summary>
+            <p>Confira os dados do serviço e o período em que estas regras são válidas. Dados de uma nota anterior são sugestões e precisam ser revisados.</p>
+            <p id="resumoServicoFiscal"></p>
+            <label><input type="checkbox" id="confirmarRegrasEmissao" /> Confirmo as regras abaixo para este serviço</label>
+            <div class="param-item"><label for="fiscalAmbiente">Ambiente de emissão</label><select id="fiscalAmbiente"><option value="">Selecione</option><option value="homologacao">Homologação — sem validade jurídica</option><option value="producao">Produção — nota com validade jurídica</option></select></div>
+            <div class="param-item"><label for="fiscalInicio">Válidas a partir de</label><input type="date" id="fiscalInicio" /></div>
+            <div class="param-item"><label for="fiscalFim">Válidas até (opcional)</label><input type="date" id="fiscalFim" /></div>
+            <div class="param-item"><label for="fiscalMunicipio">Município da prestação (IBGE)</label><input id="fiscalMunicipio" inputmode="numeric" maxlength="7" /></div>
+            <div class="param-item"><label for="fiscalApuracao">Regime de apuração do Simples</label><select id="fiscalApuracao"><option value="">Não informado / MEI</option><option value="regime_1">Regime 1</option><option value="regime_2">Regime 2</option><option value="regime_3">Regime 3</option></select></div>
+            <div class="param-item"><label for="fiscalEspecial">Regime especial</label><select id="fiscalEspecial"><option value="">Selecione</option><option value="0">Nenhum</option><option value="1">Ato cooperado</option><option value="2">Estimativa</option><option value="3">Microempresa municipal</option><option value="4">Notário ou registrador</option><option value="5">Profissional autônomo</option><option value="6">Sociedade de profissionais</option><option value="9">Outros</option></select></div>
+            <div class="param-item"><label for="fiscalTribIss">Situação do ISSQN</label><select id="fiscalTribIss"><option value="">Selecione</option><option value="1">Operação tributável</option><option value="2">Imunidade</option><option value="3">Exportação</option><option value="4">Não incidência</option></select></div>
+            <div class="param-item"><label for="fiscalRetIss">Retenção do ISSQN</label><select id="fiscalRetIss"><option value="">Selecione</option><option value="1">Não retido</option><option value="2">Retido pelo tomador</option><option value="3">Retido pelo intermediário</option></select></div>
+            <div class="param-item"><label for="fiscalCst">CST PIS/COFINS</label><select id="fiscalCst"><option value="">Não informado / MEI</option><option value="04">04 — Tributação monofásica, revenda a alíquota zero</option><option value="06">06 — Alíquota zero</option><option value="07">07 — Isenção</option><option value="08">08 — Sem incidência</option><option value="09">09 — Suspensão</option></select></div>
+            <div class="param-item"><label for="fiscalPercentual">Tributos aproximados do Simples (%)</label><input type="number" id="fiscalPercentual" min="0" max="100" step="0.01" /></div>
+            <p>Para MEI, deixe regime de apuração, CST e percentual sem preenchimento. Situações que exigem cálculo adicional ficam pendentes de suporte fiscal.</p>
+          </details>
 
           <button type="button" class="btn-action" id="btnConfirmarFiscal">
             Confirmar e Continuar
@@ -975,6 +993,7 @@
           </p>
         </div>
 
+        <button type="button" class="btn-action" id="btnRevisarFiscal">Revisar dados fiscais</button>
         <div style="width: 100%;">
           <div class="stat-row">
             <span style="color: var(--text-secondary);">Médico Responsável</span>
@@ -1545,56 +1564,94 @@
       }
     }
 
+    const camposRegrasEmissao = {
+      ambiente: 'fiscalAmbiente', vigenciaInicio: 'fiscalInicio', vigenciaFim: 'fiscalFim', municipioPrestacao: 'fiscalMunicipio',
+      regimeApuracaoSn: 'fiscalApuracao', regimeEspecialTributacao: 'fiscalEspecial',
+      tribISSQN: 'fiscalTribIss', tpRetISSQN: 'fiscalRetIss', cstPisCofins: 'fiscalCst', percentualTotTribSN: 'fiscalPercentual'
+    };
+    function preencherRegrasEmissao(parametros = {}, resumo = '') {
+      for (const [campo, id] of Object.entries(camposRegrasEmissao)) document.getElementById(id).value = parametros[campo] ?? '';
+      document.getElementById('confirmarRegrasEmissao').checked = false;
+      document.getElementById('resumoServicoFiscal').textContent = resumo;
+    }
+    function lerRegrasEmissao(opcaoSimplesNacional) {
+      if (!document.getElementById('confirmarRegrasEmissao').checked) return undefined;
+      const parametros = { opcaoSimplesNacional };
+      const numericos = ['regimeEspecialTributacao', 'tribISSQN', 'tpRetISSQN', 'percentualTotTribSN'];
+      for (const [campo, id] of Object.entries(camposRegrasEmissao)) {
+        const valor = document.getElementById(id).value.trim();
+        if (valor !== '') parametros[campo] = numericos.includes(campo) ? Number(valor) : valor;
+      }
+      return parametros;
+    }
+
     function exibirPreviewFiscal(data) {
       const p = data.parametros;
+      document.getElementById('inputSerieDps').value = p.serieDps ?? '';
+      document.getElementById('inputProximoNumeroDps').value = p.proximoNumeroSequencialSugerido ?? '';
       const s = data.servico;
+      preencherRegrasEmissao(s.parametrosSugeridos, `Serviço: ${s.ctribNac || "não informado"} · NBS: ${s.cnbs || "não informado"}`);
       document.getElementById('txtRazaoSocial').textContent = p.razaoSocial || '—';
       document.getElementById('txtCnpj').textContent = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
       document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
       document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
       document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
       if (document.getElementById('selectOpcaoSimples')) {
-        document.getElementById('selectOpcaoSimples').value = p.opcaoSimplesNacional || 'me_epp';
+        document.getElementById('selectOpcaoSimples').value = p.opcaoSimplesNacional || '';
       }
       document.getElementById('dropZoneXml').classList.add('hidden');
       document.getElementById('previewFiscal').classList.remove('hidden');
     }
 
     function exibirPreviewPerfilFiscal(perfil) {
+      const politica = perfil.parametrosEmissao;
+      preencherRegrasEmissao(politica?.parametros, politica ? `Serviço revisado: ${politica.ctribNac}` : "Revisão das regras ainda não registrada.");
       document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';
       document.getElementById('txtCnpj').textContent = perfil.cnpjCpfMask || 'Cadastrado';
       document.getElementById('txtIm').textContent = perfil.inscricaoMunicipal || '—';
       document.getElementById('txtMunUf').textContent = `${perfil.codMunicipioIbge || '—'} (${perfil.uf || '—'})`;
       document.getElementById('txtEspecialidade').textContent = perfil.especialidade || 'A definir na confirmação';
       if (document.getElementById('selectOpcaoSimples')) {
-        document.getElementById('selectOpcaoSimples').value = perfil.opcaoSimplesNacional || 'me_epp';
+        document.getElementById('selectOpcaoSimples').value = perfil.opcaoSimplesNacional || '';
       }
       if (document.getElementById('inputSerieDps')) {
-        document.getElementById('inputSerieDps').value = perfil.serieDps || '900';
+        document.getElementById('inputSerieDps').value = perfil.serieDps ?? '';
       }
       if (document.getElementById('inputProximoNumeroDps')) {
-        document.getElementById('inputProximoNumeroDps').value = perfil.proximoNumeroDps || 1;
+        document.getElementById('inputProximoNumeroDps').value = perfil.proximoNumeroDps ?? '';
       }
       document.getElementById('dropZoneXml').classList.add('hidden');
       document.getElementById('previewFiscal').classList.remove('hidden');
     }
 
+    document.getElementById('btnRevisarFiscal').addEventListener('click', async () => {
+      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+      try {
+        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+        const data = await res.json();
+        if (!data.ok || !data.status?.perfilFiscal) throw new Error('Perfil fiscal não encontrado.');
+        mostrarPasso(2);
+        exibirPreviewPerfilFiscal(data.status.perfilFiscal);
+        document.getElementById('revisaoEmissao').open = true;
+      } catch (erro) { showAlert('Não foi possível abrir a revisão fiscal.', true, alertOnboarding); }
+    });
+
     document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
       hideAlert(alertOnboarding);
       const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
-      const serieDps = document.getElementById('inputSerieDps')?.value?.trim() || '900';
+      const serieDps = document.getElementById('inputSerieDps')?.value?.trim() || undefined;
       const proximoNumeroDps = parseInt(document.getElementById('inputProximoNumeroDps')?.value || '1', 10);
       const opcaoSimplesNacional = document.getElementById('selectOpcaoSimples')?.value || undefined;
       try {
         const res = await fetch('/api/onboarding/confirmar-fiscal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps, opcaoSimplesNacional })
+          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps, opcaoSimplesNacional, parametrosEmissao: lerRegrasEmissao(opcaoSimplesNacional) })
         });
         const data = await res.json();
         if (data.ok) {
           showAlert('Parâmetros fiscais confirmados com sucesso!', false, alertOnboarding);
-          mostrarPasso(4);
+          await carregarFluxoOnboarding();
         } else {
           showAlert(data.detalhe || 'Erro ao confirmar', true, alertOnboarding);
         }

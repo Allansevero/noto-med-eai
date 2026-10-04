@@ -298,11 +298,11 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   async buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null> {
     const sql = `
       select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe,
-             coalesce(msf.ctrib_nac, '080201') as ctrib_nac_padrao,
+             coalesce(msf.ctrib_nac, '') as ctrib_nac_padrao,
              u.telefone
       from medicos m
       join usuarios u on u.id = m.usuario_id
-      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true
+      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true and msf.ativo = true
       where m.id = $1
       limit 1
     `;
@@ -324,11 +324,11 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     if (variantes.length === 0) return null;
     const sql = `
       select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe,
-             coalesce(msf.ctrib_nac, '080201') as ctrib_nac_padrao,
+             coalesce(msf.ctrib_nac, '') as ctrib_nac_padrao,
              u.telefone
       from medicos m
       join usuarios u on u.id = m.usuario_id
-      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true
+      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true and msf.ativo = true
       where regexp_replace(u.telefone, '\\D', '', 'g') = any($1::text[])
       limit 1
     `;
@@ -376,6 +376,13 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         Boolean(params.aguardandoDataConsulta)
       ]);
       const solicitacaoId = rows[0].id;
+      // Snapshot somente quando existe exatamente um serviço ativo compatível.
+      await client.query(`with candidatos as (
+        select f.*, count(*) over () as quantidade from medico_servicos_fiscais f
+        where f.medico_id = $2 and f.padrao and f.ativo and f.ctrib_nac = $3)
+        update solicitacoes_nota s set servico_fiscal_id = f.id, cnbs = f.cnbs
+        from candidatos f where s.id = $1 and s.medico_id = $2 and f.quantidade = 1`,
+        [solicitacaoId, params.medicoId, params.ctribNac]);
 
       if (params.agendamentoIds) {
         for (const agendamentoId of params.agendamentoIds) {

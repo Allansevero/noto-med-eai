@@ -163,7 +163,7 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      const status = await consultarStatusOnboarding(pool, medicoId);
+      const status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
       if (status.passos.passo4WhatsappConectado) {
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
@@ -267,7 +267,8 @@ export function criarAppExpress() {
         aliquotaIss,
         serieDps,
         proximoNumeroDps,
-        opcaoSimplesNacional
+        opcaoSimplesNacional,
+        parametrosEmissao
       } = req.body || {};
       if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
@@ -280,11 +281,14 @@ export function criarAppExpress() {
         aliquotaIss: aliquotaIss !== undefined ? Number(aliquotaIss) : undefined,
         serieDps,
         proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined,
-        opcaoSimplesNacional
+        opcaoSimplesNacional,
+        parametrosEmissao
       });
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao confirmar parâmetros fiscais' });
+      return res.status(400).json({ ok: false, detalhe: Array.isArray(err?.issues)
+        ? err.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ')
+        : err?.message || 'Erro ao confirmar parâmetros fiscais' });
     }
   });
 
