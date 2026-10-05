@@ -2,10 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { enviarMensagemTreino } from './enviar-mensagem-treino.js';
-import { MODELO_EMISSAO_TREINO } from '../../onboarding/treino/mensagens-treino.js';
+import { MODELO_EMISSAO_TREINO, MENSAGENS_TREINO } from '../../onboarding/treino/mensagens-treino.js';
 
 const config = { baseUrl: 'https://evolution.exemplo.com/', apiKey: 'teste', instanciaOficial: 'noto_oficial' };
-const mensagem = { texto: MODELO_EMISSAO_TREINO, copiarTexto: MODELO_EMISSAO_TREINO };
+const mensagem = MENSAGENS_TREINO[2];
 test('envia modelo exato no botão de copiar pela instância oficial', async t => {
   const chamadas: any[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
@@ -18,6 +18,9 @@ test('envia modelo exato no botão de copiar pela instância oficial', async t =
   assert.ok(chamadas[0].url.endsWith('/sendButtons/noto_oficial'));
   assert.equal(chamadas[0].body.number, '5551999998888');
   assert.equal(chamadas[0].body.buttons[0].copyCode, MODELO_EMISSAO_TREINO);
+  assert.equal(chamadas[0].body.description, mensagem.texto);
+  assert.equal(chamadas[0].body.title, '');
+  assert.equal(chamadas[0].body.footer, '');
   assert.ok(chamadas[0].signal instanceof AbortSignal);
 });
 test('rejeição explícita do botão usa texto copiável sem instruções extras', async t => {
@@ -30,7 +33,7 @@ test('rejeição explícita do botão usa texto copiável sem instruções extra
   assert.equal(resultado.sucesso, true);
   assert.equal(chamadas.length, 2);
   assert.ok(chamadas[1].url.endsWith('/sendText/noto_oficial'));
-  assert.equal(chamadas[1].body.text, MODELO_EMISSAO_TREINO);
+  assert.equal(chamadas[1].body.text, mensagem.texto);
 });
 test('timeout ou erro 5xx não dispara um segundo envio', async t => {
   let chamadas = 0;

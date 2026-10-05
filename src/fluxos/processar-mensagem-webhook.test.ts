@@ -138,7 +138,7 @@ describe('processarMensagemWebhook', () => {
     repo.instancias.push({ id: 'oficial', medicoId: 'med-1', nomeInstancia: 'notomed_oficial', oficial: true });
     const payload = { event: 'messages.upsert', instance: 'notomed_oficial', data: {
       key: { fromMe: true, remoteJid: '5551993527271@s.whatsapp.net', id: 'TREINO-1' },
-      message: { conversation: MODELO_EMISSAO_TREINO.replace('[VALOR]', '350,00').replace('[DD/MM/AAAA]', '01/10/2026') }
+      message: { conversation: MODELO_EMISSAO_TREINO.replace('[preecha]', '350,00').replace('[preecha]', '01/10/2026') }
     } };
     const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
     assert.deepStrictEqual(res, { ok: true, acao: 'descartada' });

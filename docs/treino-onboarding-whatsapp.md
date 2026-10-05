@@ -4,12 +4,11 @@ Após completar o onboarding, o médico recebe seis mensagens no telefone
 cadastrado em `usuarios.telefone`, enviadas pela instância
 `EVOLUTION_OFFICIAL_INSTANCE_NAME` (padrão `notomed_oficial`).
 
-O roteiro apresenta o Noto, ensina a criar a resposta rápida `emissoes` no
-WhatsApp Business, envia o modelo com botão de copiar, explica como preencher
-valor/data e como funciona a busca de dados do paciente. No WhatsApp comum,
-o usuário pode colar o modelo diretamente. O texto copiável é:
+O roteiro reproduz literalmente as seis mensagens aprovadas pelo usuário,
+inclusive a grafia. O botão de copiar aparece na terceira mensagem e copia
+o modelo enviado separadamente na quarta mensagem:
 
-> Vou enviar em instantes a sua NF no valor de R$ [VALOR] referente à consulta de [DD/MM/AAAA].
+> Vou enviar em instantes a sua NF no valor de R$ [preecha] referente a consulta [preecha]
 
 O nome do atalho é livre. O texto preenchido continua sendo reconhecido pelo
 fluxo determinístico existente. O envio ao paciente solicita uma nota real;
@@ -42,8 +41,8 @@ fica `concluido`. A resposta da Evolution confirma aceitação, não leitura ou
 entrega final no aparelho. O envio acontece em segundo plano no serviço web.
 
 O botão usa o mesmo contrato `type: copy` já usado pelo OTP. Se a Evolution
-rejeitar o formato com 400/404/405/422, envia o modelo exato em texto. A instrução
-para copiar manualmente já está na mensagem anterior. O suporte visual ao botão
+rejeitar o formato com 400/404/405/422, envia a terceira mensagem em texto, sem adicionar instruções. O modelo
+continua sendo enviado separadamente na quarta mensagem. O suporte visual ao botão
 depende da versão da Evolution e do WhatsApp; precisa ser verificado no aparelho.
 
 Timeout, rede e erro 5xx ficam `incerto`, sem novo envio automático. Uma rejeição
@@ -80,10 +79,9 @@ retoma só os treinos já pendentes; não faz disparo para todos os usuários.
 
 ## Limites desta versão
 
-É uma sequência guiada fixa. Não adiciona conversa livre com IA nem suporte a
-dúvidas tributárias. Por isso não promete atendimento tributário já disponível,
-emissões ilimitadas ou entrega garantida em segundos. Os limites do plano e a
-autorização fiscal continuam valendo. Usa o histórico que estiver sincronizado;
-dados ausentes seguem os pedidos existentes de CPF/data ou o tratamento de erros.
+É uma sequência guiada fixa. O texto é o solicitado pelo usuário; a alteração
+editorial não adiciona conversa livre com IA, atendimento tributário nem muda
+limites de plano, prazo de autorização ou disponibilidade do histórico.
+Não reinicia treinos concluídos e não exige nova migração.
 
 A continuação do treino após essas explicações não foi definida nesta entrega.

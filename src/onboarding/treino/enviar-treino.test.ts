@@ -85,7 +85,7 @@ test('reinício entre mensagens confirmadas retoma a próxima etapa', async () =
 });
 
 test('modelo preenchido produz valor e data esperados no reconhecedor existente', () => {
-  const texto = MODELO_EMISSAO_TREINO.replace('[VALOR]', '350,00').replace('[DD/MM/AAAA]', '01/10/2026');
+  const texto = MODELO_EMISSAO_TREINO.replace('[preecha]', '350,00').replace('[preecha]', '01/10/2026');
   const resultado = casarRespostaRapida(texto, true);
   assert.ok(resultado.casou && resultado.tipo === 'emissao');
   assert.equal(resultado.valorDigitadoCentavos, 35000);

@@ -13,8 +13,8 @@ export async function enviarMensagemTreino(
   const digitos = telefone.replace(/\D/g, '');
   const number = digitos.length === 10 || digitos.length === 11 ? `55${digitos}` : digitos;
   const botao = Boolean(mensagem.copiarTexto);
-  const body = botao ? { number, title: 'Modelo para emitir sua nota', description: mensagem.texto,
-    footer: 'Noto • Copie e preencha valor e data',
+  const body = botao ? { number, title: '', description: mensagem.texto,
+    footer: '',
     buttons: [{ type: 'copy', displayText: 'Copiar mensagem', copyCode: mensagem.copiarTexto }] }
     : { number, text: mensagem.texto };
   try {
