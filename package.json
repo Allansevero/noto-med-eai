@@ -14,6 +14,7 @@
     "migrate:agente": "node scripts/migrar-investigacoes-emissao.mjs",
     "check:agente": "node scripts/verificar-agente-fiscal.mjs",
     "migrate:preparacao": "node scripts/migrar-preparacao-fiscal.mjs",
+    "migrate:comparacao": "node scripts/migrar-comparacao-fiscal.mjs",
     "migrate:treino": "node scripts/migrar-treino-onboarding.mjs",
     "check:treino": "node scripts/verificar-treino-onboarding.mjs"
   },

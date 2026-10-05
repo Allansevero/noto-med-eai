@@ -854,6 +854,21 @@
           <input type="file" id="fileXmlInput" accept=".xml" class="hidden" />
         </div>
 
+        <section id="comparacaoFiscal" class="params-card hidden" style="width:100%" aria-label="Comparação da nota padrão">
+          <h3>Conferência da nota padrão</h3>
+          <p id="comparacaoResumo" role="status" aria-live="polite"></p>
+          <p>Conferimos o cadastro e os dados disponíveis do município com sua nota de referência. Os parâmetros salvos ou sugeridos pelo Noto aparecem ao lado. Esta consulta não altera a emissão.</p>
+          <div id="comparacaoFontes"></div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;text-align:left;font-size:13px;border-spacing:12px">
+              <thead><tr><th>Campo</th><th>Nota padrão</th><th>Consulta externa</th><th>Noto: salvo ou sugerido</th><th>Conferência</th></tr></thead>
+              <tbody id="comparacaoLinhas"></tbody>
+            </table>
+          </div>
+          <p id="comparacaoObservacao"></p>
+          <button type="button" class="btn-action btn-secondary" id="btnCompararFiscal">Consultar novamente</button>
+        </section>
+
         <div id="previewFiscal" class="hidden" style="width: 100%; display: flex; flex-direction: column; gap: var(--gap);">
           <div class="params-card"><p id="resumoNotaReferencia"></p><p id="resumoIbscbs"></p><p id="pendenciasNotaReferencia" role="status"></p></div>
           <div class="params-card">
@@ -1470,7 +1485,7 @@
         mostrarPasso(2);
         if (p.passo2XmlEnviado && status.perfilFiscal) {
           exibirPreviewPerfilFiscal(status.perfilFiscal);
-        }
+        } else carregarComparacaoFiscal();
       } else if (!p.passo4WhatsappConectado) {
         mostrarPasso(4);
       } else {
@@ -1569,6 +1584,70 @@
       }
     }
 
+    let sequenciaComparacao = 0;
+    const nomesValoresFiscais = { mei: 'MEI', me_epp: 'ME/EPP — Simples', nao_optante: 'Não optante pelo Simples' };
+    function textoFiscal(valor) {
+      return valor === null || valor === undefined ? 'Não disponível' : (nomesValoresFiscais[valor] || String(valor));
+    }
+    async function carregarComparacaoFiscal() {
+      const sequencia = ++sequenciaComparacao;
+      const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+      if (!medicoId) return;
+      const painel = document.getElementById('comparacaoFiscal');
+      const resumo = document.getElementById('comparacaoResumo');
+      const btn = document.getElementById('btnCompararFiscal');
+      btn.disabled = true;
+      resumo.textContent = 'Consultando os dados disponíveis…';
+      document.getElementById('comparacaoLinhas').replaceChildren();
+      document.getElementById('comparacaoFontes').replaceChildren();
+      document.getElementById('comparacaoObservacao').textContent = '';
+      try {
+        const res = await fetch('/api/onboarding/comparar-fiscal', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ medicoId })
+        });
+        const data = await res.json();
+        if (sequencia !== sequenciaComparacao) return;
+        if (data.ativo === false) { painel.classList.add('hidden'); return; }
+        painel.classList.remove('hidden');
+        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não foi possível consultar agora.');
+        const c = data.comparacao;
+        const dataConsulta = new Date(c.consultadoEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        resumo.textContent = (c.estado === 'sem_referencia' ? 'Dados consultados. Importe sua nota padrão para comparar.'
+          : c.divergencias ? `${c.divergencias} campo(s) com diferença para revisar.`
+          : 'Nenhuma diferença encontrada nos campos comparáveis. A conferência ainda é parcial.')
+          + ` Consulta: ${dataConsulta}. Competência da referência: ${c.competencia}.`
+          + (c.politicaConfirmada ? ' Há parâmetros confirmados no cadastro.' : 'Os parâmetros sugeridos ainda precisam de confirmação.');
+        const fontes = document.getElementById('comparacaoFontes');
+        const nomesDadosFonte = { razaoSocial: 'Razão social', municipioEmitente: 'Município cadastral (IBGE)',
+          opcaoSimplesNacional: 'Enquadramento', cnaePrincipal: 'CNAE principal', situacaoCadastral: 'Situação cadastral',
+          municipio: 'Município consultado (IBGE)', aderenteEmissorNacional: 'Adesão ao Emissor Nacional',
+          codigoServico: 'Código do serviço', competencia: 'Competência', aliquotaMunicipal: 'Alíquota municipal geral (%)',
+          vigenciaInicio: 'Início da vigência', vigenciaFim: 'Fim da vigência' };
+        for (const fonte of c.fontes) {
+          const p = document.createElement('p');
+          const dados = Object.entries(fonte.dados || {}).map(([k, v]) => `${nomesDadosFonte[k] || k}: ${textoFiscal(v)}`).join(' · ');
+          p.textContent = `${fonte.fonte}: ${fonte.mensagem}${dados ? ' ' + dados : ''}`;
+          fontes.append(p);
+        }
+        const tbody = document.getElementById('comparacaoLinhas');
+        for (const linha of c.linhas) {
+          const tr = document.createElement('tr');
+          const estado = { coincide: 'Coincide com a consulta', diverge: 'Diverge da consulta', nao_conferido: 'Sem conferência independente', sem_referencia: 'Sem dado na referência' }[linha.estado];
+          for (const valor of [linha.nome, textoFiscal(linha.referencia), textoFiscal(linha.consultado), textoFiscal(linha.preparado),
+            estado + (linha.comparacaoNoto === 'diverge' ? ' · Noto difere da referência' : '')]) {
+            const td = document.createElement('td'); td.textContent = valor; tr.append(td);
+          }
+          tbody.append(tr);
+        }
+        document.getElementById('comparacaoObservacao').textContent = c.observacao + ' ' + c.pendencias.join(' ');
+      } catch (erro) {
+        if (sequencia !== sequenciaComparacao) return;
+        painel.classList.remove('hidden');
+        resumo.textContent = erro.message || 'Comparação indisponível. Os parâmetros fiscais não foram alterados.';
+      } finally { if (sequencia === sequenciaComparacao) btn.disabled = false; }
+    }
+    document.getElementById('btnCompararFiscal').addEventListener('click', carregarComparacaoFiscal);
+
     let referenciaFiscalAtual = null;
     function mostrarReferenciaFiscal(referencia) {
       referenciaFiscalAtual = referencia?.versao === 2 ? referencia : null;
@@ -1608,6 +1687,7 @@
     }
 
     function exibirPreviewFiscal(data) {
+      carregarComparacaoFiscal();
       const p = data.parametros;
       mostrarReferenciaFiscal(p.dadosReformaTributaria);
       document.getElementById('inputSerieDps').value = p.serieDps ?? '';
@@ -1627,6 +1707,7 @@
     }
 
     function exibirPreviewPerfilFiscal(perfil) {
+      carregarComparacaoFiscal();
       const politica = perfil.parametrosEmissao;
       mostrarReferenciaFiscal(perfil.referenciaFiscal);
       preencherRegrasEmissao(politica?.parametros || perfil.referenciaFiscal?.parametrosSugeridos, politica ? `Serviço revisado: ${politica.ctribNac}` : "Revisão das regras ainda não registrada.");
@@ -1731,6 +1812,7 @@
             document.getElementById('dropZoneXml').classList.remove('hidden');
             document.getElementById('previewFiscal').classList.add('hidden');
             showAlert(`Certificado salvo. ${data.importacaoFiscal?.detalhe || 'Envie o XML da última NFS-e para continuar.'}`, true, alertOnboarding);
+            carregarComparacaoFiscal();
           }
         } else {
           showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);
