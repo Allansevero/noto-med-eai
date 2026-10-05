@@ -46,14 +46,13 @@ export async function confirmarParametrosFiscais(
     await pool.query(sqlServico, [medicoId, aliquotaIss]);
   }
 
-  if (especialidade || razaoSocial) {
+  if (especialidade) {
     const sqlMedico = `
       update medicos
       set especialidade = coalesce($2, especialidade),
-          nome_completo = coalesce($3, nome_completo),
           atualizado_em = now()
       where id = $1
     `;
-    await pool.query(sqlMedico, [medicoId, especialidade, razaoSocial]);
+    await pool.query(sqlMedico, [medicoId, especialidade]);
   }
 }

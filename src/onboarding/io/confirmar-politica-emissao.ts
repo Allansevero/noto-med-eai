@@ -34,11 +34,11 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
     await client.query(`insert into auditoria (acao, entidade, entidade_id, dados_anteriores, dados_novos)
       values ('confirmar_parametros_emissao', 'medico_servicos_fiscais', $1, $2, $3)`,
       [s.id, s.parametros_emissao ? JSON.stringify(s.parametros_emissao) : null, JSON.stringify(politica)]);
-    if (input.razaoSocial || input.especialidade) {
-      await client.query(`update medicos set nome_completo = coalesce($2, nome_completo),
-        especialidade = coalesce($3, especialidade) where id = $1`, [input.medicoId, input.razaoSocial, input.especialidade]);
-      if (input.razaoSocial) await client.query('update medico_perfil_fiscal set razao_social = $2 where medico_id = $1', [input.medicoId, input.razaoSocial]);
+    if (input.especialidade) {
+      await client.query(`update medicos set especialidade = $2, atualizado_em = now()
+        where id = $1`, [input.medicoId, input.especialidade]);
     }
+    if (input.razaoSocial) await client.query('update medico_perfil_fiscal set razao_social = $2 where medico_id = $1', [input.medicoId, input.razaoSocial]);
     if (input.aliquotaIss !== undefined) {
       if (!Number.isFinite(input.aliquotaIss) || input.aliquotaIss < 0 || input.aliquotaIss > 100) throw new Error('Alíquota inválida.');
       await client.query('update medico_servicos_fiscais set aliquota_iss = $2 where id = $1', [s.id, input.aliquotaIss]);

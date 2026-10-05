@@ -25,5 +25,16 @@ describe('confirmarParametrosFiscais', () => {
     assert.ok(executedQueries[0].sql.includes('confirmado_pelo_medico = true'));
     assert.ok(executedQueries[1].sql.includes('aliquota_iss = $2'));
     assert.ok(executedQueries[2].sql.includes('especialidade = coalesce'));
+    assert.ok(!executedQueries[2].sql.includes('nome_completo'));
+    assert.deepEqual(executedQueries[2].values, ['medico-123', 'Psiquiatria']);
+  });
+  it('alterar razão social não substitui a identidade profissional salva na conta', async () => {
+    const queries: string[] = [];
+    await confirmarParametrosFiscais({ query: async (sql: string) => {
+      queries.push(sql); return { rows: [] };
+    } } as any, { medicoId: 'm', razaoSocial: 'Clínica Exemplo Ltda' });
+    assert.equal(queries.length, 1);
+    assert.ok(queries[0].includes('razao_social'));
+    assert.ok(!queries.some(sql => sql.includes('update medicos')));
   });
 });

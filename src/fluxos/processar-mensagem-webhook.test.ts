@@ -496,5 +496,7 @@ describe('processarMensagemWebhook', () => {
     assert.strictEqual(repo.solicitacoes.length, 1);
     assert.strictEqual(repo.solicitacoes[0].fila, 'pronta');
     assert.ok(repo.solicitacoes[0].xdescServ.includes('NAS DATAS 25/09/2026'));
+    assert.ok(repo.solicitacoes[0].xdescServ.includes('ROBERTO SANTOS'));
+    assert.ok(repo.solicitacoes[0].xdescServ.includes('CRM 12345/SP / RQE 6789'));
   });
 });

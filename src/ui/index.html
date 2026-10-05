@@ -1084,8 +1084,10 @@
       <div class="access-header">
         <h2 class="access-title" style="font-size: 34px;">Sua Conta</h2>
         <p class="access-subtitle">Dados profissionais e configurações do consultório.</p>
+        <p class="access-subtitle">Nome completo, CRM e RQE salvos aqui serão usados na descrição das novas solicitações de nota. Notas já emitidas não são alteradas.</p>
       </div>
 
+      <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
       <div class="account-fields-list">
         <!-- NOME COMPLETO -->
         <div class="account-field-group">
@@ -2011,6 +2013,7 @@
 
       const icon = btn.querySelector('.icon-edit');
       const txtSalvar = btn.querySelector('.btn-save-inline-text');
+      const statusPerfil = document.getElementById('contaPerfilStatus');
 
       let valorOriginal = input.value;
 
@@ -2031,8 +2034,15 @@
           const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
           const usuarioId = sessaoAtual?.usuario?.usuarioId;
           if (!medicoId) return;
+          if (campo === 'nome' && novoValor.length < 2) {
+            if (statusPerfil) statusPerfil.textContent = 'Informe o nome completo antes de salvar.';
+            input.focus();
+            return;
+          }
 
           btn.disabled = true;
+          input.disabled = true;
+          if (statusPerfil) statusPerfil.textContent = 'Salvando dados profissionais…';
           if (txtSalvar) txtSalvar.textContent = '...';
 
           try {
@@ -2044,8 +2054,9 @@
               body: JSON.stringify(payload)
             });
             const data = await res.json();
-            if (data.ok) {
-              input.value = novoValor;
+            if (res.ok && data.ok) {
+              input.value = data[campo] || '';
+              valorOriginal = input.value;
               input.readOnly = true;
               input.classList.remove('is-editing');
               btn.classList.remove('is-saving');
@@ -2056,26 +2067,27 @@
               }
               if (campo === 'nome') {
                 if (!sessaoAtual.usuario) sessaoAtual.usuario = {};
-                sessaoAtual.usuario.nome = novoValor;
+                sessaoAtual.usuario.nome = data.nome;
                 localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
                 const resNome = document.getElementById('resumoNomeMedico');
-                if (resNome) resNome.textContent = novoValor;
+                if (resNome) resNome.textContent = data.nome;
               }
+              if (statusPerfil) statusPerfil.textContent = 'Dados salvos. Serão usados nas novas solicitações de nota.';
             } else {
-              alert(data.detalhe || 'Erro ao salvar');
-              input.value = valorOriginal;
+              if (statusPerfil) statusPerfil.textContent = data.detalhe || 'Não foi possível salvar. Tente novamente.';
             }
           } catch {
-            alert('Erro ao conectar com servidor');
-            input.value = valorOriginal;
+            if (statusPerfil) statusPerfil.textContent = 'Não foi possível confirmar o salvamento. Verifique a conexão e tente novamente.';
           } finally {
             btn.disabled = false;
+            input.disabled = false;
             if (txtSalvar) txtSalvar.textContent = 'Salvar';
           }
         }
       });
 
       input.addEventListener('keydown', (e) => {
+        if (btn.disabled) return;
         if (e.key === 'Enter') {
           e.preventDefault();
           btn.click();

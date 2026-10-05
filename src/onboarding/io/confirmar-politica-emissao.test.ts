@@ -38,3 +38,13 @@ test('parâmetro não suportado é rejeitado antes de conectar', async () => {
   await assert.rejects(() => confirmarPoliticaEmissao(c.pool, { medicoId: 'm', parametrosEmissao: { ...parametros, tpRetISSQN: 2 } }));
   assert.equal(c.queries.length, 0);
 });
+test('revisão fiscal altera razão social e especialidade sem substituir nome, CRM e RQE', async () => {
+  const c = montar();
+  await confirmarPoliticaEmissao(c.pool, { medicoId: 'm', parametrosEmissao: parametros,
+    razaoSocial: 'Clínica Exemplo Ltda', especialidade: 'Cardiologia' });
+  const update = c.queries.find(q => q.sql.includes('update medicos'))!;
+  assert.deepEqual(update.params, ['m', 'Cardiologia']);
+  assert.doesNotMatch(update.sql, /nome_completo|crm|rqe/);
+  assert.ok(c.queries.some(q => q.sql.includes('set razao_social') && q.params?.[1] === 'Clínica Exemplo Ltda'));
+  assert.equal(c.queries.at(-1)?.sql, 'commit');
+});

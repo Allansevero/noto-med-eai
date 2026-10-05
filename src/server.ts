@@ -26,6 +26,8 @@ import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instan
 import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-status-instancia-whatsapp.js';
 import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
 import { resolverMedicoId } from './onboarding/io/resolver-medico-id.js';
+import { salvarPerfilProfissional, ErroPerfilProfissional } from './io/postgres/salvar-perfil-profissional.js';
+import { ZodError } from 'zod';
 import { GroqApiClient } from './io/groq/groq-api-client.js';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
@@ -210,24 +212,11 @@ export function criarAppExpress() {
       const { usuarioId, medicoId: medicoIdRaw, nome, crm, rqe } = req.body || {};
       const medicoIdFinal = await resolverMedicoId(pool, medicoIdRaw || usuarioId);
 
-      if (nome && typeof nome === 'string') {
-        const nomeLimpo = nome.trim();
-        if (usuarioId) {
-          await pool.query('update usuarios set nome = $2, atualizado_em = now() where id = $1', [usuarioId, nomeLimpo]);
-        }
-        await pool.query('update medicos set nome_completo = $2, atualizado_em = now() where id = $1', [medicoIdFinal, nomeLimpo]);
-      }
-      if (crm !== undefined) {
-        const crmLimpo = typeof crm === 'string' && crm.trim() ? crm.trim() : null;
-        await pool.query('update medicos set crm = $2, atualizado_em = now() where id = $1', [medicoIdFinal, crmLimpo]);
-      }
-      if (rqe !== undefined) {
-        const rqeLimpo = typeof rqe === 'string' && rqe.trim() ? rqe.trim() : null;
-        await pool.query('update medicos set rqe = $2, atualizado_em = now() where id = $1', [medicoIdFinal, rqeLimpo]);
-      }
-
-      return res.json({ ok: true, medicoId: medicoIdFinal, nome, crm, rqe });
+      const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe });
+      return res.json({ ok: true, ...perfil });
     } catch (err: any) {
+      if (err instanceof ZodError) return res.status(400).json({ ok: false, detalhe: err.issues[0]?.message });
+      if (err instanceof ErroPerfilProfissional) return res.status(400).json({ ok: false, detalhe: err.message });
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao atualizar perfil' });
     }
   });
