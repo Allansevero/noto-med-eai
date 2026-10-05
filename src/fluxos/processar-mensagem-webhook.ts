@@ -7,6 +7,7 @@
  */
 
 import { validarWebhookSecret } from '../whatsapp/validar-webhook-secret.js';
+import { conexaoWebhookSchema } from '../whatsapp/payload-conexao-webhook-schema.js';
 import { extrairTelefoneJid } from '../whatsapp/extrair-telefone-jid.js';
 import {
   webhookEvolutionSchema,
@@ -39,12 +40,13 @@ export interface ProcessarWebhookDeps {
   segredoConfigurado: string;
   pepper: string;
   instanciaOficialNome?: string;
+  aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
 }
 
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'descartada';
+      acao: 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
@@ -56,6 +58,14 @@ export async function processarMensagemWebhook(
 ): Promise<ResultadoProcessarWebhook> {
   if (deps.segredoConfigurado && !validarWebhookSecret(tokenRecebido, deps.segredoConfigurado)) {
     return { ok: false, motivo: 'autenticacao_invalida' };
+  }
+
+  const conexao = conexaoWebhookSchema.safeParse(payloadBruto);
+  if (conexao.success) {
+    if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
+    if (!deps.aoAtualizarConexao) return { ok: true, acao: 'descartada' };
+    await deps.aoAtualizarConexao({ instancia: conexao.data.instance, state: conexao.data.data.state });
+    return { ok: true, acao: 'conexao_atualizada' };
   }
 
   if (ehEventoHistorico(payloadBruto)) {
@@ -81,6 +91,11 @@ export async function processarMensagemWebhook(
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };
+
+  // O modelo enviado pelo Noto Oficial ensina o comando; não é uma emissão.
+  if (payload.data.key.fromMe && (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
+    return { ok: true, acao: 'descartada' };
+  }
 
   const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
   const medicoId = instancia.medicoId || medico?.id || null;

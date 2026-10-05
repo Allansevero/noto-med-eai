@@ -24,6 +24,7 @@ export interface AppConfig {
   groqModel: string;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
+  treinoOnboardingAtivo?: boolean;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -54,6 +55,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
+    treinoOnboardingAtivo: env['TREINO_ONBOARDING_ATIVO'] === 'true',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

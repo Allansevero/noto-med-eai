@@ -37,6 +37,8 @@ import { processarWebhookStripe } from './billing/processar-webhook-stripe.js';
 import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
+import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
+import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,6 +58,7 @@ export function criarAppExpress() {
   // Instanciação dos adaptadores de infraestrutura
   const otpRepo = new PostgresOtpRepositorio(pool);
   const atendimentoRepo = new PostgresAtendimentoRepositorio(pool, config.encryptionKey);
+  const dispararTreino = criarDisparadorTreino(pool, config);
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
@@ -166,6 +169,7 @@ export function criarAppExpress() {
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
+      if (status.liberadoParaEmitir) dispararTreino(medicoId);
       if (status.passos.passo4WhatsappConectado) {
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
@@ -273,6 +277,7 @@ export function criarAppExpress() {
         opcaoSimplesNacional,
         parametrosEmissao
       });
+      dispararTreino(medicoId);
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
       return res.status(400).json({ ok: false, detalhe: Array.isArray(err?.issues)
@@ -375,6 +380,7 @@ export function criarAppExpress() {
         appWebhookUrl: appUrl,
         webhookSecret: config.evolutionWebhookSecret
       });
+      if (resultado.ok) dispararTreino(medicoId);
       return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       console.error('Erro ao iniciar conexão WhatsApp:', err);
@@ -395,6 +401,7 @@ export function criarAppExpress() {
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey
       });
+      if (resultado.conectado) dispararTreino(medicoId);
       return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do WhatsApp' });
@@ -416,8 +423,7 @@ export function criarAppExpress() {
     if (
       tokenRecebido &&
       (tokenRecebido === config.evolutionGlobalApiKey ||
-        tokenRecebido === config.evolutionWebhookSecret ||
-        tokenRecebido === 'notomed_webhook_secret_key_123')
+        tokenRecebido === config.evolutionWebhookSecret)
     ) {
       segredoEsperado = tokenRecebido;
     }
@@ -431,7 +437,12 @@ export function criarAppExpress() {
       consultaCpfProvider: hubCpfClient,
       segredoConfigurado: segredoEsperado,
       pepper: config.appPepper,
-      instanciaOficialNome: config.evolutionOfficialInstanceName
+      instanciaOficialNome: config.evolutionOfficialInstanceName,
+      async aoAtualizarConexao(evento) {
+        if (evento.instancia === config.evolutionOfficialInstanceName) return;
+        const medicoId = await registrarConexaoWhatsapp(pool, evento);
+        if (medicoId) dispararTreino(medicoId);
+      }
     });
 
     if (!resultado.ok) {
@@ -629,6 +640,12 @@ export function criarAppExpress() {
   });
 
   if (process.env['NODE_ENV'] !== 'test') {
+    if (config.treinoOnboardingAtivo) {
+      // Retoma apenas intervalos entre mensagens já confirmadas, nunca envios incertos.
+      void pool.query(`select medico_id from onboarding_treinos_whatsapp where estado = 'pendente'`)
+        .then(({ rows }) => rows.forEach(row => dispararTreino(row.medico_id)))
+        .catch(() => console.warn('[TreinoOnboarding] Não foi possível consultar treinos pendentes. Verifique a migração.'));
+    }
     setTimeout(() => {
       void pool.query(
         `select nome_instancia

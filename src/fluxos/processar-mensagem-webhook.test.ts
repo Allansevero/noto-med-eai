@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { processarMensagemWebhook } from './processar-mensagem-webhook.js';
+import { MODELO_EMISSAO_TREINO } from '../onboarding/treino/mensagens-treino.js';
 import type {
   AtendimentoRepositorio,
   ConversaRegistro,
@@ -132,6 +133,32 @@ class EnviarMensagemFake implements EnviarMensagemPaciente {
 }
 
 describe('processarMensagemWebhook', () => {
+  it('não transforma mensagens de treino enviadas pelo Noto Oficial em emissão', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.instancias.push({ id: 'oficial', medicoId: 'med-1', nomeInstancia: 'notomed_oficial', oficial: true });
+    const payload = { event: 'messages.upsert', instance: 'notomed_oficial', data: {
+      key: { fromMe: true, remoteJid: '5551993527271@s.whatsapp.net', id: 'TREINO-1' },
+      message: { conversation: MODELO_EMISSAO_TREINO.replace('[VALOR]', '350,00').replace('[DD/MM/AAAA]', '01/10/2026') }
+    } };
+    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+    assert.deepStrictEqual(res, { ok: true, acao: 'descartada' });
+    assert.equal(repo.solicitacoes.length, 0);
+    assert.equal(repo.pacientes.length, 0);
+    assert.equal(repo.conversas.length, 0);
+  });
+
+  it('evento de conexão autenticado aciona conclusão mesmo sem tela aberta', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const eventos: unknown[] = [];
+    const deps = { ...criarDeps(repo), aoAtualizarConexao: async (evento: unknown) => { eventos.push(evento); } };
+    const payload = { event: 'CONNECTION_UPDATE', instance: 'medico_123', data: { state: 'open' } };
+    assert.deepStrictEqual(await processarMensagemWebhook(payload, segredo, deps), { ok: true, acao: 'conexao_atualizada' });
+    assert.deepStrictEqual(eventos, [{ instancia: 'medico_123', state: 'open' }]);
+    assert.equal(repo.conversas.length, 0);
+    assert.deepStrictEqual(await processarMensagemWebhook(payload, 'incorreto', deps), { ok: false, motivo: 'autenticacao_invalida' });
+    assert.deepStrictEqual(await processarMensagemWebhook(payload, null, { ...deps, segredoConfigurado: '' }), { ok: false, motivo: 'autenticacao_invalida' });
+    assert.equal(eventos.length, 1);
+  });
   const segredo = 'segredo-secreto-evolution';
   const pepper = 'pepper-app-123';
 
