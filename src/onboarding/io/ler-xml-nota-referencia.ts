@@ -5,7 +5,7 @@
  * municipais legados (ex.: ABRASF) com mensagem orientativa (seção 7 do plano).
  */
 
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 export type ResultadoLeituraXml = {
   versao: string;
@@ -15,6 +15,9 @@ export type ResultadoLeituraXml = {
 export function lerXmlNotaReferencia(xmlString: string): ResultadoLeituraXml {
   if (!xmlString || typeof xmlString !== 'string' || xmlString.trim().length === 0) {
     throw new Error('Conteúdo do XML não pode ser vazio.');
+  }
+  if (/<!DOCTYPE|<!ENTITY/i.test(xmlString) || XMLValidator.validate(xmlString) !== true) {
+    throw new Error('Arquivo XML inválido ou mal formatado.');
   }
 
   // Detecta se é o padrão municipal antigo ABRASF antes de tentar o padrão nacional
@@ -44,10 +47,17 @@ export function lerXmlNotaReferencia(xmlString: string): ResultadoLeituraXml {
   const infNfse = raiz.infNFSe || raiz;
   const infDps = infNfse.DPS?.infDPS || infNfse.infDPS || raiz.infDPS || raiz;
 
-  const versao = infNfse['@_versao'] || infDps['@_versao'] || '1.01';
+  const versao = raiz['@_versao'] || infNfse['@_versao'] || infDps['@_versao'] || '1.01';
 
   if (!infNfse.emit && !infDps.prest) {
     throw new Error('O XML não contém grupo de emissor/prestador válido do Padrão Nacional de NFS-e.');
+  }
+  const comNamespace = new XMLParser({ ignoreAttributes: false, parseTagValue: false }).parse(xmlString);
+  const chaveRaiz = Object.keys(comNamespace).find(chave => /^(?:[\w.-]+:)?NFSe$/.test(chave));
+  const prefixo = chaveRaiz?.includes(':') ? `:${chaveRaiz.split(':')[0]}` : '';
+  const namespace = chaveRaiz ? comNamespace[chaveRaiz]?.[`@_xmlns${prefixo}`] : undefined;
+  if (!parsed.NFSe || Array.isArray(parsed.NFSe) || String(versao) !== '1.01' || namespace !== 'http://www.sped.fazenda.gov.br/nfse') {
+    throw new Error('Envie uma NFS-e autorizada no padrão nacional 1.01, com a DPS original. Outros layouts precisam de integração específica.');
   }
 
   return {

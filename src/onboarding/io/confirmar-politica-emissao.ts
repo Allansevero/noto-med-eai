@@ -2,18 +2,21 @@
 import type pg from 'pg';
 
 import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
-export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId: string; parametrosEmissao?: unknown; opcaoSimplesNacional?: string; serieDps?: string; proximoNumeroDps?: number; razaoSocial?: string; especialidade?: string; aliquotaIss?: number }): Promise<void> {
+import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
+export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId: string; referenciaHash?: string; parametrosEmissao?: unknown; opcaoSimplesNacional?: string; serieDps?: string; proximoNumeroDps?: number; razaoSocial?: string; especialidade?: string; aliquotaIss?: number }): Promise<void> {
   const parametros = parametrosEmissaoSchema.parse(input.parametrosEmissao);
   if (input.opcaoSimplesNacional && input.opcaoSimplesNacional !== parametros.opcaoSimplesNacional) throw new Error('Regimes informados divergem.');
   const client = await pool.connect();
   try {
     await client.query('begin');
-    const perfil = await client.query(`select cod_municipio_ibge, serie_dps, xml_nota_referencia_url
+    const perfil = await client.query(`select cod_municipio_ibge, serie_dps, xml_nota_referencia_url, dados_reforma_tributaria
       from medico_perfil_fiscal where medico_id = $1 for update`, [input.medicoId]);
     const servicos = await client.query(`select id, ctrib_nac, cnbs, ctrib_mun, parametros_emissao from medico_servicos_fiscais
       where medico_id = $1 and padrao and ativo for update`, [input.medicoId]);
     if (perfil.rows.length !== 1 || servicos.rows.length !== 1) throw new Error('É necessário um perfil e um único serviço padrão ativo.');
     const p = perfil.rows[0], s = servicos.rows[0];
+    const pendencias = validarReferenciaFiscal(p.dados_reforma_tributaria, { referenciaHash: input.referenciaHash, parametros });
+    if (pendencias.length) throw new Error(pendencias.join(' '));
     const serie = input.serieDps ?? p.serie_dps;
     if (!/^\d{1,5}$/.test(serie)) throw new Error('Série da DPS inválida.');
     if (input.proximoNumeroDps !== undefined && (!Number.isSafeInteger(input.proximoNumeroDps) || input.proximoNumeroDps < 1)) throw new Error('Número da DPS inválido.');
@@ -24,7 +27,7 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
       percentual_tot_trib_sn = coalesce($7, percentual_tot_trib_sn), atualizado_em = now()
       where medico_id = $1`, [input.medicoId, serie, input.proximoNumeroDps, parametros.opcaoSimplesNacional,
       parametros.regimeApuracaoSn ?? null, parametros.regimeEspecialTributacao, parametros.percentualTotTribSN, parametros.ambiente]);
-    const politica = { parametros, confirmadoEm: new Date().toISOString(), origem: 'revisao_onboarding',
+    const politica = { parametros, referenciaHash: input.referenciaHash, confirmadoEm: new Date().toISOString(), origem: 'revisao_onboarding',
       ctribNac: s.ctrib_nac, cnbs: s.cnbs, ctribMun: s.ctrib_mun,
       perfil: { ambiente: parametros.ambiente, opcao: parametros.opcaoSimplesNacional, regime: parametros.regimeApuracaoSn ?? null,
         especial: parametros.regimeEspecialTributacao, municipio: p.cod_municipio_ibge, serie,

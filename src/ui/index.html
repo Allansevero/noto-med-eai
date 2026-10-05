@@ -855,6 +855,7 @@
         </div>
 
         <div id="previewFiscal" class="hidden" style="width: 100%; display: flex; flex-direction: column; gap: var(--gap);">
+          <div class="params-card"><p id="resumoNotaReferencia"></p><p id="resumoIbscbs"></p><p id="pendenciasNotaReferencia" role="status"></p></div>
           <div class="params-card">
             <div class="param-item">
               <span class="param-label">Razão Social / Nome</span>
@@ -915,6 +916,7 @@
           <button type="button" class="btn-action" id="btnConfirmarFiscal">
             Confirmar e Continuar
           </button>
+          <button type="button" class="btn-action btn-secondary" id="btnTrocarReferencia">Importar outra nota de referência</button>
         </div>
       </div>
 
@@ -925,6 +927,7 @@
           <p class="access-subtitle">
             Usaremos o A1 para localizar sua última NFS-e no Ambiente Nacional e preencher seus dados fiscais automaticamente.
           </p>
+          <p class="access-subtitle">Antes do cadastro, emita sua nota no portal da prefeitura com os dados tributários atualizados para o serviço que usará no Noto. Confira a nota localizada na próxima etapa. Se ela ainda não estiver disponível no Ambiente Nacional, você poderá enviar o XML no padrão nacional.</p>
         </div>
 
         <div class="drop-zone" id="dropZoneCert" onclick="document.getElementById('fileCertInput').click()">
@@ -1566,6 +1569,22 @@
       }
     }
 
+    let referenciaFiscalAtual = null;
+    function mostrarReferenciaFiscal(referencia) {
+      referenciaFiscalAtual = referencia?.versao === 2 ? referencia : null;
+      const ibscbs = referenciaFiscalAtual?.parametrosSugeridos?.ibscbs;
+      document.getElementById('resumoNotaReferencia').textContent = referenciaFiscalAtual
+        ? `Nota de referência: ${referencia.numero || 'sem número identificado'} · Emissão: ${referencia.emitidaEm || 'não informada'}`
+        : 'Importe uma nota atualizada para identificar os parâmetros tributários de referência.';
+      document.getElementById('resumoIbscbs').textContent = ibscbs
+        ? `IBS/CBS da referência — CST: ${ibscbs.CST}; classificação: ${ibscbs.cClassTrib}; operação: ${ibscbs.cIndOp}; finalidade: ${ibscbs.finNFSe}; consumo pessoal: ${ibscbs.indFinal ?? 'não informado'}; destinatário: próprio tomador (${ibscbs.indDest}).`
+        : 'Nenhum conjunto completo de parâmetros IBS/CBS suportados foi identificado na DPS de referência.';
+      document.getElementById('pendenciasNotaReferencia').textContent = (referenciaFiscalAtual?.pendencias || []).join(' ');
+    }
+    document.getElementById('btnTrocarReferencia').addEventListener('click', () => {
+      document.getElementById('dropZoneXml').classList.remove('hidden');
+      document.getElementById('fileXmlInput').value = '';
+    });
     const camposRegrasEmissao = {
       ambiente: 'fiscalAmbiente', vigenciaInicio: 'fiscalInicio', vigenciaFim: 'fiscalFim', municipioPrestacao: 'fiscalMunicipio',
       regimeApuracaoSn: 'fiscalApuracao', regimeEspecialTributacao: 'fiscalEspecial',
@@ -1579,6 +1598,7 @@
     function lerRegrasEmissao(opcaoSimplesNacional) {
       if (!document.getElementById('confirmarRegrasEmissao').checked) return undefined;
       const parametros = { opcaoSimplesNacional };
+      if (referenciaFiscalAtual?.parametrosSugeridos?.ibscbs) parametros.ibscbs = referenciaFiscalAtual.parametrosSugeridos.ibscbs;
       const numericos = ['regimeEspecialTributacao', 'tribISSQN', 'tpRetISSQN', 'percentualTotTribSN'];
       for (const [campo, id] of Object.entries(camposRegrasEmissao)) {
         const valor = document.getElementById(id).value.trim();
@@ -1589,6 +1609,7 @@
 
     function exibirPreviewFiscal(data) {
       const p = data.parametros;
+      mostrarReferenciaFiscal(p.dadosReformaTributaria);
       document.getElementById('inputSerieDps').value = p.serieDps ?? '';
       document.getElementById('inputProximoNumeroDps').value = p.proximoNumeroSequencialSugerido ?? '';
       const s = data.servico;
@@ -1607,7 +1628,8 @@
 
     function exibirPreviewPerfilFiscal(perfil) {
       const politica = perfil.parametrosEmissao;
-      preencherRegrasEmissao(politica?.parametros, politica ? `Serviço revisado: ${politica.ctribNac}` : "Revisão das regras ainda não registrada.");
+      mostrarReferenciaFiscal(perfil.referenciaFiscal);
+      preencherRegrasEmissao(politica?.parametros || perfil.referenciaFiscal?.parametrosSugeridos, politica ? `Serviço revisado: ${politica.ctribNac}` : "Revisão das regras ainda não registrada.");
       document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';
       document.getElementById('txtCnpj').textContent = perfil.cnpjCpfMask || 'Cadastrado';
       document.getElementById('txtIm').textContent = perfil.inscricaoMunicipal || '—';
@@ -1648,7 +1670,7 @@
         const res = await fetch('/api/onboarding/confirmar-fiscal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps, opcaoSimplesNacional, parametrosEmissao: lerRegrasEmissao(opcaoSimplesNacional) })
+          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps, opcaoSimplesNacional, referenciaHash: referenciaFiscalAtual?.hash, parametrosEmissao: lerRegrasEmissao(opcaoSimplesNacional) })
         });
         const data = await res.json();
         if (data.ok) {

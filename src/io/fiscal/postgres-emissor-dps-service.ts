@@ -31,6 +31,7 @@ import type { ConsultaCpfProvider } from '../../paciente/consulta-cpf-provider.j
 import { ehNomeCivilValido } from '../../paciente/regras/validar-nome-civil.js';
 
 export type ConfigPrestadorCompleto = ConfigPrestador & {
+  referenciaImportada?: boolean;
   serie: string;
   razaoSocial: string;
   nomeFantasia?: string;
@@ -70,6 +71,11 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const prestadorConfig = await this.carregarPerfilFiscal(item.medicoId);
     if (!prestadorConfig) {
       return { sucesso: false, erro: `Perfil fiscal não cadastrado para o médico ${item.medicoId}` };
+    }
+    if (prestadorConfig.referenciaImportada && !this.preparacaoFiscalAtiva) {
+      return { sucesso: false, erro: 'Ative a preparação fiscal para emitir com os parâmetros da referência importada.',
+        pendenciasFiscais: [{ campo: 'configuracao', codigo: 'PREPARACAO_NECESSARIA', mensagem: 'A preparação fiscal precisa estar ativa para validar os parâmetros importados.' }],
+        contextoTecnico: { etapa: 'preparacao', transmitida: false } };
     }
 
     const preparacao = this.preparacaoFiscalAtiva
@@ -378,9 +384,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         valor: valorServico,
         aliquota: aliquotaIss,
         issApurado,
-        cstIbsCbs: this.preparacaoFiscalAtiva ? undefined : '000 - Tributável Integralmente',
-        cClassTrib: this.preparacaoFiscalAtiva ? undefined : emissaoInput.cClassTrib,
-        cIndOp: this.preparacaoFiscalAtiva ? undefined : emissaoInput.cIndOp
+        cstIbsCbs: this.preparacaoFiscalAtiva ? emissaoInput.fiscal?.ibscbs?.CST : '000 - Tributável Integralmente',
+        cClassTrib: this.preparacaoFiscalAtiva ? emissaoInput.fiscal?.ibscbs?.cClassTrib : emissaoInput.cClassTrib,
+        cIndOp: this.preparacaoFiscalAtiva ? emissaoInput.fiscal?.ibscbs?.cIndOp : emissaoInput.cIndOp
       }
     };
 
@@ -460,6 +466,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         pf.regime_apuracao_sn,
         pf.regime_especial_tributacao,
         pf.percentual_tot_trib_sn,
+        pf.dados_reforma_tributaria,
         u.email,
         u.telefone
       from medico_perfil_fiscal pf
@@ -476,6 +483,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const regApMap: Record<string, 1 | 2 | 3> = { regime_1: 1, regime_2: 2, regime_3: 3 };
 
     return {
+      referenciaImportada: r.dados_reforma_tributaria?.versao === 2,
       cnpj: r.documento_limpo,
       im: r.inscricao_municipal,
       codMunicipio: r.cod_municipio_ibge,

@@ -6,6 +6,7 @@
 
 import type { EmissaoInput, ConfigPrestador } from './montar-dps.js';
 import { momentoSP } from './montar-dps.js';
+import { gerarGrupoIbscbs } from '../../fiscal/preparacao/ibscbs.js';
 
 export interface ResultadoXmlDps {
   dpsId: string;
@@ -66,7 +67,7 @@ export function gerarXmlDps(
     : '';
 
   const vServFmt = Number(input.vServ).toFixed(2);
-  const pTotTribFmt = Number(input.pTotTribSN ?? cfg.pTotTribSN).toFixed(2);
+  const pTotTribFmt = Number(input.fiscal?.percentualTotTribSN ?? input.pTotTribSN ?? cfg.pTotTribSN).toFixed(2);
   const tribFedXml = ehMei ? '' : `<tribFed><piscofins><CST>${input.fiscal ? input.fiscal.cstPisCofins : '08'}</CST></piscofins></tribFed>`;
   const totTribXml = ehMei
     ? `<totTrib><indTotTrib>0</indTotTrib></totTrib>`
@@ -112,6 +113,7 @@ export function gerarXmlDps(
             `${totTribXml}` +
           `</trib>` +
         `</valores>` +
+        (input.fiscal?.ibscbs ? gerarGrupoIbscbs(input.fiscal.ibscbs) : '') +
       `</infDPS>` +
     `</DPS>`;
 

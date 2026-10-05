@@ -3,10 +3,11 @@
  * estruturadas antes de carregar certificado, assinar ou transmitir uma DPS.
  */
 import { parametrosEmissaoSchema, type PoliticaEmissao } from './parametros-emissao.js';
+import { validarReferenciaFiscal, type ReferenciaFiscalPersistida } from './validar-referencia-fiscal.js';
 import type { SolicitacaoEmissaoItem } from '../../worker/emissor-dps-service.js';
 export interface PendenciaFiscal { campo: string; codigo: string; mensagem: string }
 export interface EvidenciasEmissao {
-  perfil: { ambiente: string; confirmado: boolean; opcao: string; regime: string | null; especial: number; municipio: string; serie: string; referencia: string | null };
+  perfil: { ambiente: string; confirmado: boolean; opcao: string; regime: string | null; especial: number; municipio: string; serie: string; referencia: string | null; referenciaFiscal?: ReferenciaFiscalPersistida };
   servicos: Array<{ id: string; ctribNac: string; cnbs: string | null; ctribMun: string | null; politica: PoliticaEmissao | null }>;
   competenciaInformada: string | null;
   datasConsultas: string[];
@@ -23,6 +24,8 @@ export function prepararEmissao(item: SolicitacaoEmissaoItem, evidencias: Eviden
     adicionar('parametros', 'PARAMETROS_NAO_CONFIRMADOS', 'Revisar os parâmetros de emissão do serviço e confirmar sua validade.');
   }
   if (!validado.success) for (const erro of validado.error.issues) adicionar(erro.path.join('.'), 'PARAMETRO_INVALIDO', erro.message);
+  if (validado.success) for (const erro of validarReferenciaFiscal(evidencias.perfil.referenciaFiscal,
+    { referenciaHash: politica?.referenciaHash, parametros: validado.data })) adicionar('referencia', 'REFERENCIA_PENDENTE', erro);
   const datas = [...new Set(evidencias.datasConsultas)];
   const competencia = evidencias.competenciaInformada ?? (datas.length === 1 ? datas[0] : undefined);
   if (!competencia || !/^\d{4}-\d{2}-\d{2}$/.test(competencia) || !Number.isFinite(Date.parse(competencia)) ||
@@ -51,12 +54,16 @@ export function prepararEmissao(item: SolicitacaoEmissaoItem, evidencias: Eviden
   if (!servico || !/^\d{6}$/.test(servico.ctribNac)) adicionar('ctribNac', 'CODIGO_INVALIDO', 'Informar o código nacional do serviço com seis dígitos.');
   if (servico?.cnbs && !/^\d{9}$/.test(servico.cnbs)) adicionar('cnbs', 'CODIGO_INVALIDO', 'Conferir o código NBS do serviço.');
   if (servico?.ctribMun && !/^\d{3}$/.test(servico.ctribMun)) adicionar('ctribMun', 'CODIGO_INVALIDO', 'Conferir o código municipal do serviço.');
-  if (item.cindOp || item.cclassTrib) adicionar('IBSCBS', 'LAYOUT_NAO_SUPORTADO', 'A solicitação exige campos IBS/CBS que este emissor ainda não transmite. Revisão necessária.');
+  if ((item.cindOp && item.cindOp !== (validado.success ? validado.data.ibscbs?.cIndOp : undefined)) ||
+      (item.cclassTrib && item.cclassTrib !== (validado.success ? validado.data.ibscbs?.cClassTrib : undefined))) {
+    adicionar('IBSCBS', 'CLASSIFICACAO_DIVERGENTE', 'Os dados IBS/CBS da solicitação não correspondem à referência confirmada.');
+  }
   if (!Number.isSafeInteger(item.valorServicoCentavos) || item.valorServicoCentavos <= 0) adicionar('valor', 'VALOR_INVALIDO', 'Informar o valor positivo do serviço em centavos.');
   if (!item.xdescServ.trim()) adicionar('descricao', 'DESCRICAO_AUSENTE', 'Informar a descrição do serviço realizado.');
   if (pendencias.length || !validado.success || !servico || !competencia) return { ok: false as const, pendencias };
   return { ok: true as const, parametros: validado.data, competencia, servico,
     origem: { versao: 1, servicoId: servico.id, parametrosConfirmadosEm: politica!.confirmadoEm,
+      referenciaHash: politica!.referenciaHash,
       competencia: evidencias.competenciaInformada ? 'solicitacao' : 'consulta_vinculada', classificacao: 'servico_revisado',
       dadosAplicados: { competencia, ctribNac: servico.ctribNac, cnbs: servico.cnbs, ctribMun: servico.ctribMun, parametros: validado.data } } };
 }

@@ -5,6 +5,7 @@
  */
 
 import { inferirUfDeMunicipioIbge } from './inferir-uf-de-municipio-ibge.js';
+import { analisarReferenciaFiscal } from './analisar-referencia-fiscal.js';
 
 export type ParametrosFiscaisExtraidos = {
   cnpj: string;
@@ -83,7 +84,7 @@ export function mapearParametrosFiscaisDoXml(xmlObj: any): ParametrosFiscaisExtr
   const tpAmb = String(infDps.tpAmb || infNfse.ambGer || '1');
   const ambiente = tpAmb === '1' ? 'producao' : 'homologacao';
 
-  const gIbscbs = infDps.gIBSCBS || infDps.valores?.gIBSCBS || {};
+  const gIbscbs = infDps.IBSCBS?.valores?.trib?.gIBSCBS || {};
 
   return {
     cnpj,
@@ -100,7 +101,7 @@ export function mapearParametrosFiscaisDoXml(xmlObj: any): ParametrosFiscaisExtr
     cnae: cServ.cIntContrib ? String(cServ.cIntContrib).trim() : null,
     proximoNumeroSequencialSugerido,
     cclassTribPadrao: gIbscbs.cClassTrib ? String(gIbscbs.cClassTrib) : null,
-    cindOpPadrao: gIbscbs.cIndOp ? String(gIbscbs.cIndOp) : null,
-    dadosReformaTributaria: gIbscbs.CST ? { cst: gIbscbs.CST, cClassTrib: gIbscbs.cClassTrib } : {}
+    cindOpPadrao: infDps.IBSCBS?.cIndOp ? String(infDps.IBSCBS.cIndOp) : null,
+    dadosReformaTributaria: analisarReferenciaFiscal(xmlObj)
   };
 }

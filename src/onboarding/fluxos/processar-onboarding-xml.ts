@@ -5,6 +5,7 @@
  */
 
 import type pg from 'pg';
+import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lerXmlNotaReferencia } from '../io/ler-xml-nota-referencia.js';
 import { mapearParametrosFiscaisDoXml, type ParametrosFiscaisExtraidos } from '../regras/mapear-parametros-fiscais-do-xml.js';
@@ -18,6 +19,7 @@ export type ProcessarOnboardingXmlDeps = {
   supabase: SupabaseClient;
   chaveCriptografia: string;
   pepperCpf: string;
+  documentoTitularEsperado?: string;
 };
 
 export type ResultadoProcessamentoXml = {
@@ -36,18 +38,32 @@ export async function processarOnboardingXml(
 
   const parametros = mapearParametrosFiscaisDoXml(xmlObj);
   const servico = mapearServicoFiscalDoXml(xmlObj);
+  if (deps.documentoTitularEsperado && parametros.cnpj !== deps.documentoTitularEsperado.replace(/\D/g, '')) {
+    throw new Error('A nota de referência não pertence ao titular do certificado cadastrado.');
+  }
+  parametros.dadosReformaTributaria = { ...parametros.dadosReformaTributaria,
+    hash: createHash('sha256').update(xmlConteudo).digest('hex'), importadaEm: new Date().toISOString() };
 
   const xmlStorageUrl = await armazenarXmlReferencia(deps.supabase, medicoId, xmlConteudo);
 
-  await salvarParametrosFiscais(deps.pool, {
+  const client = await deps.pool.connect();
+  try {
+    await client.query('begin');
+    await client.query('select id from medicos where id = $1 for update', [medicoId]);
+    await salvarParametrosFiscais(client, {
     medicoId,
     params: parametros,
     xmlStorageUrl,
     chaveCriptografia: deps.chaveCriptografia,
     pepperCpf: deps.pepperCpf
-  });
+    });
 
-  await salvarServicoFiscalPadrao(deps.pool, medicoId, servico);
+    await salvarServicoFiscalPadrao(client, medicoId, servico);
+    await client.query('commit');
+  } catch (erro) {
+    await client.query('rollback');
+    throw erro;
+  } finally { client.release(); }
 
   return {
     ok: true,

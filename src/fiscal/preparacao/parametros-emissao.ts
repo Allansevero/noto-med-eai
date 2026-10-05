@@ -3,11 +3,13 @@
  * somente opções que o serializador atual consegue representar são aceitas.
  */
 import { z } from 'zod';
+import { ibscbsSchema } from './ibscbs.js';
 const data = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => {
   const d = new Date(`${v}T12:00:00Z`);
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }, 'Data inválida');
 export const parametrosEmissaoSchema = z.object({
+  ibscbs: ibscbsSchema.optional(),
   ambiente: z.enum(['producao', 'homologacao']),
   vigenciaInicio: data,
   vigenciaFim: data.optional(),
@@ -33,6 +35,7 @@ export const parametrosEmissaoSchema = z.object({
 });
 export type ParametrosEmissao = z.infer<typeof parametrosEmissaoSchema>;
 export interface PoliticaEmissao {
+  referenciaHash?: string;
   parametros: ParametrosEmissao;
   confirmadoEm: string;
   origem: 'revisao_onboarding';

@@ -9,6 +9,7 @@ import { confirmarPoliticaEmissao } from '../io/confirmar-politica-emissao.js';
 
 export type ConfirmarParametrosInput = {
   medicoId: string;
+  referenciaHash?: string;
   parametrosEmissao?: unknown;
   razaoSocial?: string;
   especialidade?: string;
@@ -33,9 +34,11 @@ export async function confirmarParametrosFiscais(
         proximo_numero_dps = coalesce($4, proximo_numero_dps),
         opcao_simples_nacional = coalesce($5, opcao_simples_nacional),
         atualizado_em = now()
-    where medico_id = $1
+    where medico_id = $1 and (dados_reforma_tributaria->>'versao') is distinct from '2'
+    returning medico_id
   `;
-  await pool.query(sqlPerfil, [medicoId, razaoSocial, serieDps, proximoNumeroDps, opcaoSimplesNacional]);
+  const atualizado = await pool.query(sqlPerfil, [medicoId, razaoSocial, serieDps, proximoNumeroDps, opcaoSimplesNacional]);
+  if (atualizado.rowCount === 0) throw new Error('Revise e confirme as regras de emissão da nota de referência antes de continuar.');
 
   if (aliquotaIss !== undefined) {
     const sqlServico = `

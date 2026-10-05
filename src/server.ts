@@ -36,6 +36,7 @@ import { StripeService } from './billing/stripe-service.js';
 import { processarWebhookStripe } from './billing/processar-webhook-stripe.js';
 import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
+import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medico.js';
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
@@ -233,9 +234,14 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId e xmlString são obrigatórios' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
+      const certificado = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
+      if (!certificado) throw new Error('Cadastre o certificado A1 antes de importar a nota de referência.');
+      const documentoTitularEsperado = extrairChavesCertificado(certificado.pfxBuffer, certificado.senhaCertificado).documentoTitular;
+      if (!documentoTitularEsperado) throw new Error('Não foi possível identificar o titular do certificado.');
       const resultado = await processarOnboardingXml(
         {
           pool,
+          documentoTitularEsperado,
           supabase: authAdminService.supabaseClient,
           chaveCriptografia: config.encryptionKey,
           pepperCpf: config.appPepper
@@ -261,7 +267,8 @@ export function criarAppExpress() {
         serieDps,
         proximoNumeroDps,
         opcaoSimplesNacional,
-        parametrosEmissao
+        parametrosEmissao,
+        referenciaHash
       } = req.body || {};
       if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
@@ -275,7 +282,8 @@ export function criarAppExpress() {
         serieDps,
         proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined,
         opcaoSimplesNacional,
-        parametrosEmissao
+        parametrosEmissao,
+        referenciaHash
       });
       dispararTreino(medicoId);
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
@@ -325,6 +333,7 @@ export function criarAppExpress() {
         const fiscal = await processarOnboardingXml(
           {
             pool,
+            documentoTitularEsperado: documentoTitular,
             supabase: authAdminService.supabaseClient,
             chaveCriptografia: config.encryptionKey,
             pepperCpf: config.appPepper

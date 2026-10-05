@@ -1,4 +1,5 @@
 /** Sugestão proveniente do documento: nunca recebe confirmação ou vigência implícita. */
+import { extrairIbscbsReferencia } from './extrair-ibscbs-referencia.js';
 export function extrairSugestaoEmissao(xmlObj: any): Record<string, unknown> {
   const raiz = xmlObj.NFSe || xmlObj.compNFSe || xmlObj.nfse || xmlObj;
   const nfse = raiz.infNFSe || raiz;
@@ -18,5 +19,7 @@ export function extrairSugestaoEmissao(xmlObj: any): Record<string, unknown> {
   numero('tpRetISSQN', trib.tribMun?.tpRetISSQN);
   if (trib.tribFed?.piscofins?.CST !== undefined) sugestao.cstPisCofins = String(trib.tribFed.piscofins.CST).padStart(2, '0');
   numero('percentualTotTribSN', trib.totTrib?.pTotTribSN);
+  const ibscbs = extrairIbscbsReferencia(dps);
+  if (ibscbs.parametros) sugestao.ibscbs = ibscbs.parametros;
   return sugestao;
 }

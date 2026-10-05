@@ -6,6 +6,7 @@
 
 import type pg from 'pg';
 import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
+import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
 
 export type StatusOnboardingMedico = {
   medicoId: string;
@@ -23,6 +24,7 @@ export type StatusOnboardingMedico = {
   };
   liberadoParaEmitir: boolean;
   perfilFiscal?: {
+    referenciaFiscal?: unknown;
     parametrosEmissao?: unknown;
     razaoSocial: string | null;
     cnpjCpfMask: string | null;
@@ -63,6 +65,7 @@ export async function consultarStatusOnboarding(
       pf.opcao_simples_nacional,
       pf.extraido_automaticamente,
       pf.confirmado_pelo_medico,
+      pf.dados_reforma_tributaria,
       msf.aliquota_iss,
       to_jsonb(msf)->'parametros_emissao' as parametros_emissao,
       (select count(*) from medico_certificados c where c.medico_id = m.id and c.status = 'ativo') as cert_ativos,
@@ -70,7 +73,7 @@ export async function consultarStatusOnboarding(
     from medicos m
     join usuarios u on u.id = m.usuario_id
     left join medico_perfil_fiscal pf on pf.medico_id = m.id
-    left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true
+    left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true and msf.ativo = true
     where m.id = $1
     limit 1
   `;
@@ -85,7 +88,10 @@ export async function consultarStatusOnboarding(
   const passo1Nome = Boolean(nomeExibicao.length > 2 && nomeExibicao !== 'Médico');
   const passo2XmlEnviado = Boolean(r.extraido_automaticamente || r.confirmado_pelo_medico);
   const politicaRevisada = Boolean(r.parametros_emissao?.confirmadoEm) && parametrosEmissaoSchema.safeParse(r.parametros_emissao?.parametros).success;
-  const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico) && (!preparacaoFiscalAtiva || politicaRevisada);
+  const referenciaNova = r.dados_reforma_tributaria?.versao === 2;
+  const referenciaValidada = !referenciaNova || (preparacaoFiscalAtiva && politicaRevisada &&
+    validarReferenciaFiscal(r.dados_reforma_tributaria, r.parametros_emissao).length === 0);
+  const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico) && (!preparacaoFiscalAtiva || politicaRevisada) && referenciaValidada;
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
 
@@ -107,6 +113,7 @@ export async function consultarStatusOnboarding(
     },
     liberadoParaEmitir,
     perfilFiscal: r.razao_social ? {
+      referenciaFiscal: r.dados_reforma_tributaria,
       parametrosEmissao: r.parametros_emissao,
       razaoSocial: r.razao_social,
       cnpjCpfMask: 'Cadastrado / Seguro',

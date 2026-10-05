@@ -8,10 +8,12 @@ import type pg from 'pg';
 import type { ServicoFiscalExtraido } from '../regras/mapear-servico-fiscal-do-xml.js';
 
 export async function salvarServicoFiscalPadrao(
-  pool: pg.Pool,
+  pool: Pick<pg.Pool, 'query'>,
   medicoId: string,
   servico: ServicoFiscalExtraido
 ): Promise<void> {
+  await pool.query(`update medico_servicos_fiscais set padrao = false
+    where medico_id = $1 and padrao = true and nome_servico <> $2`, [medicoId, servico.nomeServico]);
   const sql = `
     insert into medico_servicos_fiscais (
       medico_id, nome_servico, ctrib_nac, ctrib_mun, cnbs,
@@ -22,11 +24,12 @@ export async function salvarServicoFiscalPadrao(
     )
     on conflict (medico_id, nome_servico) do update set
       ctrib_nac = excluded.ctrib_nac,
-      ctrib_mun = coalesce(excluded.ctrib_mun, medico_servicos_fiscais.ctrib_mun),
-      cnbs = coalesce(excluded.cnbs, medico_servicos_fiscais.cnbs),
+      ctrib_mun = excluded.ctrib_mun,
+      cnbs = excluded.cnbs,
       xdesc_serv = excluded.xdesc_serv,
-      valor_padrao_centavos = coalesce(excluded.valor_padrao_centavos, medico_servicos_fiscais.valor_padrao_centavos),
-      aliquota_iss = coalesce(excluded.aliquota_iss, medico_servicos_fiscais.aliquota_iss),
+      valor_padrao_centavos = excluded.valor_padrao_centavos,
+      aliquota_iss = excluded.aliquota_iss,
+      parametros_emissao = null,
       padrao = true,
       ativo = true;
   `;

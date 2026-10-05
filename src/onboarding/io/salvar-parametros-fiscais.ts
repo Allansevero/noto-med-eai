@@ -18,7 +18,7 @@ export type SalvarParametrosInput = {
 };
 
 export async function salvarParametrosFiscais(
-  pool: pg.Pool,
+  pool: Pick<pg.Pool, 'query'>,
   input: SalvarParametrosInput
 ): Promise<void> {
   const { medicoId, params, xmlStorageUrl, chaveCriptografia, pepperCpf } = input;

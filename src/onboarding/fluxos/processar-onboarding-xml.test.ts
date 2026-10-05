@@ -4,7 +4,8 @@ import { processarOnboardingXml, type ProcessarOnboardingXmlDeps } from './proce
 
 describe('processarOnboardingXml', () => {
   const fakePool = {
-    query: async () => ({ rows: [] })
+    query: async () => ({ rows: [] }),
+    connect: async () => ({ query: async () => ({ rows: [] }), release() {} })
   } as any;
 
   const fakeSupabase = {

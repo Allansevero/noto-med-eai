@@ -5,6 +5,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 
 export async function armazenarXmlReferencia(
   supabase: SupabaseClient,
@@ -12,7 +13,7 @@ export async function armazenarXmlReferencia(
   xmlConteudo: string
 ): Promise<string> {
   const bucket = 'xmls_referencia';
-  const caminho = `${medicoId}/${Date.now()}-nfe-referencia.xml`;
+  const caminho = `${medicoId}/${randomUUID()}-nfe-referencia.xml`;
 
   try {
     const { error } = await supabase.storage
@@ -23,12 +24,11 @@ export async function armazenarXmlReferencia(
       });
 
     if (error) {
-      // Se o bucket ainda não existir ou falhar por RLS de storage, retorna caminho lógico
-      return `storage://${bucket}/${caminho}`;
+      throw new Error('Falha ao preservar o XML de referência no armazenamento.');
     }
 
     return caminho;
   } catch (err) {
-    return `storage://${bucket}/${caminho}`;
+    throw new Error('Não foi possível preservar o XML de referência. A configuração fiscal não foi atualizada.');
   }
 }

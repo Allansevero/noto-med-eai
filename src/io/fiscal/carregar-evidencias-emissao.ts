@@ -7,6 +7,7 @@ export async function carregarEvidenciasEmissao(pool: pg.Pool, item: Solicitacao
     p.confirmado_pelo_medico as confirmado, p.ambiente, p.opcao_simples_nacional as opcao,
     p.regime_apuracao_sn as regime, p.regime_especial_tributacao as especial,
     p.cod_municipio_ibge as municipio, p.serie_dps as serie, p.xml_nota_referencia_url as referencia,
+    p.dados_reforma_tributaria as referencia_fiscal,
     s.competencia_emissao::text as competencia,
     (select coalesce(jsonb_agg(distinct to_char(a.data_hora at time zone 'America/Sao_Paulo', 'YYYY-MM-DD')), '[]'::jsonb)
       from solicitacao_nota_agendamentos sa join agendamentos a on a.id = sa.agendamento_id
@@ -20,6 +21,6 @@ export async function carregarEvidenciasEmissao(pool: pg.Pool, item: Solicitacao
     where s.id = $1 and s.medico_id = $2 and s.paciente_id = $3`, [item.id, item.medicoId, item.pacienteId]);
   const r = rows[0];
   if (!r) throw new Error('Evidências fiscais da solicitação não encontradas');
-  return { perfil: { ambiente: r.ambiente, confirmado: r.confirmado, opcao: r.opcao, regime: r.regime, especial: r.especial, municipio: r.municipio, serie: r.serie, referencia: r.referencia },
+  return { perfil: { ambiente: r.ambiente, confirmado: r.confirmado, opcao: r.opcao, regime: r.regime, especial: r.especial, municipio: r.municipio, serie: r.serie, referencia: r.referencia, referenciaFiscal: r.referencia_fiscal },
     servicos: r.servicos, competenciaInformada: r.competencia, datasConsultas: r.datas };
 }
