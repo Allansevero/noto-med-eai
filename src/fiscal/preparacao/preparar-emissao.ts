@@ -25,7 +25,7 @@ export function prepararEmissao(item: SolicitacaoEmissaoItem, evidencias: Eviden
   }
   if (!validado.success) for (const erro of validado.error.issues) adicionar(erro.path.join('.'), 'PARAMETRO_INVALIDO', erro.message);
   if (validado.success) for (const erro of validarReferenciaFiscal(evidencias.perfil.referenciaFiscal,
-    { referenciaHash: politica?.referenciaHash, parametros: validado.data })) adicionar('referencia', 'REFERENCIA_PENDENTE', erro);
+    { ...politica, parametros: validado.data })) adicionar('referencia', 'REFERENCIA_PENDENTE', erro);
   const datas = [...new Set(evidencias.datasConsultas)];
   const competencia = evidencias.competenciaInformada ?? (datas.length === 1 ? datas[0] : undefined);
   if (!competencia || !/^\d{4}-\d{2}-\d{2}$/.test(competencia) || !Number.isFinite(Date.parse(competencia)) ||

@@ -837,101 +837,25 @@
         </button>
       </div>
 
-      <!-- ETAPA 3: REVISAO FISCAL / FALLBACK DE XML -->
+      <!-- Dados obtidos automaticamente pelo A1 de cada emitente -->
       <div id="step2View" class="step-view hidden">
         <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Dados fiscais</h2>
-          <p class="access-subtitle">
-            Os dados da sua última NFS-e são buscados automaticamente com o certificado A1. Se a nota não estiver disponível no Ambiente Nacional, envie o XML manualmente.
-          </p>
+          <h2 class="access-title" style="font-size: 34px;">Sua nota padrão</h2>
+          <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
         </div>
-
-        <div class="drop-zone" id="dropZoneXml" onclick="document.getElementById('fileXmlInput').click()">
-          <div class="icon">📄</div>
-          <p class="drop-zone-title">Selecione o arquivo .xml da última nota fiscal</p>
-          <p class="drop-zone-desc">ou arraste o arquivo aqui</p>
-          <div class="file-chosen-name" id="labelXmlName"></div>
-          <input type="file" id="fileXmlInput" accept=".xml" class="hidden" />
-        </div>
-
-        <section id="comparacaoFiscal" class="params-card hidden" style="width:100%" aria-label="Comparação da nota padrão">
-          <h3>Conferência da nota padrão</h3>
-          <p id="comparacaoResumo" role="status" aria-live="polite"></p>
-          <p>Conferimos o cadastro e os dados disponíveis do município com sua nota de referência. Os parâmetros salvos ou sugeridos pelo Noto aparecem ao lado. Esta consulta não altera a emissão.</p>
-          <div id="comparacaoFontes"></div>
-          <div style="overflow-x:auto">
-            <table style="width:100%;text-align:left;font-size:13px;border-spacing:12px">
-              <thead><tr><th>Campo</th><th>Nota padrão</th><th>Consulta externa</th><th>Noto: salvo ou sugerido</th><th>Conferência</th></tr></thead>
-              <tbody id="comparacaoLinhas"></tbody>
-            </table>
-          </div>
-          <p id="comparacaoObservacao"></p>
-          <button type="button" class="btn-action btn-secondary" id="btnCompararFiscal">Consultar novamente</button>
-        </section>
-
-        <div id="previewFiscal" class="hidden" style="width: 100%; display: flex; flex-direction: column; gap: var(--gap);">
-          <div class="params-card"><p id="resumoNotaReferencia"></p><p id="resumoIbscbs"></p><p id="pendenciasNotaReferencia" role="status"></p></div>
+        <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
+        <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
+        <div id="previewFiscal" class="hidden" style="width:100%">
           <div class="params-card">
-            <div class="param-item">
-              <span class="param-label">Razão Social / Nome</span>
-              <span class="param-val" id="txtRazaoSocial">—</span>
-            </div>
-            <div class="param-item">
-              <span class="param-label">CNPJ / CPF</span>
-              <span class="param-val" id="txtCnpj">—</span>
-            </div>
-            <div class="param-item">
-              <span class="param-label">Inscrição Municipal</span>
-              <span class="param-val" id="txtIm">—</span>
-            </div>
-            <div class="param-item">
-              <span class="param-label">Município / UF</span>
-              <span class="param-val" id="txtMunUf">—</span>
-            </div>
-            <div class="param-item">
-              <span class="param-label">Especialidade</span>
-              <span class="param-val" id="txtEspecialidade">—</span>
-            </div>
-            <div class="param-item">
-              <span class="param-label">Regime Tributário</span>
-              <select id="selectOpcaoSimples" style="width: 175px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="mei" style="background: #1B2831; color: #fff;">MEI</option>
-                <option value="me_epp" style="background: #1B2831; color: #fff;">ME / EPP (Simples)</option>
-                <option value="nao_optante" style="background: #1B2831; color: #fff;">Não optante / Outro</option>
-              </select>
-            </div>
-            <div class="param-item">
-              <span class="param-label">Série da DPS</span>
-              <input type="text" id="inputSerieDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" value="" />
-            </div>
-            <div class="param-item">
-              <span class="param-label">Próximo Número da DPS</span>
-              <input type="number" id="inputProximoNumeroDps" style="width: 100px; padding: 4px 8px; text-align: right; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 14px;" min="1" value="1" />
-            </div>
+            <p id="resumoNotaReferencia"></p>
+            <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
+            <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
+            <p id="resumoIbscbs"></p>
+            <p id="pendenciasNotaReferencia" role="status"></p>
           </div>
-
-          <details class="params-card" id="revisaoEmissao">
-            <summary>Revisar regras para emissão automática</summary>
-            <p>Confira os dados do serviço e o período em que estas regras são válidas. Dados de uma nota anterior são sugestões e precisam ser revisados.</p>
-            <p id="resumoServicoFiscal"></p>
-            <label><input type="checkbox" id="confirmarRegrasEmissao" /> Confirmo as regras abaixo para este serviço</label>
-            <div class="param-item"><label for="fiscalAmbiente">Ambiente de emissão</label><select id="fiscalAmbiente"><option value="">Selecione</option><option value="homologacao">Homologação — sem validade jurídica</option><option value="producao">Produção — nota com validade jurídica</option></select></div>
-            <div class="param-item"><label for="fiscalInicio">Válidas a partir de</label><input type="date" id="fiscalInicio" /></div>
-            <div class="param-item"><label for="fiscalFim">Válidas até (opcional)</label><input type="date" id="fiscalFim" /></div>
-            <div class="param-item"><label for="fiscalMunicipio">Município da prestação (IBGE)</label><input id="fiscalMunicipio" inputmode="numeric" maxlength="7" /></div>
-            <div class="param-item"><label for="fiscalApuracao">Regime de apuração do Simples</label><select id="fiscalApuracao"><option value="">Não informado / MEI</option><option value="regime_1">Regime 1</option><option value="regime_2">Regime 2</option><option value="regime_3">Regime 3</option></select></div>
-            <div class="param-item"><label for="fiscalEspecial">Regime especial</label><select id="fiscalEspecial"><option value="">Selecione</option><option value="0">Nenhum</option><option value="1">Ato cooperado</option><option value="2">Estimativa</option><option value="3">Microempresa municipal</option><option value="4">Notário ou registrador</option><option value="5">Profissional autônomo</option><option value="6">Sociedade de profissionais</option><option value="9">Outros</option></select></div>
-            <div class="param-item"><label for="fiscalTribIss">Situação do ISSQN</label><select id="fiscalTribIss"><option value="">Selecione</option><option value="1">Operação tributável</option><option value="2">Imunidade</option><option value="3">Exportação</option><option value="4">Não incidência</option></select></div>
-            <div class="param-item"><label for="fiscalRetIss">Retenção do ISSQN</label><select id="fiscalRetIss"><option value="">Selecione</option><option value="1">Não retido</option><option value="2">Retido pelo tomador</option><option value="3">Retido pelo intermediário</option></select></div>
-            <div class="param-item"><label for="fiscalCst">CST PIS/COFINS</label><select id="fiscalCst"><option value="">Não informado / MEI</option><option value="04">04 — Tributação monofásica, revenda a alíquota zero</option><option value="06">06 — Alíquota zero</option><option value="07">07 — Isenção</option><option value="08">08 — Sem incidência</option><option value="09">09 — Suspensão</option></select></div>
-            <div class="param-item"><label for="fiscalPercentual">Tributos aproximados do Simples (%)</label><input type="number" id="fiscalPercentual" min="0" max="100" step="0.01" /></div>
-            <p>Para MEI, deixe regime de apuração, CST e percentual sem preenchimento. Situações que exigem cálculo adicional ficam pendentes de suporte fiscal.</p>
-          </details>
-
-          <button type="button" class="btn-action" id="btnConfirmarFiscal">
-            Confirmar e Continuar
-          </button>
-          <button type="button" class="btn-action btn-secondary" id="btnTrocarReferencia">Importar outra nota de referência</button>
+          <label><input type="checkbox" id="confirmarNotaPadrao" /> Esta nota representa o serviço e o tipo de consulta que vou emitir pelo Noto.</label>
+          <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
+          <button type="button" class="btn-action" id="btnConfirmarFiscal" disabled>Usar esta nota como padrão e continuar</button>
         </div>
       </div>
 
@@ -942,7 +866,7 @@
           <p class="access-subtitle">
             Usaremos o A1 para localizar sua última NFS-e no Ambiente Nacional e preencher seus dados fiscais automaticamente.
           </p>
-          <p class="access-subtitle">Antes do cadastro, emita sua nota no portal da prefeitura com os dados tributários atualizados para o serviço que usará no Noto. Confira a nota localizada na próxima etapa. Se ela ainda não estiver disponível no Ambiente Nacional, você poderá enviar o XML no padrão nacional.</p>
+          <p class="access-subtitle">Antes do cadastro, emita sua nota no portal da prefeitura com os dados tributários atualizados para o serviço que usará no Noto. Confira a nota localizada na próxima etapa. Se ela ainda não estiver disponível no Ambiente Nacional, a configuração ficará pendente até conseguirmos localizar a referência automaticamente.</p>
         </div>
 
         <div class="drop-zone" id="dropZoneCert" onclick="document.getElementById('fileCertInput').click()">
@@ -1198,7 +1122,6 @@
   <script>
     // Gerenciador de estado local
     let sessaoAtual = JSON.parse(localStorage.getItem('notomed_sessao') || 'null');
-    let xmlConteudoBruto = '';
     let certArquivoBase64 = '';
     let certNomeArquivo = '';
     let telefoneAtual = '';
@@ -1485,7 +1408,10 @@
         mostrarPasso(2);
         if (p.passo2XmlEnviado && status.perfilFiscal) {
           exibirPreviewPerfilFiscal(status.perfilFiscal);
-        } else carregarComparacaoFiscal();
+        } else {
+          referenciaFiscalAtual = null;
+          document.getElementById('previewFiscal').classList.add('hidden');
+        }
       } else if (!p.passo4WhatsappConectado) {
         mostrarPasso(4);
       } else {
@@ -1543,226 +1469,86 @@
       }
     });
 
-    // --- PASSO 3: REVISAO FISCAL / FALLBACK DE UPLOAD XML ---
-    const fileXmlInput = document.getElementById('fileXmlInput');
-    fileXmlInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      document.getElementById('labelXmlName').textContent = file.name;
-      const reader = new FileReader();
-      reader.onload = async (evt) => {
-        xmlConteudoBruto = evt.target.result;
-        await processarXml(xmlConteudoBruto);
-      };
-      reader.readAsText(file);
-    });
-
-    async function processarXml(conteudoXml) {
-      hideAlert(alertOnboarding);
-      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
-      try {
-        const res = await fetch('/api/onboarding/xml', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, xmlString: conteudoXml })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          showAlert(data.detalhe || 'Falha ao processar XML.', true, alertOnboarding);
-          return;
-        }
-
-        if (data.medicoId) {
-          sessaoAtual.usuario.medicoId = data.medicoId;
-          localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
-        }
-
-        exibirPreviewFiscal(data);
-        showAlert('Parâmetros fiscais extraídos com sucesso! Revise e confirme.', false, alertOnboarding);
-      } catch (err) {
-        showAlert('Erro ao enviar XML.', true, alertOnboarding);
-      }
-    }
-
-    let sequenciaComparacao = 0;
-    const nomesValoresFiscais = { mei: 'MEI', me_epp: 'ME/EPP — Simples', nao_optante: 'Não optante pelo Simples' };
-    function textoFiscal(valor) {
-      return valor === null || valor === undefined ? 'Não disponível' : (nomesValoresFiscais[valor] || String(valor));
-    }
-    async function carregarComparacaoFiscal() {
-      const sequencia = ++sequenciaComparacao;
-      const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
-      if (!medicoId) return;
-      const painel = document.getElementById('comparacaoFiscal');
-      const resumo = document.getElementById('comparacaoResumo');
-      const btn = document.getElementById('btnCompararFiscal');
-      btn.disabled = true;
-      resumo.textContent = 'Consultando os dados disponíveis…';
-      document.getElementById('comparacaoLinhas').replaceChildren();
-      document.getElementById('comparacaoFontes').replaceChildren();
-      document.getElementById('comparacaoObservacao').textContent = '';
-      try {
-        const res = await fetch('/api/onboarding/comparar-fiscal', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ medicoId })
-        });
-        const data = await res.json();
-        if (sequencia !== sequenciaComparacao) return;
-        if (data.ativo === false) { painel.classList.add('hidden'); return; }
-        painel.classList.remove('hidden');
-        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não foi possível consultar agora.');
-        const c = data.comparacao;
-        const dataConsulta = new Date(c.consultadoEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-        resumo.textContent = (c.estado === 'sem_referencia' ? 'Dados consultados. Importe sua nota padrão para comparar.'
-          : c.divergencias ? `${c.divergencias} campo(s) com diferença para revisar.`
-          : 'Nenhuma diferença encontrada nos campos comparáveis. A conferência ainda é parcial.')
-          + ` Consulta: ${dataConsulta}. Competência da referência: ${c.competencia}.`
-          + (c.politicaConfirmada ? ' Há parâmetros confirmados no cadastro.' : 'Os parâmetros sugeridos ainda precisam de confirmação.');
-        const fontes = document.getElementById('comparacaoFontes');
-        const nomesDadosFonte = { razaoSocial: 'Razão social', municipioEmitente: 'Município cadastral (IBGE)',
-          opcaoSimplesNacional: 'Enquadramento', cnaePrincipal: 'CNAE principal', situacaoCadastral: 'Situação cadastral',
-          municipio: 'Município consultado (IBGE)', aderenteEmissorNacional: 'Adesão ao Emissor Nacional',
-          codigoServico: 'Código do serviço', competencia: 'Competência', aliquotaMunicipal: 'Alíquota municipal geral (%)',
-          vigenciaInicio: 'Início da vigência', vigenciaFim: 'Fim da vigência' };
-        for (const fonte of c.fontes) {
-          const p = document.createElement('p');
-          const dados = Object.entries(fonte.dados || {}).map(([k, v]) => `${nomesDadosFonte[k] || k}: ${textoFiscal(v)}`).join(' · ');
-          p.textContent = `${fonte.fonte}: ${fonte.mensagem}${dados ? ' ' + dados : ''}`;
-          fontes.append(p);
-        }
-        const tbody = document.getElementById('comparacaoLinhas');
-        for (const linha of c.linhas) {
-          const tr = document.createElement('tr');
-          const estado = { coincide: 'Coincide com a consulta', diverge: 'Diverge da consulta', nao_conferido: 'Sem conferência independente', sem_referencia: 'Sem dado na referência' }[linha.estado];
-          for (const valor of [linha.nome, textoFiscal(linha.referencia), textoFiscal(linha.consultado), textoFiscal(linha.preparado),
-            estado + (linha.comparacaoNoto === 'diverge' ? ' · Noto difere da referência' : '')]) {
-            const td = document.createElement('td'); td.textContent = valor; tr.append(td);
-          }
-          tbody.append(tr);
-        }
-        document.getElementById('comparacaoObservacao').textContent = c.observacao + ' ' + c.pendencias.join(' ');
-      } catch (erro) {
-        if (sequencia !== sequenciaComparacao) return;
-        painel.classList.remove('hidden');
-        resumo.textContent = erro.message || 'Comparação indisponível. Os parâmetros fiscais não foram alterados.';
-      } finally { if (sequencia === sequenciaComparacao) btn.disabled = false; }
-    }
-    document.getElementById('btnCompararFiscal').addEventListener('click', carregarComparacaoFiscal);
-
+    // --- NOTA PADRÃO: consulta automática, sem entrada de campos tributários ---
     let referenciaFiscalAtual = null;
-    function mostrarReferenciaFiscal(referencia) {
+    let notaPadraoDisponivel = false;
+    function atualizarConfirmacaoNota() {
+      document.getElementById('btnConfirmarFiscal').disabled = !notaPadraoDisponivel ||
+        !document.getElementById('confirmarNotaPadrao').checked;
+    }
+    document.getElementById('confirmarNotaPadrao').addEventListener('change', atualizarConfirmacaoNota);
+    function mostrarReferenciaFiscal(referencia, perfil) {
       referenciaFiscalAtual = referencia?.versao === 2 ? referencia : null;
-      const ibscbs = referenciaFiscalAtual?.parametrosSugeridos?.ibscbs;
-      document.getElementById('resumoNotaReferencia').textContent = referenciaFiscalAtual
-        ? `Nota de referência: ${referencia.numero || 'sem número identificado'} · Emissão: ${referencia.emitidaEm || 'não informada'}`
-        : 'Importe uma nota atualizada para identificar os parâmetros tributários de referência.';
-      document.getElementById('resumoIbscbs').textContent = ibscbs
-        ? `IBS/CBS da referência — CST: ${ibscbs.CST}; classificação: ${ibscbs.cClassTrib}; operação: ${ibscbs.cIndOp}; finalidade: ${ibscbs.finNFSe}; consumo pessoal: ${ibscbs.indFinal ?? 'não informado'}; destinatário: próprio tomador (${ibscbs.indDest}).`
-        : 'Nenhum conjunto completo de parâmetros IBS/CBS suportados foi identificado na DPS de referência.';
-      document.getElementById('pendenciasNotaReferencia').textContent = (referenciaFiscalAtual?.pendencias || []).join(' ');
-    }
-    document.getElementById('btnTrocarReferencia').addEventListener('click', () => {
-      document.getElementById('dropZoneXml').classList.remove('hidden');
-      document.getElementById('fileXmlInput').value = '';
-    });
-    const camposRegrasEmissao = {
-      ambiente: 'fiscalAmbiente', vigenciaInicio: 'fiscalInicio', vigenciaFim: 'fiscalFim', municipioPrestacao: 'fiscalMunicipio',
-      regimeApuracaoSn: 'fiscalApuracao', regimeEspecialTributacao: 'fiscalEspecial',
-      tribISSQN: 'fiscalTribIss', tpRetISSQN: 'fiscalRetIss', cstPisCofins: 'fiscalCst', percentualTotTribSN: 'fiscalPercentual'
-    };
-    function preencherRegrasEmissao(parametros = {}, resumo = '') {
-      for (const [campo, id] of Object.entries(camposRegrasEmissao)) document.getElementById(id).value = parametros[campo] ?? '';
-      document.getElementById('confirmarRegrasEmissao').checked = false;
-      document.getElementById('resumoServicoFiscal').textContent = resumo;
-    }
-    function lerRegrasEmissao(opcaoSimplesNacional) {
-      if (!document.getElementById('confirmarRegrasEmissao').checked) return undefined;
-      const parametros = { opcaoSimplesNacional };
-      if (referenciaFiscalAtual?.parametrosSugeridos?.ibscbs) parametros.ibscbs = referenciaFiscalAtual.parametrosSugeridos.ibscbs;
-      const numericos = ['regimeEspecialTributacao', 'tribISSQN', 'tpRetISSQN', 'percentualTotTribSN'];
-      for (const [campo, id] of Object.entries(camposRegrasEmissao)) {
-        const valor = document.getElementById(id).value.trim();
-        if (valor !== '') parametros[campo] = numericos.includes(campo) ? Number(valor) : valor;
-      }
-      return parametros;
-    }
-
-    function exibirPreviewFiscal(data) {
-      carregarComparacaoFiscal();
-      const p = data.parametros;
-      mostrarReferenciaFiscal(p.dadosReformaTributaria);
-      document.getElementById('inputSerieDps').value = p.serieDps ?? '';
-      document.getElementById('inputProximoNumeroDps').value = p.proximoNumeroSequencialSugerido ?? '';
-      const s = data.servico;
-      preencherRegrasEmissao(s.parametrosSugeridos, `Serviço: ${s.ctribNac || "não informado"} · NBS: ${s.cnbs || "não informado"}`);
-      document.getElementById('txtRazaoSocial').textContent = p.razaoSocial || '—';
-      document.getElementById('txtCnpj').textContent = p.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
-      document.getElementById('txtIm').textContent = p.inscricaoMunicipal || '—';
-      document.getElementById('txtMunUf').textContent = `${p.codMunicipioIbge} (${p.uf})`;
-      document.getElementById('txtEspecialidade').textContent = s.especialidadeSugerida || 'A definir na confirmação';
-      if (document.getElementById('selectOpcaoSimples')) {
-        document.getElementById('selectOpcaoSimples').value = p.opcaoSimplesNacional || '';
-      }
-      document.getElementById('dropZoneXml').classList.add('hidden');
-      document.getElementById('previewFiscal').classList.remove('hidden');
-    }
-
-    function exibirPreviewPerfilFiscal(perfil) {
-      carregarComparacaoFiscal();
-      const politica = perfil.parametrosEmissao;
-      mostrarReferenciaFiscal(perfil.referenciaFiscal);
-      preencherRegrasEmissao(politica?.parametros || perfil.referenciaFiscal?.parametrosSugeridos, politica ? `Serviço revisado: ${politica.ctribNac}` : "Revisão das regras ainda não registrada.");
+      const p = referenciaFiscalAtual?.parametrosSugeridos || {};
+      notaPadraoDisponivel = Boolean(referenciaFiscalAtual?.hash && !(referencia.pendencias || []).length &&
+        ['mei', 'me_epp'].includes(p.opcaoSimplesNacional));
+      document.getElementById('confirmarNotaPadrao').checked = false;
+      atualizarConfirmacaoNota();
       document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';
-      document.getElementById('txtCnpj').textContent = perfil.cnpjCpfMask || 'Cadastrado';
-      document.getElementById('txtIm').textContent = perfil.inscricaoMunicipal || '—';
       document.getElementById('txtMunUf').textContent = `${perfil.codMunicipioIbge || '—'} (${perfil.uf || '—'})`;
-      document.getElementById('txtEspecialidade').textContent = perfil.especialidade || 'A definir na confirmação';
-      if (document.getElementById('selectOpcaoSimples')) {
-        document.getElementById('selectOpcaoSimples').value = perfil.opcaoSimplesNacional || '';
-      }
-      if (document.getElementById('inputSerieDps')) {
-        document.getElementById('inputSerieDps').value = perfil.serieDps ?? '';
-      }
-      if (document.getElementById('inputProximoNumeroDps')) {
-        document.getElementById('inputProximoNumeroDps').value = perfil.proximoNumeroDps ?? '';
-      }
-      document.getElementById('dropZoneXml').classList.add('hidden');
+      document.getElementById('resumoNotaReferencia').textContent = referenciaFiscalAtual
+        ? `Nota localizada: ${referencia.numero || 'sem número identificado'} · Emitida em: ${referencia.emitidaEm?.slice(0, 10) || 'data não informada'}`
+        : 'Precisamos localizar novamente uma nota atualizada pelo seu certificado.';
+      document.getElementById('resumoIbscbs').textContent = p.ibscbs
+        ? 'A configuração de IBS/CBS declarada nessa nota também será preservada.'
+        : 'Não adicionaremos parâmetros de IBS/CBS que não estejam declarados nessa referência.';
+      document.getElementById('pendenciasNotaReferencia').textContent = notaPadraoDisponivel ? ''
+        : 'Encontramos dados que o Noto ainda não consegue reproduzir integralmente. A configuração permanece pendente para análise da equipe.';
+      document.getElementById('notaPadraoStatus').textContent = notaPadraoDisponivel
+        ? 'Nota encontrada. Confirme abaixo se ela representa suas consultas habituais.'
+        : 'A emissão ainda não foi liberada com esta referência.';
       document.getElementById('previewFiscal').classList.remove('hidden');
     }
-
-    document.getElementById('btnRevisarFiscal').addEventListener('click', async () => {
-      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+    function exibirPreviewFiscal(data) {
+      mostrarReferenciaFiscal(data.parametros.dadosReformaTributaria, data.parametros);
+    }
+    function exibirPreviewPerfilFiscal(perfil) {
+      mostrarReferenciaFiscal(perfil.referenciaFiscal, perfil);
+    }
+    document.getElementById('btnBuscarReferencia').addEventListener('click', async () => {
+      const btn = document.getElementById('btnBuscarReferencia');
+      btn.disabled = true;
+      notaPadraoDisponivel = false;
+      atualizarConfirmacaoNota();
+      hideAlert(alertOnboarding);
+      document.getElementById('notaPadraoStatus').textContent = 'Buscando sua nota com o certificado já cadastrado…';
       try {
+        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+        const res = await fetch('/api/onboarding/buscar-referencia', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ medicoId }) });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não conseguimos buscar sua nota agora. Tente novamente mais tarde.');
+        exibirPreviewFiscal(data);
+      } catch (erro) {
+        document.getElementById('notaPadraoStatus').textContent = erro.message;
+      } finally { btn.disabled = false; }
+    });
+    document.getElementById('btnRevisarFiscal').addEventListener('click', async () => {
+      try {
+        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
         const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
         const data = await res.json();
-        if (!data.ok || !data.status?.perfilFiscal) throw new Error('Perfil fiscal não encontrado.');
+        if (!data.ok || !data.status?.perfilFiscal) throw new Error('Nota padrão ainda não localizada.');
         mostrarPasso(2);
         exibirPreviewPerfilFiscal(data.status.perfilFiscal);
-        document.getElementById('revisaoEmissao').open = true;
-      } catch (erro) { showAlert('Não foi possível abrir a revisão fiscal.', true, alertOnboarding); }
+      } catch (erro) { showAlert('Não foi possível abrir sua nota padrão agora.', true, alertOnboarding); }
     });
-
     document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
+      if (!notaPadraoDisponivel || !document.getElementById('confirmarNotaPadrao').checked) return;
+      const btn = document.getElementById('btnConfirmarFiscal');
+      btn.disabled = true;
       hideAlert(alertOnboarding);
-      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
-      const serieDps = document.getElementById('inputSerieDps')?.value?.trim() || undefined;
-      const proximoNumeroDps = parseInt(document.getElementById('inputProximoNumeroDps')?.value || '1', 10);
-      const opcaoSimplesNacional = document.getElementById('selectOpcaoSimples')?.value || undefined;
       try {
-        const res = await fetch('/api/onboarding/confirmar-fiscal', {
-          method: 'POST',
+        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+        const res = await fetch('/api/onboarding/confirmar-fiscal', { method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, serieDps, proximoNumeroDps, opcaoSimplesNacional, referenciaHash: referenciaFiscalAtual?.hash, parametrosEmissao: lerRegrasEmissao(opcaoSimplesNacional) })
-        });
+          body: JSON.stringify({ medicoId, referenciaHash: referenciaFiscalAtual.hash, usarReferencia: true }) });
         const data = await res.json();
-        if (data.ok) {
-          showAlert('Parâmetros fiscais confirmados com sucesso!', false, alertOnboarding);
-          await carregarFluxoOnboarding();
-        } else {
-          showAlert(data.detalhe || 'Erro ao confirmar', true, alertOnboarding);
-        }
-      } catch (err) {
-        showAlert('Erro de conexão ao confirmar dados fiscais', true, alertOnboarding);
-      }
+        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Ainda não foi possível adotar sua nota padrão.');
+        showAlert('Configuração da nota padrão salva.', false, alertOnboarding);
+        await carregarFluxoOnboarding();
+      } catch (erro) { showAlert(erro.message, true, alertOnboarding); }
+      finally { atualizarConfirmacaoNota(); }
     });
 
     // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---
@@ -1807,12 +1593,13 @@
           mostrarPasso(2);
           if (data.importacaoFiscal?.ok) {
             exibirPreviewFiscal(data.importacaoFiscal);
-            showAlert('Última NFS-e encontrada. Revise os dados fiscais extraídos.', false, alertOnboarding);
+            showAlert('Nota encontrada. Confira se ela representa suas consultas habituais.', false, alertOnboarding);
           } else {
-            document.getElementById('dropZoneXml').classList.remove('hidden');
+            referenciaFiscalAtual = null;
+            notaPadraoDisponivel = false;
+            atualizarConfirmacaoNota();
             document.getElementById('previewFiscal').classList.add('hidden');
-            showAlert(`Certificado salvo. ${data.importacaoFiscal?.detalhe || 'Envie o XML da última NFS-e para continuar.'}`, true, alertOnboarding);
-            carregarComparacaoFiscal();
+            document.getElementById('notaPadraoStatus').textContent = 'Certificado salvo. Ainda não conseguimos localizar sua nota padrão. Você pode tentar novamente sem reenviar o certificado. Se persistir, a equipe precisa verificar a disponibilidade da nota no sistema de origem.';
           }
         } else {
           showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);

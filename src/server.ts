@@ -241,6 +241,27 @@ export function criarAppExpress() {
     }
   });
 
+  // Nova consulta usando o A1 já armazenado; nenhuma cidade é fixada no código.
+  app.post('/api/onboarding/buscar-referencia', async (req: Request, res: Response) => {
+    try {
+      if (!req.body?.medicoId) return res.status(400).json({ ok: false, detalhe: 'Médico não informado.' });
+      const medicoId = await resolverMedicoId(pool, req.body.medicoId);
+      const certificado = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
+      if (!certificado) throw new Error('Cadastre seu certificado A1 para localizar a nota.');
+      const titular = extrairChavesCertificado(certificado.pfxBuffer, certificado.senhaCertificado);
+      if (!titular.documentoTitular || !titular.validoAte || titular.validoAte < new Date()
+        || (titular.validoDe && titular.validoDe > new Date())) throw new Error('O certificado precisa estar válido e identificar seu titular.');
+      const consulta = await adnNfseClient.buscarNfseMaisRecente(certificado.pfxBuffer, certificado.senhaCertificado, titular.documentoTitular);
+      const fiscal = await processarOnboardingXml({ pool, supabase: authAdminService.supabaseClient,
+        documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper },
+      medicoId, consulta.documento.xml);
+      return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu });
+    } catch (erro: any) {
+      console.warn('[ADN] Busca de referência pendente:', erro?.message);
+      return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos obter sua nota padrão pelo certificado. Você não precisa enviar arquivos. Tente novamente mais tarde; se persistir, a equipe precisa verificar a disponibilidade da nota no sistema de origem.' });
+    }
+  });
+
   // Passo 3 (fallback): Upload e extracao manual do XML de referencia
   app.post('/api/onboarding/xml', async (req: Request, res: Response) => {
     try {
@@ -283,13 +304,15 @@ export function criarAppExpress() {
         proximoNumeroDps,
         opcaoSimplesNacional,
         parametrosEmissao,
-        referenciaHash
+        referenciaHash,
+        usarReferencia
       } = req.body || {};
       if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      await confirmarParametrosFiscais(pool, {
+      if (usarReferencia === true && !config.preparacaoFiscalAtiva) throw new Error('A configuração automática ainda precisa ser ativada pela equipe.');
+      await confirmarParametrosFiscais(pool, usarReferencia === true ? { medicoId, referenciaHash, usarReferencia: true } : {
         medicoId,
         razaoSocial,
         especialidade,
@@ -298,11 +321,16 @@ export function criarAppExpress() {
         proximoNumeroDps: proximoNumeroDps !== undefined ? Number(proximoNumeroDps) : undefined,
         opcaoSimplesNacional,
         parametrosEmissao,
-        referenciaHash
+        referenciaHash,
+        usarReferencia: usarReferencia === true
       });
       dispararTreino(medicoId);
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
+      if (req.body?.usarReferencia === true) {
+        console.warn('[Fiscal] Adoção da referência pendente:', err?.message);
+        return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos adotar a configuração completa dessa nota. Busque a referência novamente; se persistir, a equipe precisa analisar o caso antes de liberar a emissão.' });
+      }
       return res.status(400).json({ ok: false, detalhe: Array.isArray(err?.issues)
         ? err.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ')
         : err?.message || 'Erro ao confirmar parâmetros fiscais' });

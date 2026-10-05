@@ -29,6 +29,7 @@ export type HttpMtlsAdn = (
 type LoteAdn = {
   documentos: DocumentoAdn[];
   maxNsu: number;
+  ultimoNsu: number;
 };
 
 export class AdnNfseClient {
@@ -44,15 +45,20 @@ export class AdnNfseClient {
   ): Promise<ResultadoConsultaAdn> {
     const titular = documentoTitular.replace(/\D/g, '');
     const loteInicial = await this.consultarLote(0, pfxBuffer, senhaCertificado);
-    let documentos = loteInicial.documentos;
-
-    const maiorNsuRecebido = documentos.reduce((maior, item) => Math.max(maior, item.nsu), 0);
-    if (loteInicial.maxNsu > maiorNsuRecebido) {
-      // A API entrega no maximo 50 DF-e. Consultar perto do maxNSU evita
-      // percorrer todo o historico apenas para obter a nota mais recente.
-      const inicioUltimoLote = Math.max(0, loteInicial.maxNsu - 50);
-      const loteFinal = await this.consultarLote(inicioUltimoLote, pfxBuffer, senhaCertificado);
-      documentos = [...documentos, ...loteFinal.documentos];
+    const documentos = [...loteInicial.documentos];
+    const limite = loteInicial.maxNsu;
+    let cursor = loteInicial.ultimoNsu;
+    const inicio = Date.now();
+    let consultas = 1;
+    while (cursor < limite) {
+      if (consultas >= 100 || Date.now() - inicio >= 45000) {
+        throw new Error('Busca incompleta: o histórico é extenso. Nenhuma referência foi substituída; tente novamente mais tarde.');
+      }
+      const lote = await this.consultarLote(cursor, pfxBuffer, senhaCertificado);
+      consultas++;
+      if (lote.ultimoNsu <= cursor) throw new Error('Busca incompleta: o ADN não avançou no histórico. Tente novamente mais tarde.');
+      documentos.push(...lote.documentos.filter(item => item.nsu <= limite));
+      cursor = lote.ultimoNsu;
     }
 
     const notasLocalizadas = documentos
@@ -138,7 +144,12 @@ export class AdnNfseClient {
       documentos.reduce((maior, item) => Math.max(maior, item.nsu), ultimoNsu)
     );
 
-    return { documentos, maxNsu: Number.isFinite(maxNsu) ? maxNsu : ultimoNsu };
+    const ultimoRecebido = itens.reduce((maior: number, item: Record<string, any>) => {
+      const nsu = Number(item.NSU ?? item.nsu);
+      return Number.isSafeInteger(nsu) && nsu > maior ? nsu : maior;
+    }, ultimoNsu);
+    // Avança pelos envelopes, inclusive eventos e documentos não decodificados.
+    return { documentos, maxNsu: Number.isFinite(maxNsu) ? maxNsu : ultimoNsu, ultimoNsu: ultimoRecebido };
   }
 
   private normalizarDocumento(item: Record<string, any>): DocumentoAdn | null {

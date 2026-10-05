@@ -39,6 +39,7 @@ export interface PoliticaEmissao {
   parametros: ParametrosEmissao;
   confirmadoEm: string;
   origem: 'revisao_onboarding';
+  fidelidadeReferencia?: boolean;
   ctribNac: string;
   cnbs: string | null;
   ctribMun: string | null;

@@ -10,6 +10,7 @@ import { confirmarPoliticaEmissao } from '../io/confirmar-politica-emissao.js';
 export type ConfirmarParametrosInput = {
   medicoId: string;
   referenciaHash?: string;
+  usarReferencia?: boolean;
   parametrosEmissao?: unknown;
   razaoSocial?: string;
   especialidade?: string;
@@ -23,7 +24,7 @@ export async function confirmarParametrosFiscais(
   pool: pg.Pool,
   input: ConfirmarParametrosInput
 ): Promise<void> {
-  if (input.parametrosEmissao !== undefined) return confirmarPoliticaEmissao(pool, input);
+  if (input.usarReferencia || input.parametrosEmissao !== undefined) return confirmarPoliticaEmissao(pool, input);
   const { medicoId, razaoSocial, especialidade, aliquotaIss, serieDps, proximoNumeroDps, opcaoSimplesNacional } = input;
 
   const sqlPerfil = `

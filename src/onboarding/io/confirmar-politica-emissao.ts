@@ -1,11 +1,10 @@
 /** A confirmação prende a política ao serviço/perfil revisados na mesma transação. */
 import type pg from 'pg';
 
-import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
+import { parametrosEmissaoSchema, type ParametrosEmissao } from '../../fiscal/preparacao/parametros-emissao.js';
 import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
-export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId: string; referenciaHash?: string; parametrosEmissao?: unknown; opcaoSimplesNacional?: string; serieDps?: string; proximoNumeroDps?: number; razaoSocial?: string; especialidade?: string; aliquotaIss?: number }): Promise<void> {
-  const parametros = parametrosEmissaoSchema.parse(input.parametrosEmissao);
-  if (input.opcaoSimplesNacional && input.opcaoSimplesNacional !== parametros.opcaoSimplesNacional) throw new Error('Regimes informados divergem.');
+export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId: string; referenciaHash?: string; usarReferencia?: boolean; parametrosEmissao?: unknown; opcaoSimplesNacional?: string; serieDps?: string; proximoNumeroDps?: number; razaoSocial?: string; especialidade?: string; aliquotaIss?: number }): Promise<void> {
+  let parametros: ParametrosEmissao | undefined = input.usarReferencia ? undefined : parametrosEmissaoSchema.parse(input.parametrosEmissao);
   const client = await pool.connect();
   try {
     await client.query('begin');
@@ -15,7 +14,19 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
       where medico_id = $1 and padrao and ativo for update`, [input.medicoId]);
     if (perfil.rows.length !== 1 || servicos.rows.length !== 1) throw new Error('É necessário um perfil e um único serviço padrão ativo.');
     const p = perfil.rows[0], s = servicos.rows[0];
-    const pendencias = validarReferenciaFiscal(p.dados_reforma_tributaria, { referenciaHash: input.referenciaHash, parametros });
+    if (input.usarReferencia) {
+      const referencia = p.dados_reforma_tributaria;
+      if (referencia?.versao !== 2 || !referencia.hash || referencia.hash !== input.referenciaHash) {
+        throw new Error('A nota encontrada mudou. Confira a referência atual antes de continuar.');
+      }
+      const candidato = parametrosEmissaoSchema.safeParse({ ...referencia.parametrosSugeridos,
+        vigenciaInicio: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) });
+      if (!candidato.success) throw new Error('Encontramos sua nota, mas o Noto ainda não consegue reproduzir sua configuração tributária completa. A equipe precisa analisar este caso antes de liberar a emissão.');
+      parametros = candidato.data;
+    }
+    if (!parametros) throw new Error('Configuração fiscal ausente.');
+    if (input.opcaoSimplesNacional && input.opcaoSimplesNacional !== parametros.opcaoSimplesNacional) throw new Error('Regimes informados divergem.');
+    const pendencias = validarReferenciaFiscal(p.dados_reforma_tributaria, { referenciaHash: input.referenciaHash, parametros, fidelidadeReferencia: input.usarReferencia, ctribNac: s.ctrib_nac, ctribMun: s.ctrib_mun, cnbs: s.cnbs });
     if (pendencias.length) throw new Error(pendencias.join(' '));
     const serie = input.serieDps ?? p.serie_dps;
     if (!/^\d{1,5}$/.test(serie)) throw new Error('Série da DPS inválida.');
@@ -27,7 +38,7 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
       percentual_tot_trib_sn = coalesce($7, percentual_tot_trib_sn), atualizado_em = now()
       where medico_id = $1`, [input.medicoId, serie, input.proximoNumeroDps, parametros.opcaoSimplesNacional,
       parametros.regimeApuracaoSn ?? null, parametros.regimeEspecialTributacao, parametros.percentualTotTribSN, parametros.ambiente]);
-    const politica = { parametros, referenciaHash: input.referenciaHash, confirmadoEm: new Date().toISOString(), origem: 'revisao_onboarding',
+    const politica = { parametros, referenciaHash: input.referenciaHash, confirmadoEm: new Date().toISOString(), origem: 'revisao_onboarding', fidelidadeReferencia: Boolean(input.usarReferencia),
       ctribNac: s.ctrib_nac, cnbs: s.cnbs, ctribMun: s.ctrib_mun,
       perfil: { ambiente: parametros.ambiente, opcao: parametros.opcaoSimplesNacional, regime: parametros.regimeApuracaoSn ?? null,
         especial: parametros.regimeEspecialTributacao, municipio: p.cod_municipio_ibge, serie,

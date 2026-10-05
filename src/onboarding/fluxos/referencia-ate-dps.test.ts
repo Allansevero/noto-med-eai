@@ -85,6 +85,67 @@ test('referência diferente ou remoção de IBS/CBS invalida aprovação', async
   assert.ok(validarReferenciaFiscal(c.referencia(), { referenciaHash: c.referencia().hash, parametros: {} }).length);
 });
 
+test('usa parâmetros da referência salva sem receber campos tributários do navegador', async () => {
+  const c = contexto(); await processarOnboardingXml(c.deps, 'med', xml);
+  await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', referenciaHash: c.referencia().hash, usarReferencia: true } as any);
+  const politica = c.politica();
+  assert.equal(politica.parametros.municipioPrestacao, '3550308');
+  assert.equal(politica.parametros.cstPisCofins, '06');
+  assert.equal(politica.parametros.percentualTotTribSN, 0);
+  assert.equal(politica.parametros.ibscbs.cClassTrib, '000001');
+  assert.equal(politica.fidelidadeReferencia, true);
+  const resultado = gerarXmlDps({ nDPS: '43', tomador: { CPF: '98765432100', xNome: 'Paciente Novo' },
+    xDescServ: 'Nova consulta', vServ: 170.05, cTribNac: politica.ctribNac, cNBS: politica.cnbs,
+    cTribMun: politica.ctribMun, cIndOp: '', cClassTrib: '',
+    fiscal: { ...politica.parametros, competencia: politica.parametros.vigenciaInicio } }, {
+    cnpj: '11222333000181', im: '', codMunicipio: '3550308', ambiente: 2, serie: '12', pTotTribSN: 9,
+    regTrib: { opSimpNac: 3, regApTribSN: 1, regEspTrib: 0 }
+  });
+  const parser = new XMLParser({ parseTagValue: false });
+  const nova = parser.parse(resultado.xml).DPS.infDPS;
+  const original = parser.parse(xml).NFSe.infNFSe.DPS.infDPS;
+  assert.deepEqual(nova.valores.trib, original.valores.trib);
+  assert.deepEqual(nova.IBSCBS, original.IBSCBS);
+  assert.deepEqual(nova.prest.regTrib, original.prest.regTrib);
+  assert.equal(nova.toma.xNome, 'Paciente Novo');
+  assert.ok(validarReferenciaFiscal(c.referencia(), { ...politica, parametros: { ...politica.parametros, cstPisCofins: '08' } }).length);
+  assert.ok(validarReferenciaFiscal(c.referencia(), { ...politica, ctribNac: '040102' }).length);
+  const preparo = prepararEmissao({ id: 'sol', medicoId: 'med', pacienteId: 'p', valorServicoCentavos: 10000,
+    ctribNac: '040101', cnbs: '122051900', xdescServ: 'Nova consulta' }, {
+    perfil: { ...politica.perfil, confirmado: true, referenciaFiscal: c.referencia() },
+    competenciaInformada: politica.parametros.vigenciaInicio, datasConsultas: [],
+    servicos: [{ id: 'serv', ctribNac: '040101', cnbs: '122051900', ctribMun: '001',
+      politica: { ...politica, parametros: { ...politica.parametros, cstPisCofins: '08' } } }]
+  }, politica.parametros.vigenciaInicio);
+  assert.equal(preparo.ok, false, 'mudança tributária precisa bloquear antes de transmitir');
+});
+
+test('mesmo fluxo reaproveita municípios distintos sem configuração fixa', async () => {
+  for (const municipio of ['3550308', '4314902', '3304557']) {
+    const c = contexto(); await processarOnboardingXml(c.deps, 'med', xml.replaceAll('3550308', municipio));
+    await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', referenciaHash: c.referencia().hash, usarReferencia: true } as any);
+    assert.equal(c.politica().parametros.municipioPrestacao, municipio);
+  }
+});
+
+test('não ignora regras declaradas no serviço, regime ou totalização da referência', async () => {
+  for (const alterado of [xml.replace('</cServ>', '<cIntContrib>ABC</cIntContrib></cServ>'),
+    xml.replace('</regTrib>', '<campoNovo>1</campoNovo></regTrib>'),
+    xml.replace('<pTotTribSN>0.00</pTotTribSN>', '<indTotTrib>0</indTotTrib>')]) {
+    const c = contexto(); await processarOnboardingXml(c.deps, 'med', alterado);
+    assert.ok(c.referencia().pendencias.length > 0);
+  }
+});
+
+test('não confirma automaticamente regime fiscal sem suporte nem referência substituída', async () => {
+  for (const caso of ['regime', 'hash']) {
+    const c = contexto(); await processarOnboardingXml(c.deps, 'med', caso === 'regime' ? xml.replace('<opSimpNac>3</opSimpNac>', '<opSimpNac>1</opSimpNac>') : xml);
+    await assert.rejects(() => confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true,
+      referenciaHash: caso === 'hash' ? 'antiga' : c.referencia().hash } as any));
+    assert.equal(c.politica(), undefined);
+  }
+});
+
 test('titular divergente e falha no storage não alteram cadastro; falha ao salvar serviço reverte transação', async () => {
   const titular = contexto();
   await assert.rejects(() => processarOnboardingXml({ ...titular.deps, documentoTitularEsperado: '99999999000199' }, 'med', xml), /titular/);

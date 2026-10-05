@@ -9,6 +9,23 @@ describe('AdnNfseClient', () => {
   const xmlAntigo = `<NFSe><infNFSe><emit><CNPJ>${documento}</CNPJ></emit><nNFSe>1</nNFSe></infNFSe></NFSe>`;
   const xmlRecente = `<NFSe><infNFSe><emit><CNPJ>${documento}</CNPJ></emit><nNFSe>99</nNFSe></infNFSe></NFSe>`;
 
+  it('encontra a emissão no meio do histórico mesmo com notas recebidas no último lote', async () => {
+    const itens = Array.from({ length: 150 }, (_, i) => ({ NSU: i + 1,
+      ArquivoXml: i === 74 ? xmlRecente : xmlAntigo.replace(documento, '11222333000181') }));
+    const transmissor = async (url: string) => {
+      const cursor = Number(new URL(url).pathname.split('/').at(-1));
+      return { status: 200, corpo: JSON.stringify({ MaxNSU: 150, LoteDFe: itens.filter(d => d.NSU > cursor).slice(0, 50) }) };
+    };
+    const resultado = await new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento);
+    assert.equal(resultado.documento.nsu, 75);
+  });
+
+  it('não usa referência antiga quando a API deixa de avançar antes do fim do histórico', async () => {
+    const transmissor = async () => ({ status: 200, corpo: JSON.stringify({ MaxNSU: 100,
+      LoteDFe: [{ NSU: 1, ArquivoXml: xmlAntigo }] }) });
+    await assert.rejects(() => new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento), /incompleta/i);
+  });
+
   it('deve consultar o ultimo lote e devolver a NFS-e mais recente', async () => {
     const urls: string[] = [];
     const transmissor = async (url: string) => {
@@ -40,7 +57,7 @@ describe('AdnNfseClient', () => {
 
     assert.equal(urls.length, 2);
     assert.ok(urls[0].includes('/DFe/0?lote=true'));
-    assert.ok(urls[1].includes('/DFe/70?lote=true'));
+    assert.ok(urls[1].includes('/DFe/1?lote=true'));
     assert.equal(urls.some((url) => url.includes('cnpjConsulta')), false);
     assert.equal(resultado.documento.nsu, 120);
     assert.equal(resultado.documento.chaveAcesso, 'chave-99');
