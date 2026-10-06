@@ -1472,16 +1472,18 @@
     // --- NOTA PADRÃO: consulta automática, sem entrada de campos tributários ---
     let referenciaFiscalAtual = null;
     let notaPadraoDisponivel = false;
+    let confirmacaoNotaEmAndamento = false;
     function atualizarConfirmacaoNota() {
-      document.getElementById('btnConfirmarFiscal').disabled = !notaPadraoDisponivel ||
+      document.getElementById('btnConfirmarFiscal').disabled = confirmacaoNotaEmAndamento || !notaPadraoDisponivel ||
         !document.getElementById('confirmarNotaPadrao').checked;
     }
     document.getElementById('confirmarNotaPadrao').addEventListener('change', atualizarConfirmacaoNota);
     function mostrarReferenciaFiscal(referencia, perfil) {
       referenciaFiscalAtual = referencia?.versao === 2 ? referencia : null;
       const p = referenciaFiscalAtual?.parametrosSugeridos || {};
-      notaPadraoDisponivel = Boolean(referenciaFiscalAtual?.hash && !(referencia.pendencias || []).length &&
-        ['mei', 'me_epp'].includes(p.opcaoSimplesNacional));
+      notaPadraoDisponivel = Boolean(referenciaFiscalAtual?.hash);
+      const semPendenciasConhecidas = notaPadraoDisponivel && !(referenciaFiscalAtual?.pendencias || []).length &&
+        ['mei', 'me_epp'].includes(p.opcaoSimplesNacional);
       document.getElementById('confirmarNotaPadrao').checked = false;
       atualizarConfirmacaoNota();
       document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';
@@ -1492,10 +1494,10 @@
       document.getElementById('resumoIbscbs').textContent = p.ibscbs
         ? 'A configuração de IBS/CBS declarada nessa nota também será preservada.'
         : 'Não adicionaremos parâmetros de IBS/CBS que não estejam declarados nessa referência.';
-      document.getElementById('pendenciasNotaReferencia').textContent = notaPadraoDisponivel ? ''
-        : 'Encontramos dados que o Noto ainda não consegue reproduzir integralmente. A configuração permanece pendente para análise da equipe.';
+      document.getElementById('pendenciasNotaReferencia').textContent = semPendenciasConhecidas ? ''
+        : 'A referência precisa de uma verificação fiscal. Marque o consentimento e clique em continuar para verificar o que falta.';
       document.getElementById('notaPadraoStatus').textContent = notaPadraoDisponivel
-        ? 'Nota encontrada. Confirme abaixo se ela representa suas consultas habituais.'
+        ? 'Nota encontrada. Confirme abaixo se ela representa suas consultas habituais. O Noto validará a configuração antes de avançar.'
         : 'A emissão ainda não foi liberada com esta referência.';
       document.getElementById('previewFiscal').classList.remove('hidden');
     }
@@ -1534,7 +1536,8 @@
       } catch (erro) { showAlert('Não foi possível abrir sua nota padrão agora.', true, alertOnboarding); }
     });
     document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
-      if (!notaPadraoDisponivel || !document.getElementById('confirmarNotaPadrao').checked) return;
+      if (confirmacaoNotaEmAndamento || !notaPadraoDisponivel || !document.getElementById('confirmarNotaPadrao').checked) return;
+      confirmacaoNotaEmAndamento = true;
       const btn = document.getElementById('btnConfirmarFiscal');
       btn.disabled = true;
       hideAlert(alertOnboarding);
@@ -1544,11 +1547,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ medicoId, referenciaHash: referenciaFiscalAtual.hash, usarReferencia: true }) });
         const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Ainda não foi possível adotar sua nota padrão.');
+        if (!res.ok || !data.ok) {
+          document.getElementById('pendenciasNotaReferencia').textContent = data.detalhe || 'Ainda não foi possível adotar sua nota padrão.';
+          throw new Error(data.detalhe || 'Ainda não foi possível adotar sua nota padrão.');
+        }
         showAlert('Configuração da nota padrão salva.', false, alertOnboarding);
         await carregarFluxoOnboarding();
       } catch (erro) { showAlert(erro.message, true, alertOnboarding); }
-      finally { atualizarConfirmacaoNota(); }
+      finally { confirmacaoNotaEmAndamento = false; atualizarConfirmacaoNota(); }
     });
 
     // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---

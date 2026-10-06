@@ -3,6 +3,13 @@ import type pg from 'pg';
 
 import { parametrosEmissaoSchema, type ParametrosEmissao } from '../../fiscal/preparacao/parametros-emissao.js';
 import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
+export class ErroAdocaoReferencia extends Error {
+  constructor(public readonly codigo: string, mensagem: string,
+    public readonly diagnostico: { campos?: string[]; pendencias?: string[] } = {}) {
+    super(mensagem);
+    this.name = 'ErroAdocaoReferencia';
+  }
+}
 export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId: string; referenciaHash?: string; usarReferencia?: boolean; parametrosEmissao?: unknown; opcaoSimplesNacional?: string; serieDps?: string; proximoNumeroDps?: number; razaoSocial?: string; especialidade?: string; aliquotaIss?: number }): Promise<void> {
   let parametros: ParametrosEmissao | undefined = input.usarReferencia ? undefined : parametrosEmissaoSchema.parse(input.parametrosEmissao);
   const client = await pool.connect();
@@ -17,11 +24,33 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
     if (input.usarReferencia) {
       const referencia = p.dados_reforma_tributaria;
       if (referencia?.versao !== 2 || !referencia.hash || referencia.hash !== input.referenciaHash) {
-        throw new Error('A nota encontrada mudou. Confira a referência atual antes de continuar.');
+        throw new ErroAdocaoReferencia('REFERENCIA_ALTERADA', 'A nota encontrada mudou. Confira a referência atual antes de continuar.');
+      }
+      const pendenciasReferencia: string[] = referencia.pendencias || [];
+      if (pendenciasReferencia.length) {
+        const texto = pendenciasReferencia.join(' ');
+        const mensagem = texto.includes('tribMun/pAliq')
+          ? 'A nota contém uma alíquota de ISS que o emissor do Noto ainda não consegue reproduzir. A configuração permanece pendente para análise da equipe.'
+          : texto.includes('não optante pelo Simples')
+          ? 'A nota usa um regime fora do Simples Nacional cuja emissão ainda não é suportada pelo Noto. A equipe precisa preparar esse suporte antes de liberar a emissão.'
+          : texto.includes('IBSCBS') || texto.includes('IBS/CBS')
+          ? 'A nota contém informações de IBS/CBS que o Noto ainda não consegue reproduzir integralmente. A configuração permanece pendente para análise da equipe.'
+          : texto.includes('tribFed')
+          ? 'A forma de declaração dos tributos federais dessa nota ainda precisa de suporte no Noto. A configuração permanece pendente para análise da equipe.'
+          : 'A nota contém informações do serviço ou da tributação que o Noto ainda não consegue reproduzir integralmente. A equipe precisa analisar esses campos antes de liberar a emissão.';
+        throw new ErroAdocaoReferencia('REFERENCIA_FISCAL_PENDENTE', mensagem, { pendencias: pendenciasReferencia });
       }
       const candidato = parametrosEmissaoSchema.safeParse({ ...referencia.parametrosSugeridos,
         vigenciaInicio: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) });
-      if (!candidato.success) throw new Error('Encontramos sua nota, mas o Noto ainda não consegue reproduzir sua configuração tributária completa. A equipe precisa analisar este caso antes de liberar a emissão.');
+      if (!candidato.success) {
+        const campos = [...new Set(candidato.error.issues.map(erro => erro.path.join('.')))];
+        const nomes: Record<string, string> = { ambiente: 'ambiente de emissão', municipioPrestacao: 'município da prestação',
+          opcaoSimplesNacional: 'regime tributário', regimeApuracaoSn: 'regime de apuração', regimeEspecialTributacao: 'regime especial',
+          tribISSQN: 'tratamento do ISS', tpRetISSQN: 'retenção do ISS', cstPisCofins: 'PIS/COFINS', percentualTotTribSN: 'totalização dos tributos', ibscbs: 'IBS/CBS' };
+        const motivos = [...new Set(campos.map(campo => nomes[campo.split('.')[0]] || 'informações tributárias adicionais'))];
+        throw new ErroAdocaoReferencia('PARAMETROS_REFERENCIA_PENDENTES',
+          `A referência precisa de análise em: ${motivos.join(', ')}. Esses dados estão ausentes ou ainda não são suportados pelo Noto; o consentimento não substitui essa verificação.`, { campos });
+      }
       parametros = candidato.data;
     }
     if (!parametros) throw new Error('Configuração fiscal ausente.');

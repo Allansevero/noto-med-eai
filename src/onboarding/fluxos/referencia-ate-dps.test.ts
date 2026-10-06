@@ -154,6 +154,18 @@ test('não confirma automaticamente regime fiscal sem suporte nem referência su
   }
 });
 
+test('bloqueio por alíquota de ISS explica a causa sem confirmar o perfil', async () => {
+  const c = contexto(); await processarOnboardingXml(c.deps, 'med', xml.replace('</tribMun>', '<pAliq>2.00</pAliq></tribMun>'));
+  await assert.rejects(() => confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', referenciaHash: c.referencia().hash,
+    usarReferencia: true }), (erro: any) => {
+    assert.equal(erro.codigo, 'REFERENCIA_FISCAL_PENDENTE');
+    assert.match(erro.message, /alíquota de ISS/);
+    return true;
+  });
+  assert.equal(c.politica(), undefined);
+  assert.equal(c.queries.at(-1), 'rollback');
+});
+
 test('titular divergente e falha no storage não alteram cadastro; falha ao salvar serviço reverte transação', async () => {
   const titular = contexto();
   await assert.rejects(() => processarOnboardingXml({ ...titular.deps, documentoTitularEsperado: '99999999000199' }, 'med', xml), /titular/);

@@ -20,6 +20,7 @@ import { autenticarComOtp } from './auth/autenticar-com-otp.js';
 import { processarMensagemWebhook } from './fluxos/processar-mensagem-webhook.js';
 
 import { processarOnboardingXml } from './onboarding/fluxos/processar-onboarding-xml.js';
+import { ErroAdocaoReferencia } from './onboarding/io/confirmar-politica-emissao.js';
 import { confirmarParametrosFiscais } from './onboarding/fluxos/confirmar-parametros-fiscais.js';
 import { salvarCertificadoMedico } from './onboarding/fluxos/salvar-certificado-medico.js';
 import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instancia-whatsapp-medico.js';
@@ -312,7 +313,7 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      if (usarReferencia === true && !config.preparacaoFiscalAtiva) throw new Error('A configuração automática ainda precisa ser ativada pela equipe.');
+      if (usarReferencia === true && !config.preparacaoFiscalAtiva) return res.status(503).json({ ok: false, codigo: 'PREPARACAO_FISCAL_INATIVA', detalhe: 'A validação fiscal automática ainda não está ativada no servidor. A equipe precisa ativá-la para concluir seu cadastro.' });
       await confirmarParametrosFiscais(pool, usarReferencia === true ? { medicoId, referenciaHash, usarReferencia: true } : {
         medicoId,
         razaoSocial,
@@ -329,7 +330,8 @@ export function criarAppExpress() {
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
       if (req.body?.usarReferencia === true) {
-        console.warn('[Fiscal] Adoção da referência pendente:', err?.message);
+        console.warn('[Fiscal] Adoção da referência pendente:', { codigo: err?.codigo || 'CONFIRMACAO_FALHOU', diagnostico: err?.diagnostico, mensagem: err?.message });
+        if (err instanceof ErroAdocaoReferencia) return res.status(400).json({ ok: false, codigo: err.codigo, detalhe: err.message });
         return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos adotar a configuração completa dessa nota. Busque a referência novamente; se persistir, a equipe precisa analisar o caso antes de liberar a emissão.' });
       }
       return res.status(400).json({ ok: false, detalhe: Array.isArray(err?.issues)

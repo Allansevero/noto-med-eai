@@ -114,3 +114,18 @@ Esse contrato não declara `MaxNSU`. O cliente mantém compatibilidade com totai
 explícitos de outras respostas e trata fim de distribuição com status próprio,
 inclusive quando acompanhado de HTTP 404. Outros erros HTTP continuam bloqueando
 a adoção de uma referência parcial.
+
+## Consentimento e confirmação
+
+Encontrar e reconhecer a nota não é equivalente a liberar a emissão. Marcar o
+consentimento habilita a tentativa de confirmação sempre que existe uma
+referência identificada. O servidor valida os parâmetros e só libera o avanço
+quando essa confirmação termina com sucesso. Pendências deixaram de produzir
+um botão inerte: retornam uma explicação em linguagem simples (por exemplo,
+alíquota de ISS ainda sem suporte ou preparação fiscal inativa no servidor).
+
+A confirmação fica bloqueada enquanto a solicitação está em andamento, inclusive
+se o usuário alterar a caixa de consentimento. Nenhum campo tributário é enviado
+pelo navegador nem modificado para contornar um bloqueio. Os logs conservam o
+código e as pendências técnicas da referência para investigação. Essa mudança
+não amplia o suporte do emissor para outras operações tributárias.
