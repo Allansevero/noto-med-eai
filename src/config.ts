@@ -26,6 +26,8 @@ export interface AppConfig {
   preparacaoFiscalAtiva?: boolean;
   treinoOnboardingAtivo?: boolean;
   comparacaoFiscalAtiva?: boolean;
+  desenvolvedorFiscalAtivo?: boolean;
+  desenvolvedorFiscalToken?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -37,6 +39,11 @@ export interface AppConfig {
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env['PREPARACAO_FISCAL_ATIVA'] === 'true' && env['AGENTE_FISCAL_ATIVO'] !== 'true') {
     throw new Error('PREPARACAO_FISCAL_ATIVA requer AGENTE_FISCAL_ATIVO para tratar pendências sem retentativas cegas.');
+  }
+  if (env['DESENVOLVEDOR_FISCAL_ATIVO'] === 'true' && (!env['DESENVOLVEDOR_FISCAL_TOKEN'] ||
+      env['DESENVOLVEDOR_FISCAL_TOKEN'].trim() !== env['DESENVOLVEDOR_FISCAL_TOKEN'] ||
+      env['DESENVOLVEDOR_FISCAL_TOKEN'].length < 32 || env['DESENVOLVEDOR_FISCAL_TOKEN'].length > 256)) {
+    throw new Error('DESENVOLVEDOR_FISCAL_TOKEN de 32 a 256 caracteres é obrigatório para ativar a área de teste.');
   }
   return {
     porta: Number.parseInt(env['PORT'] || '3000', 10),
@@ -58,6 +65,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
     treinoOnboardingAtivo: env['TREINO_ONBOARDING_ATIVO'] === 'true',
     comparacaoFiscalAtiva: env['COMPARACAO_FISCAL_ATIVA'] === 'true',
+    desenvolvedorFiscalAtivo: env['DESENVOLVEDOR_FISCAL_ATIVO'] === 'true',
+    desenvolvedorFiscalToken: env['DESENVOLVEDOR_FISCAL_TOKEN'],
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

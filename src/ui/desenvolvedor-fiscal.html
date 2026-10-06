@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Noto · Desenvolvedor fiscal</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,sans-serif;color:#192f2b;background:#f4f7f6;font-size:16px}*{box-sizing:border-box}body{margin:0}main{max-width:960px;margin:32px auto;padding:0 20px 48px}header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:26px}a{color:#078765}h1{font-size:28px;margin:8px 0}h2{font-size:19px;margin:0 0 16px}.badge{display:inline-block;background:#daf5e9;color:#086648;border-radius:20px;padding:6px 12px;font-size:13px;font-weight:650}.card{background:white;border:1px solid #dce6e1;border-radius:16px;padding:24px;margin:18px 0}.muted{color:#5d706a;line-height:1.6}label{display:block;font-size:14px;font-weight:600;margin:14px 0 7px}input,textarea,button{font:inherit}input,textarea{width:100%;padding:11px 12px;border:1px solid #bccdc5;border-radius:8px;background:#fff}input:focus,textarea:focus{outline:2px solid #7ac9aa;outline-offset:1px}button{border:0;border-radius:8px;padding:11px 16px;background:#078765;color:white;cursor:pointer;font-weight:600}button:disabled{opacity:.45;cursor:default}.secondary{background:#eaf2ee;color:#1c5342}.row{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.check{display:flex;gap:10px;align-items:flex-start;line-height:1.5;font-weight:400}.check input{width:auto;margin-top:4px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.55;background:#f3f6f4;border-radius:8px;padding:14px;max-height:400px;overflow:auto}.status{padding:12px 16px;background:#edf4f0;border-radius:10px;line-height:1.5;margin:14px 0}[hidden]{display:none!important}@media(max-width:620px){.row{grid-template-columns:1fr}.card{padding:18px}header{align-items:flex-start}}
+  </style>
+</head>
+<body>
+<main>
+  <header><div><span class="badge">Homologação · sem validade fiscal</span><h1>Noto · Desenvolvedor</h1></div><a href="/">Voltar ao Noto</a></header>
+  <p class="muted">Carregue seu A1, confira as regras da última nota e teste uma nova emissão na SEFIN de homologação. A referência é consultada no ADN de produção, somente para leitura. O cadastro do médico e a fila de produção não são alterados.</p>
+  <div id="mensagem" class="status" role="status" aria-live="polite">Informe a chave de desenvolvedor para começar.</div>
+  <section class="card" id="acesso">
+    <h2>Acesso de desenvolvedor</h2>
+    <form id="formAcesso"><label for="chaveAcesso">Chave configurada no servidor</label><input id="chaveAcesso" type="password" autocomplete="off" required>
+      <div class="actions"><button id="btnAcesso">Entrar</button></div></form>
+  </section>
+  <div id="painel" hidden>
+    <section class="card">
+      <h2>1. Carregar A1 e buscar referência</h2>
+      <p class="muted">O A1 e a senha ficam somente na memória do servidor por até 15 minutos. Encerrar a sessão remove os dados de teste. Não é necessário enviar XML.</p>
+      <form id="formA1">
+        <label for="arquivoA1">Certificado A1 (.pfx ou .p12, até 2 MB)</label><input id="arquivoA1" type="file" accept=".pfx,.p12" required>
+        <label for="senhaA1">Senha do A1</label><input id="senhaA1" type="password" autocomplete="off">
+        <div class="actions"><button id="btnExtrair">Buscar última nota e extrair parâmetros</button></div>
+      </form>
+      <p id="expiracao" class="muted"></p>
+    </section>
+    <section class="card" id="blocoReferencia" hidden>
+      <h2>2. Conferir os parâmetros fiscais</h2>
+      <p id="resumoReferencia"></p><p id="pendencias" class="muted"></p>
+      <details open><summary>Dados extraídos da referência</summary><pre id="dadosReferencia"></pre></details>
+      <p class="muted">A nova DPS preserva as regras fiscais suportadas da referência. O ambiente de envio será homologação (tpAmb=2), mesmo quando a nota de origem for de produção.</p>
+    </section>
+    <section class="card" id="blocoConsulta" hidden>
+      <h2>3. Preparar uma nova DPS de teste</h2>
+      <form id="formConsulta">
+        <div class="row"><div><label for="cpfPaciente">CPF do paciente de teste</label><input id="cpfPaciente" inputmode="numeric" required></div><div><label for="nomePaciente">Nome do paciente</label><input id="nomePaciente" maxlength="150" required></div></div>
+        <div class="row"><div><label for="valorConsulta">Valor da consulta (R$)</label><input id="valorConsulta" inputmode="decimal" placeholder="170,05" required></div><div><label for="competencia">Data da consulta</label><input id="competencia" type="date" required></div></div>
+        <div class="row"><div><label for="serieDps">Série de teste</label><input id="serieDps" value="900" inputmode="numeric" maxlength="5" required></div><div><label for="numeroDps">Número da DPS de teste</label><input id="numeroDps" inputmode="numeric" maxlength="15" required></div></div>
+        <label for="descricao">Descrição da nova consulta</label><textarea id="descricao" rows="3" maxlength="2000" required>Consulta médica — teste em homologação</textarea>
+        <div class="actions"><button id="btnPreparar" disabled>Gerar e assinar DPS</button><button type="button" class="secondary" id="btnNovaDps">Preencher novo número de teste</button></div>
+      </form>
+      <p class="muted">A série e o número acima pertencem ao teste. Não usamos nem atualizamos a numeração de produção. Gerar a DPS ainda não transmite a nota.</p>
+    </section>
+    <section class="card" id="blocoEnvio" hidden>
+      <h2>4. Enviar para homologação</h2>
+      <div class="actions"><button type="button" class="secondary" id="btnBaixarDps" disabled>Baixar DPS assinada</button></div>
+      <label class="check"><input type="checkbox" id="confirmarHomologacao"><span>Conferi os dados e quero transmitir esta DPS para a SEFIN de homologação.</span></label>
+      <div class="actions"><button type="button" id="btnEnviar" disabled>Emitir nota em homologação</button><button type="button" class="secondary" id="btnConsultar" disabled>Consultar resultado da tentativa</button><button type="button" class="secondary" id="btnBaixarNota" disabled>Baixar XML da NFS-e autorizada</button></div>
+      <div id="resultado" class="status" role="status" aria-live="polite">Prepare uma DPS para continuar.</div>
+      <details><summary>Retorno da emissão</summary><pre id="retornoProvedor"></pre></details>
+    </section>
+    <section class="card">
+      <h2>Histórico da sessão</h2><pre id="historico">Nenhuma tentativa realizada.</pre>
+      <button type="button" class="secondary" id="btnEncerrar" disabled>Encerrar sessão e remover dados de teste</button>
+    </section>
+  </div>
+</main>
+<script>
+  const el = id => document.getElementById(id);
+  let chaveAtual = '', sessaoId = null, tentativaAtual = null, xmlDps = '', xmlNota = '', pendenciasAtuais = [], ocupado = false;
+  const avisar = texto => { el('mensagem').textContent = texto; };
+  function atualizarBotoes() {
+    el('btnAcesso').disabled = ocupado;
+    el('btnExtrair').disabled = ocupado || Boolean(sessaoId);
+    el('btnPreparar').disabled = ocupado || !sessaoId || pendenciasAtuais.length > 0 || ['enviando','resultado_incerto'].includes(tentativaAtual?.estado);
+    el('btnEnviar').disabled = ocupado || tentativaAtual?.estado !== 'preparada' || !el('confirmarHomologacao').checked;
+    el('btnConsultar').disabled = ocupado || !sessaoId;
+    el('btnEncerrar').disabled = ocupado || !sessaoId || tentativaAtual?.estado === 'enviando';
+    el('btnNovaDps').disabled = ocupado || ['enviando','resultado_incerto'].includes(tentativaAtual?.estado);
+    el('btnBaixarDps').disabled = !xmlDps;
+    el('btnBaixarNota').disabled = !xmlNota;
+  }
+  async function api(rota, dados, metodo) {
+    const resposta = await fetch('/api/desenvolvedor/fiscal' + rota, { method: metodo || (dados ? 'POST' : 'GET'),
+      headers: { Authorization: 'Bearer ' + chaveAtual, 'Content-Type': 'application/json' },
+      ...(dados ? { body: JSON.stringify(dados) } : {}) });
+    const data = await resposta.json();
+    if (!resposta.ok || data.ok === false) {
+      const erro = new Error(data.detalhe || 'Não foi possível concluir esta ação.'); erro.dados = data; throw erro;
+    }
+    return data;
+  }
+  async function executar(acao) {
+    if (ocupado) return;
+    ocupado = true; atualizarBotoes();
+    try { await acao(); } catch (erro) {
+      if (erro.dados?.codigo === 'SESSAO_EXPIRADA') limparSessaoLocal();
+      avisar(erro.message + (erro.dados?.campos?.length ? ' Campos para conferir: ' + erro.dados.campos.join(', ') : '') + (erro.dados?.codigo ? ' [' + erro.dados.codigo + ']' : ''));
+      if (erro.dados?.pendencias) el('pendencias').textContent = erro.dados.pendencias.join('\n');
+    } finally { ocupado = false; atualizarBotoes(); }
+  }
+  function limparTentativa() {
+    tentativaAtual = null; xmlDps = ''; xmlNota = ''; el('confirmarHomologacao').checked = false;
+    el('resultado').textContent = 'Prepare uma DPS com os dados atuais para continuar.';
+    el('retornoProvedor').textContent = ''; atualizarBotoes();
+  }
+  el('formAcesso').addEventListener('submit', async evento => {
+    evento.preventDefault();
+    await executar(async () => {
+      chaveAtual = el('chaveAcesso').value;
+      try { await api('/acesso'); } catch (erro) { chaveAtual = ''; throw erro; }
+      el('chaveAcesso').value = ''; el('acesso').hidden = true; el('painel').hidden = false;
+      avisar('Acesso liberado. Carregue o A1 para iniciar a sessão de teste.');
+    });
+  });
+  el('formA1').addEventListener('submit', async evento => {
+    evento.preventDefault();
+    await executar(async () => {
+      const arquivo = el('arquivoA1').files[0];
+      if (!arquivo || arquivo.size > 2 * 1024 * 1024) throw new Error('Selecione um A1 de até 2 MB.');
+      avisar('Buscando a última nota no ADN e extraindo os parâmetros…');
+      const arquivoBase64 = await new Promise((resolve, reject) => {
+        const leitor = new FileReader(); leitor.onload = () => resolve(String(leitor.result).split(',')[1]);
+        leitor.onerror = () => reject(new Error('Não foi possível ler o A1.')); leitor.readAsDataURL(arquivo);
+      });
+      const senha = el('senhaA1').value;
+      el('senhaA1').value = ''; el('arquivoA1').value = '';
+      const data = await api('/referencia', { arquivoBase64, senha });
+      sessaoId = data.sessaoId; pendenciasAtuais = data.pendencias || []; limparTentativa();
+      el('blocoReferencia').hidden = false; el('blocoConsulta').hidden = false; el('blocoEnvio').hidden = false;
+      el('dadosReferencia').textContent = JSON.stringify(data.referencia, null, 2);
+      el('resumoReferencia').textContent = `Nota ${data.referencia.numero || 'sem número'} · Origem: ${data.referencia.ambienteOrigem} · Nova emissão: homologação`;
+      el('expiracao').textContent = 'Sessão válida até ' + new Date(data.expiraEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      el('pendencias').textContent = pendenciasAtuais.length ? 'Pendências: ' + pendenciasAtuais.join('\n') : 'Nenhuma pendência encontrada nos campos suportados.';
+      avisar(pendenciasAtuais.length ? 'Referência extraída, mas há pendências que impedem a emissão.' : 'Parâmetros extraídos. Confira as regras e preencha a nova consulta.');
+    });
+  });
+  el('formConsulta').addEventListener('input', () => { if (tentativaAtual?.estado === 'preparada') limparTentativa(); });
+  el('formConsulta').addEventListener('submit', async evento => {
+    evento.preventDefault();
+    await executar(async () => {
+      if (!sessaoId || pendenciasAtuais.length) throw new Error('Conclua a extração de uma referência sem pendências.');
+      if (['enviando','resultado_incerto'].includes(tentativaAtual?.estado)) throw new Error('Consulte o resultado da tentativa pendente antes de preparar outra DPS.');
+      const valor = el('valorConsulta').value.trim();
+      if (!/^\d+(?:[.,]\d{1,2})?$/.test(valor)) throw new Error('Informe o valor em reais com até duas casas decimais.');
+      const [inteiro, decimal = ''] = valor.replace(',', '.').split('.');
+      const valorCentavos = Number(inteiro) * 100 + Number(decimal.padEnd(2, '0'));
+      limparTentativa(); avisar('Validando os dados e assinando a DPS de homologação…');
+      const data = await api('/preparar', { sessaoId, cpfPaciente: el('cpfPaciente').value.replace(/\D/g, ''),
+        nomePaciente: el('nomePaciente').value, valorCentavos, competencia: el('competencia').value,
+        descricao: el('descricao').value, serieDps: el('serieDps').value, numeroDps: el('numeroDps').value });
+      tentativaAtual = { id: data.tentativaId, estado: data.estado }; xmlDps = data.xmlDpsAssinado;
+      el('resultado').textContent = 'DPS preparada e assinada. Nenhuma transmissão realizada.';
+      avisar('Confira a DPS e marque a confirmação para enviar à homologação.');
+    });
+  });
+  el('confirmarHomologacao').addEventListener('change', atualizarBotoes);
+  function mostrarResultado(data) {
+    if (tentativaAtual) tentativaAtual.estado = data.estado;
+    xmlNota = data.xmlNota || '';
+    el('resultado').textContent = `${data.estado}: ${data.detalhe || ''}${data.codigoErro ? ' (' + data.codigoErro + ')' : ''}`;
+    const { xmlNota: _xml, ...resumo } = data;
+    el('retornoProvedor').textContent = JSON.stringify(resumo, null, 2);
+    avisar(data.detalhe || 'Resultado atualizado.');
+  }
+  async function consultarHistorico() {
+    const data = await api('/sessoes/' + sessaoId);
+    el('historico').textContent = JSON.stringify({ expiraEm: data.expiraEm, eventos: data.eventos,
+      tentativas: data.tentativas.map(t => ({ tentativaId: t.tentativaId, estado: t.estado, serie: t.serie, numero: t.numero,
+        codigoErro: t.resultado?.codigoErro, detalhe: t.resultado?.detalhe })) }, null, 2);
+    const atual = data.tentativas.find(t => t.tentativaId === tentativaAtual?.id);
+    if (atual) { tentativaAtual.estado = atual.estado; if (atual.resultado) mostrarResultado(atual.resultado); }
+  }
+  el('btnEnviar').addEventListener('click', async () => {
+    if (ocupado || tentativaAtual?.estado !== 'preparada' || !el('confirmarHomologacao').checked) return;
+    await executar(async () => {
+      tentativaAtual.estado = 'enviando'; avisar('Transmitindo somente para homologação…');
+      try { mostrarResultado(await api('/emitir', { sessaoId, tentativaId: tentativaAtual.id, confirmarHomologacao: true })); }
+      catch (erro) {
+        el('resultado').textContent = 'Não foi possível confirmar o resultado na tela. Consulte a tentativa antes de qualquer novo envio.';
+        throw erro;
+      }
+    });
+  });
+  el('btnConsultar').addEventListener('click', () => executar(consultarHistorico));
+  el('btnNovaDps').addEventListener('click', () => {
+    if (ocupado || ['enviando','resultado_incerto'].includes(tentativaAtual?.estado)) return;
+    limparTentativa(); el('numeroDps').value = String(Date.now());
+    avisar('Novo número preenchido. Confira a consulta e prepare outra DPS quando necessário.');
+  });
+  function limparSessaoLocal() {
+    sessaoId = null; pendenciasAtuais = []; limparTentativa();
+    el('blocoReferencia').hidden = true; el('blocoConsulta').hidden = true; el('blocoEnvio').hidden = true;
+    el('dadosReferencia').textContent = ''; el('pendencias').textContent = ''; el('resumoReferencia').textContent = '';
+    el('historico').textContent = 'Sessão encerrada.'; el('expiracao').textContent = '';
+    el('formConsulta').reset(); el('competencia').value = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    el('numeroDps').value = String(Date.now());
+  }
+  el('btnEncerrar').addEventListener('click', () => executar(async () => {
+    if (!sessaoId) return;
+    await api('/sessoes/' + sessaoId, undefined, 'DELETE');
+    limparSessaoLocal();
+    avisar('Sessão encerrada. A1, senha e dados de teste removidos da sessão do servidor.');
+  }));
+  function baixarXml(xml, nome) {
+    if (!xml) return;
+    const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  el('btnBaixarDps').addEventListener('click', () => baixarXml(xmlDps, 'dps-homologacao.xml'));
+  el('btnBaixarNota').addEventListener('click', () => baixarXml(xmlNota, 'nfse-homologacao.xml'));
+  el('competencia').value = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  el('numeroDps').value = String(Date.now()); atualizarBotoes();
+</script>
+</body>
+</html>

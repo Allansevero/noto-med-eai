@@ -41,6 +41,7 @@ import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medi
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
+import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -104,6 +105,19 @@ export function criarAppExpress() {
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // A área de teste não usa os repositórios, filas ou certificados dos médicos.
+  app.use('/api/desenvolvedor/fiscal', criarRouterFiscalDesenvolvedor({
+    ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken
+  }));
+  if (config.desenvolvedorFiscalAtivo) {
+    app.get('/desenvolvedor', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.sendFile(join(__dirname, 'ui', 'desenvolvedor-fiscal.html'));
+    });
+  }
 
   // UI Web de Entrada e Assets Estáticos
   app.use('/assets', express.static(join(__dirname, 'assets')));
