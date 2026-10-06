@@ -81,3 +81,18 @@ referência comunitária também usam essa versão:
 https://github.com/nfse-nacional/nfse-php/blob/main/tests/Unit/Service/ContribuinteServiceTest.php
 A verificação realizada é de leitura e preservação dos campos suportados, não
 homologação completa de XSD nem confirmação da causa de um certificado real.
+
+## Preservação no Storage
+
+O upload utiliza o bucket privado `xmls_referencia`. Se o Storage responder
+explicitamente que o bucket não existe, o servidor tenta criá-lo privado,
+permitindo `application/xml` e `text/xml`, com limite de 10 MiB, e repete o upload
+uma única vez. Conflito de criação concorrente permite essa mesma tentativa; não
+há loop nem mudança das políticas de um bucket existente.
+
+Erros de acesso, MIME, limite de tamanho e bucket ausente têm códigos próprios.
+O diagnóstico registra bucket, etapa (`upload` ou `criacao_bucket`) e status HTTP.
+Não registra a mensagem bruta do Storage nem conteúdo do XML ou credenciais.
+Nenhum perfil fiscal é atualizado se a preservação falhar. A chave de serviço do
+servidor precisa estar configurada e autorizada para esse Storage; a correção
+não contorna permissões nem torna o XML público.
