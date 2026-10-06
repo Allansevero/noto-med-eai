@@ -9,11 +9,11 @@ function tela() {
   function node(id: string, classes = '') {
     if (!nodes.has(id)) {
       const valores = new Set(classes.split(' ').filter(Boolean));
-      nodes.set(id, { value: '', textContent: '', disabled: false, handlers: {} as any, dataset: {}, style: {},
+      nodes.set(id, { value: '', textContent: '', disabled: false, handlers: {} as any, dataset: {}, style: { setProperty(k: string, v: string) { (this as any)[k] = v; } },
         children: [] as any[], replaceChildren() { this.children = []; }, append(...els: any[]) { this.children.push(...els); },
         classList: { add(...c: string[]) { c.forEach(v => valores.add(v)); }, remove(...c: string[]) { c.forEach(v => valores.delete(v)); },
           contains(c: string) { return valores.has(c); }, toggle(c: string, ativo = !valores.has(c)) { ativo ? valores.add(c) : valores.delete(c); } },
-        addEventListener(e: string, h: any) { this.handlers[e] = h; }, setAttribute() {}, focus() {}, querySelector() { return null; } });
+        addEventListener(e: string, h: any) { this.handlers[e] = h; }, setAttribute() {}, checkValidity() { return true; }, focus() {}, querySelector() { return null; } });
     }
     return nodes.get(id);
   }
@@ -27,7 +27,7 @@ function tela() {
   }
   const pedidos: any[] = [];
   const status: any = { passos: { passo1Nome: false, passo3CertificadoValido: false }, liberadoParaEmitir: false };
-  const contexto = vm.createContext({ document: { getElementById: node, createElement() { return { textContent: '' }; }, body: node('body', 'onboarding-active'),
+  const contexto = vm.createContext({ document: { getElementById: node, createElement() { return node('created' + nodes.size); }, body: node('body', 'onboarding-active'),
     querySelectorAll(s: string) { return s === '.otp-digit' ? otp : tabs; } },
     localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} }, window: { location: { search: '' }, history: {} },
     URLSearchParams, FileReader, Uint8Array, btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
@@ -152,4 +152,44 @@ test('cada opção da Conta abre apenas sua seção e fiscal permanece separado 
   }
   vm.runInContext('abrirSecaoConta("fiscal")', t.contexto);
   assert.equal(t.node('contaSecaoFiscal').classList.contains('hidden'), false);
+});
+
+
+test('edição fiscal preserva tipos e referência, permite cancelar e salva pelo endpoint validado', async () => {
+  const t = tela();
+  vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }; referenciaFiscalAtual = { hash: "referencia-original", versao: 2 }; exibirParametrosConta({ambiente:"producao",vigenciaInicio:"2026-10-06",aliquotaIss:2,ibscbs:{CST:"000",cClassTrib:"000001"}})', t.contexto);
+  t.node('btnEditarFiscal').handlers.click();
+  vm.runInContext('camposFiscaisEdicao.get("aliquotaIss").input.value = "3.5"; exibirParametrosConta({aliquotaIss:9})', t.contexto);
+  t.status.perfilFiscal = { referenciaFiscal: { versao: 2, hash: 'referencia-original' }, parametrosEmissao: { parametros: {ambiente:'producao',vigenciaInicio:'2026-10-06',aliquotaIss:3.5,ibscbs:{CST:'000',cClassTrib:'000001'}} } };
+  await t.node('btnSalvarFiscal').handlers.click();
+  const pedido = t.pedidos.find(p => p.url === '/api/onboarding/confirmar-fiscal');
+  assert.equal(pedido.body.parametrosEmissao.aliquotaIss, 3.5);
+  assert.equal(pedido.body.parametrosEmissao.ibscbs.CST, '000');
+  assert.equal(pedido.body.referenciaHash, 'referencia-original');
+  assert.equal(pedido.body.usarReferencia, false);
+  t.node('btnEditarFiscal').handlers.click();
+  vm.runInContext('camposFiscaisEdicao.get("aliquotaIss").input.value = "8"', t.contexto);
+  t.node('btnCancelarFiscal').handlers.click();
+  assert.equal(t.pedidos.filter(p => p.url === '/api/onboarding/confirmar-fiscal').length, 1);
+  assert.equal(vm.runInContext('parametrosFiscaisAtuais.aliquotaIss', t.contexto), 3.5);
+});
+
+
+test('rejeição fiscal mantém o rascunho e não duplica um salvamento em andamento', async () => {
+  const t = tela();
+  vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }; referenciaFiscalAtual = { hash: "ref", versao: 2 }; exibirParametrosConta({aliquotaIss:2})', t.contexto);
+  t.node('btnEditarFiscal').handlers.click();
+  vm.runInContext('camposFiscaisEdicao.get("aliquotaIss").input.value="3"', t.contexto);
+  let resolver: any; let chamadas = 0;
+  t.contexto.fetch = () => { chamadas++; return new Promise(resolve => { resolver = resolve; }); };
+  const salvar = t.node('btnSalvarFiscal').handlers.click();
+  await t.node('btnSalvarFiscal').handlers.click();
+  assert.equal(chamadas, 1);
+  assert.equal(t.node('btnCancelarFiscal').disabled, true);
+  resolver({ok:false, async json() {return {ok:false, detalhe:'Classificação incompatível com a referência.'};}});
+  await salvar;
+  assert.equal(vm.runInContext('edicaoFiscal', t.contexto), true);
+  assert.equal(vm.runInContext('camposFiscaisEdicao.get("aliquotaIss").input.value', t.contexto), '3');
+  assert.equal(t.node('statusEdicaoFiscal').textContent, 'Classificação incompatível com a referência.');
+  assert.equal(t.node('btnSalvarFiscal').disabled, false);
 });

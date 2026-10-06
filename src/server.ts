@@ -332,7 +332,7 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      if (usarReferencia === true && !config.preparacaoFiscalAtiva) return res.status(503).json({ ok: false, codigo: 'PREPARACAO_FISCAL_INATIVA', detalhe: 'A validação fiscal automática ainda não está ativada no servidor. A equipe precisa ativá-la para concluir seu cadastro.' });
+      if ((usarReferencia === true || parametrosEmissao !== undefined) && !config.preparacaoFiscalAtiva) return res.status(503).json({ ok: false, codigo: 'PREPARACAO_FISCAL_INATIVA', detalhe: 'A validação fiscal automática ainda não está ativada no servidor. A equipe precisa ativá-la para concluir seu cadastro.' });
       await confirmarParametrosFiscais(pool, usarReferencia === true ? { medicoId, referenciaHash, usarReferencia: true } : {
         medicoId,
         razaoSocial,
