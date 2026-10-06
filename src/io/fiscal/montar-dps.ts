@@ -4,6 +4,7 @@
  * validação com dados do prestador vindos do PostgreSQL em vez de .env local.
  */
 
+import { tributosNaoOptante } from '../../fiscal/preparacao/tributos-nao-optante.js';
 import type { ParametrosEmissao } from '../../fiscal/preparacao/parametros-emissao.js';
 import type { LayoutDPS } from '@nfewizard/types';
 
@@ -64,6 +65,7 @@ export function montarDps(
   cfg: ConfigPrestador,
   agora: Date = new Date()
 ): LayoutDPS {
+  if (input.fiscal && cfg.regTrib.opSimpNac !== ({ nao_optante: 1, mei: 2, me_epp: 3 } as const)[input.fiscal.opcaoSimplesNacional]) throw new Error('Regime da DPS diverge da política confirmada.');
   const { dhEmi, dCompet } = momentoSP(agora);
   const ehMei = cfg.regTrib.opSimpNac === 2;
   const meEpp = cfg.regTrib.opSimpNac === 3;
@@ -118,7 +120,7 @@ export function montarDps(
       },
       valores: {
         vServPrest: { vServ: input.vServ },
-        trib: {
+        trib: input.fiscal?.opcaoSimplesNacional === 'nao_optante' ? tributosNaoOptante(input.fiscal, input.vServ) : {
           tribMun: { tribISSQN: input.fiscal?.tribISSQN ?? 1, tpRetISSQN: input.fiscal?.tpRetISSQN ?? 1 },
           ...(ehMei ? {} : { tribFed: { piscofins: { CST: input.fiscal ? input.fiscal.cstPisCofins : '08' } } }),
           totTrib: ehMei ? { indTotTrib: 0 } : { pTotTribSN: input.pTotTribSN ?? cfg.pTotTribSN }

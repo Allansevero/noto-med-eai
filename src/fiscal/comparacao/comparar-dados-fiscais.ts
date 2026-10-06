@@ -8,6 +8,10 @@ const rotulos: Record<string, string> = {
   ctribNac: 'Código nacional do serviço', ctribMun: 'Código municipal do serviço', cnbs: 'NBS',
   aliquotaIss: 'Alíquota de ISS declarada (%)', tribISSQN: 'Situação do ISS', tpRetISSQN: 'Retenção de ISS',
   cstPisCofins: 'CST PIS/COFINS', percentualTotTribSN: 'Tributos aproximados do Simples (%)',
+  'totalTributos.tipo': 'Forma de totalização dos tributos', 'totalTributos.federal': 'Tributos federais aproximados (%)',
+  'totalTributos.estadual': 'Tributos estaduais aproximados (%)', 'totalTributos.municipal': 'Tributos municipais aproximados (%)',
+  'pisCofinsCalculo.base': 'Base de cálculo de PIS/COFINS', 'pisCofinsCalculo.aliquotaPis': 'Alíquota PIS (%)',
+  'pisCofinsCalculo.aliquotaCofins': 'Alíquota COFINS (%)', 'pisCofinsCalculo.tipoRetencao': 'Retenção de PIS/COFINS',
   'ibscbs.CST': 'CST IBS/CBS', 'ibscbs.cClassTrib': 'Classificação IBS/CBS',
   'ibscbs.cIndOp': 'Operação IBS/CBS', 'ibscbs.finNFSe': 'Finalidade IBS/CBS',
   'ibscbs.indFinal': 'Consumo pessoal IBS/CBS', 'ibscbs.indDest': 'Destinatário IBS/CBS'

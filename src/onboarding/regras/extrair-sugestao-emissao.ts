@@ -11,7 +11,7 @@ export function extrairSugestaoEmissao(xmlObj: any): Record<string, unknown> {
   if (String(dps.tpAmb) === '2') sugestao.ambiente = 'homologacao';
   const numero = (chave: string, valor: unknown) => { if (valor !== undefined && valor !== null && valor !== '') sugestao[chave] = Number(valor); };
   if (dps.serv?.locPrest?.cLocPrestacao) sugestao.municipioPrestacao = String(dps.serv.locPrest.cLocPrestacao);
-  const opcao = ({ '2': 'mei', '3': 'me_epp' } as Record<string, string>)[String(reg.opSimpNac)];
+  const opcao = ({ '1': 'nao_optante', '2': 'mei', '3': 'me_epp' } as Record<string, string>)[String(reg.opSimpNac)];
   if (opcao) sugestao.opcaoSimplesNacional = opcao;
   if (reg.regApTribSN) sugestao.regimeApuracaoSn = `regime_${reg.regApTribSN}`;
   numero('regimeEspecialTributacao', reg.regEspTrib);
@@ -19,6 +19,19 @@ export function extrairSugestaoEmissao(xmlObj: any): Record<string, unknown> {
   numero('tpRetISSQN', trib.tribMun?.tpRetISSQN);
   if (trib.tribFed?.piscofins?.CST !== undefined) sugestao.cstPisCofins = String(trib.tribFed.piscofins.CST).padStart(2, '0');
   numero('percentualTotTribSN', trib.totTrib?.pTotTribSN);
+  if (opcao === 'nao_optante') {
+    const decimal = (v: unknown) => /^\d+(?:\.\d{1,2})?$/.test(String(v)) ? Number(v) : NaN;
+    if (trib.tribMun?.pAliq !== undefined) sugestao.aliquotaIss = decimal(trib.tribMun.pAliq);
+    const total = trib.totTrib;
+    if (String(total?.indTotTrib) === '0') sugestao.totalTributos = { tipo: 'nao_informado' };
+    if (total?.pTotTrib) sugestao.totalTributos = { tipo: 'percentual', federal: decimal(total.pTotTrib.pTotTribFed),
+      estadual: decimal(total.pTotTrib.pTotTribEst), municipal: decimal(total.pTotTrib.pTotTribMun) };
+    const pis = trib.tribFed?.piscofins;
+    if (['01', '02'].includes(String(pis?.CST).padStart(2, '0'))) {
+      sugestao.pisCofinsCalculo = { base: 'valor_servico', aliquotaPis: decimal(pis.pAliqPis), aliquotaCofins: decimal(pis.pAliqCofins),
+        ...(pis.tpRetPisCofins !== undefined ? { tipoRetencao: decimal(pis.tpRetPisCofins) } : {}) };
+    }
+  }
   const ibscbs = extrairIbscbsReferencia(dps);
   if (ibscbs.parametros) sugestao.ibscbs = ibscbs.parametros;
   return sugestao;

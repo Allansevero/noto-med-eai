@@ -73,3 +73,8 @@ incluindo códigos com zeros à esquerda, percentual zero, rejeição de campos
 extras, referência alterada, titular divergente e falhas de armazenamento/transação.
 Nesta entrega não foi executada transmissão real ao ADN/SEFIN nem validação em
 banco ou certificado de produção.
+
+Atualização: o suporte ao regime não optante e seus limites atuais estão
+descritos em [Nota padrão obtida automaticamente](nota-padrao-automatica.md#referência-fora-do-simples-nacional).
+As restrições históricas acima para esse regime foram ampliadas para os grupos
+especificados nessa documentação; retenções e tratamentos adicionais permanecem pendentes.

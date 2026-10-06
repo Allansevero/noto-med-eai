@@ -78,7 +78,6 @@ export async function compararPerfilFiscal(deps: Dependencias, medicoId: string)
       && validacao.success && validarReferenciaFiscal(meta, politica).length === 0,
     pendencias: [...(meta?.pendencias ?? [])] };
   if (!validacao.success) contexto.pendencias.push('A configuração para emissão ainda está incompleta ou contém situações não suportadas. Revise os campos e a vigência antes de confirmar.');
-  if (ref.campos.opcaoSimplesNacional === 'nao_optante') contexto.pendencias.push('A emissão para não optante pelo Simples ainda exige suporte adicional no Noto. A comparação não libera a emissão.');
   const chaveContexto = createHash('sha256').update(JSON.stringify([certificado.id, ref.hash, competencia, ambiente])).digest('hex');
   const cache = await deps.pool.query(`select evidencias, consultado_em from consultas_fiscais_onboarding
     where medico_id = $1 and chave_contexto = $2 and consultado_em > $3::timestamptz - interval '5 minutes'`,

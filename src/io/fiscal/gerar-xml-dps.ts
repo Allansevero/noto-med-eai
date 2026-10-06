@@ -5,6 +5,7 @@
  */
 
 import type { EmissaoInput, ConfigPrestador } from './montar-dps.js';
+import { xmlTributosNaoOptante } from '../../fiscal/preparacao/tributos-nao-optante.js';
 import { momentoSP } from './montar-dps.js';
 import { gerarGrupoIbscbs } from '../../fiscal/preparacao/ibscbs.js';
 
@@ -40,6 +41,7 @@ export function gerarXmlDps(
   const dpsIdNumerico = `${codMun}${tipoInscricaoFederal}${inscricaoFederal}${serie}${numeroDps}`;
   const dpsId = `DPS${dpsIdNumerico}`;
 
+  if (input.fiscal && cfg.regTrib.opSimpNac !== ({ nao_optante: 1, mei: 2, me_epp: 3 } as const)[input.fiscal.opcaoSimplesNacional]) throw new Error('Regime da DPS diverge da política confirmada.');
   const ehMei = cfg.regTrib.opSimpNac === 2;
   const meEpp = cfg.regTrib.opSimpNac === 3;
   const regTribXml = [
@@ -108,9 +110,8 @@ export function gerarXmlDps(
         `<valores>` +
           `<vServPrest><vServ>${vServFmt}</vServ></vServPrest>` +
           `<trib>` +
-            `<tribMun><tribISSQN>${input.fiscal?.tribISSQN ?? 1}</tribISSQN><tpRetISSQN>${input.fiscal?.tpRetISSQN ?? 1}</tpRetISSQN></tribMun>` +
-            `${tribFedXml}` +
-            `${totTribXml}` +
+            (input.fiscal?.opcaoSimplesNacional === 'nao_optante' ? xmlTributosNaoOptante(input.fiscal, input.vServ) :
+              `<tribMun><tribISSQN>${input.fiscal?.tribISSQN ?? 1}</tribISSQN><tpRetISSQN>${input.fiscal?.tpRetISSQN ?? 1}</tpRetISSQN></tribMun>${tribFedXml}${totTribXml}`) +
           `</trib>` +
         `</valores>` +
         (input.fiscal?.ibscbs ? gerarGrupoIbscbs(input.fiscal.ibscbs) : '') +

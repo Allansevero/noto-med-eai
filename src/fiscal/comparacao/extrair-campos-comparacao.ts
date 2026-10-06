@@ -5,9 +5,14 @@ import { extrairSugestaoEmissao } from '../../onboarding/regras/extrair-sugestao
 export function camposDosParametros(parametros: Record<string, any>): CamposFiscais {
   const campos: CamposFiscais = {};
   for (const chave of ['opcaoSimplesNacional', 'regimeApuracaoSn', 'regimeEspecialTributacao', 'municipioPrestacao',
-    'tribISSQN', 'tpRetISSQN', 'cstPisCofins', 'percentualTotTribSN']) {
+    'tribISSQN', 'tpRetISSQN', 'cstPisCofins', 'percentualTotTribSN', 'aliquotaIss']) {
     const valor = parametros[chave];
     if (typeof valor === 'string' || (typeof valor === 'number' && Number.isFinite(valor))) campos[chave] = valor;
+  }
+  for (const grupo of ['totalTributos', 'pisCofinsCalculo']) {
+    for (const [chave, valor] of Object.entries(parametros[grupo] || {})) {
+      if (typeof valor === 'string' || (typeof valor === 'number' && Number.isFinite(valor))) campos[`${grupo}.${chave}`] = valor;
+    }
   }
   for (const chave of ['CST', 'cClassTrib', 'cIndOp', 'finNFSe', 'indFinal', 'indDest']) {
     const valor = parametros.ibscbs?.[chave];

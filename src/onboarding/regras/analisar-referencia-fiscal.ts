@@ -3,6 +3,7 @@
  * da nota anterior nunca viram impostos fixos ou dados de um próximo paciente.
  */
 import { extrairIbscbsReferencia } from './extrair-ibscbs-referencia.js';
+import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
 import { extrairSugestaoEmissao } from './extrair-sugestao-emissao.js';
 
 export function analisarReferenciaFiscal(xmlObj: any) {
@@ -28,15 +29,36 @@ export function analisarReferenciaFiscal(xmlObj: any) {
   detectar(dps.valores, ['vServPrest','trib'], 'valores');
   detectar(dps.valores?.vServPrest, ['vServ'], 'valores/vServPrest');
   const trib = dps.valores?.trib;
+  const naoOptante = String(dps.prest?.regTrib?.opSimpNac) === '1';
   detectar(trib, ['tribMun','tribFed','totTrib'], 'valores/trib');
-  detectar(trib?.tribMun, ['tribISSQN','tpRetISSQN'], 'tribMun');
+  detectar(trib?.tribMun, ['tribISSQN','tpRetISSQN', ...(naoOptante ? ['pAliq'] : [])], 'tribMun');
   detectar(trib?.tribFed, ['piscofins'], 'tribFed');
-  detectar(trib?.tribFed?.piscofins, ['CST'], 'tribFed/piscofins');
-  detectar(trib?.totTrib, ['pTotTribSN','indTotTrib'], 'totTrib');
+  const pis = trib?.tribFed?.piscofins;
+  const calculaPis = naoOptante && ['01', '02'].includes(String(pis?.CST).padStart(2, '0'));
+  detectar(pis, ['CST', ...(calculaPis ? ['vBCPisCofins','pAliqPis','pAliqCofins','vPis','vCofins','tpRetPisCofins'] : [])], 'tribFed/piscofins');
+  if (calculaPis) {
+    const valor = Number(dps.valores?.vServPrest?.vServ);
+    const base = Number(pis.vBCPisCofins);
+    if (!Number.isFinite(base) || base <= 0 || base !== valor) pendencias.push('tribFed/piscofins: a base de cálculo precisa corresponder ao valor integral do serviço; base reduzida exige revisão.');
+    for (const [aliquota, montante] of [['pAliqPis','vPis'], ['pAliqCofins','vCofins']]) {
+      const taxa = Number(pis[aliquota]), declarado = Number(pis[montante]);
+      const esperadoCentavos = Math.round(Math.round(base * 100) * Math.round(taxa * 100) / 10000);
+      if (!/^\d+(?:\.\d{1,2})?$/.test(String(pis[aliquota])) || !/^\d+(?:\.\d{1,2})?$/.test(String(pis[montante])) || !Number.isFinite(taxa) || !Number.isFinite(declarado) || Math.round(declarado * 100) !== esperadoCentavos) {
+        pendencias.push(`tribFed/piscofins/${montante}: o valor não comprova o cálculo com a alíquota declarada.`);
+      }
+    }
+  }
+  detectar(trib?.totTrib, ['pTotTribSN','indTotTrib', ...(naoOptante ? ['pTotTrib'] : [])], 'totTrib');
   if (String(dps.prest?.regTrib?.opSimpNac) === '3' && trib?.totTrib?.indTotTrib !== undefined) {
     pendencias.push('A forma de totalização da referência para ME/EPP ainda não é suportada.');
   }
-  if (String(dps.prest?.regTrib?.opSimpNac) === '1') pendencias.push('A emissão para não optante pelo Simples ainda precisa de suporte adicional.');
+  if (naoOptante) {
+    if (dps.prest?.regTrib?.regApTribSN !== undefined) pendencias.push('prest/regTrib/regApTribSN: não informar apuração do Simples para não optante.');
+    detectar(trib?.totTrib?.pTotTrib, ['pTotTribFed','pTotTribEst','pTotTribMun'], 'totTrib/pTotTrib');
+    if (Object.keys(trib?.totTrib || {}).filter(k => !k.startsWith('@_')).length !== 1) pendencias.push('totTrib: deve existir uma única forma de totalização.');
+    const validacao = parametrosEmissaoSchema.safeParse({ ...extrairSugestaoEmissao(xmlObj), vigenciaInicio: '2000-01-01' /* apenas valida o formato; a vigência real é definida na confirmação */ });
+    if (!validacao.success) for (const erro of validacao.error.issues) pendencias.push(`${erro.path.join('.')}: ${erro.message}`);
+  }
   if (String(dps.prest?.regTrib?.opSimpNac) === '2' && String(trib?.totTrib?.indTotTrib) !== '0') {
     pendencias.push('Confirmar suporte à forma de totalização dos tributos do MEI.');
   }

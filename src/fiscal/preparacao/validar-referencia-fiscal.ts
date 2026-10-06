@@ -1,4 +1,5 @@
 /** Confirmação e emissão devem usar a mesma referência importada, sem omitir IBS/CBS. */
+import { isDeepStrictEqual } from 'node:util';
 import { ibscbsSchema, type ParametrosIbscbs } from './ibscbs.js';
 export interface ReferenciaFiscalPersistida {
   versao?: number;
@@ -28,9 +29,9 @@ export function validarReferenciaFiscal(
       if (politica[campo] !== referencia.servico[campo]) erros.push(`O serviço em ${campo} difere da nota de referência.`);
     }
     const campos = ['ambiente', 'municipioPrestacao', 'opcaoSimplesNacional', 'regimeApuracaoSn',
-      'regimeEspecialTributacao', 'tribISSQN', 'tpRetISSQN', 'cstPisCofins', 'percentualTotTribSN'];
+      'regimeEspecialTributacao', 'tribISSQN', 'tpRetISSQN', 'cstPisCofins', 'percentualTotTribSN', 'aliquotaIss', 'totalTributos', 'pisCofinsCalculo'];
     for (const campo of campos) {
-      if (referencia.parametrosSugeridos?.[campo] !== (politica.parametros as Record<string, unknown>)[campo]) {
+      if (!isDeepStrictEqual(referencia.parametrosSugeridos?.[campo], (politica.parametros as Record<string, unknown>)[campo])) {
         erros.push(`A configuração de ${campo} difere da nota de referência.`);
       }
     }

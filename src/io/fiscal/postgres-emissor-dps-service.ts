@@ -152,7 +152,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
     if (preparacao?.ok) {
       const p = preparacao.parametros;
-      prestadorConfig.regTrib.opSimpNac = p.opcaoSimplesNacional === 'mei' ? 2 : 3;
+      prestadorConfig.regTrib.opSimpNac = ({ nao_optante: 1, mei: 2, me_epp: 3 } as const)[p.opcaoSimplesNacional];
       prestadorConfig.regTrib.regApTribSN = ({ regime_1: 1, regime_2: 2, regime_3: 3 } as const)[p.regimeApuracaoSn!];
       prestadorConfig.regTrib.regEspTrib = p.regimeEspecialTributacao;
       prestadorConfig.pTotTribSN = p.percentualTotTribSN ?? 0; // MEI não serializa percentual.

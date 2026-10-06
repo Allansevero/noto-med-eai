@@ -111,3 +111,8 @@ perfil/classificação alterados, vigência, ambiente, múltiplos serviços/data
 CPF/CNPJ, bloqueio antes de qualquer acesso ao certificado/SEFIN, formato do XML
 com parâmetros revisados e atomicidade/rollback da confirmação fiscal. Não são
 testes de validade jurídica nem substituem homologação no provedor.
+
+Atualização: o suporte ao regime não optante e seus limites atuais estão
+descritos em [Nota padrão obtida automaticamente](nota-padrao-automatica.md#referência-fora-do-simples-nacional).
+As restrições históricas acima para esse regime foram ampliadas para os grupos
+especificados nessa documentação; retenções e tratamentos adicionais permanecem pendentes.

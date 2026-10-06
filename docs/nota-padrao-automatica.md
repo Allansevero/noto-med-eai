@@ -49,10 +49,10 @@ continua individual por emitente, podendo orientar um conector futuro.
 O leitor reconhece referências NFS-e nacionais 1.00 e 1.01 com DPS original.
 Isso não converte a versão do XML nem adiciona suporte aos campos fiscais que
 ainda não são representados pelo emissor. A nova DPS continua na versão 1.01. A preparação
-continua conservadora: MEI ou ME/EPP, operação tributável sem retenção de ISS e
-somente os grupos tributários já suportados. Não optante pelo Simples, alíquota
-ISS declarada, retenções, cálculos adicionais e extensões sem suporte ficam
-pendentes. Não há afirmação de suporte integral a todas as operações IBS/CBS.
+continua conservadora: MEI, ME/EPP e não optante pelo Simples, em operação
+tributável sem retenção de ISS e com os grupos tributários descritos abaixo.
+Retenções, deduções, cálculos sem uma regra comprovada e extensões sem suporte
+ficam pendentes. Não há afirmação de suporte integral a todas as operações IBS/CBS.
 
 A nota mais recente não é identificada automaticamente como uma emissão manual
 pelo portal; por isso o usuário precisa reconhecer e confirmar a referência.
@@ -129,3 +129,39 @@ se o usuário alterar a caixa de consentimento. Nenhum campo tributário é envi
 pelo navegador nem modificado para contornar um bloqueio. Os logs conservam o
 código e as pendências técnicas da referência para investigação. Essa mudança
 não amplia o suporte do emissor para outras operações tributárias.
+
+## Referência fora do Simples Nacional
+
+O regime `opSimpNac=1` é extraído, confirmado e transmitido sem conversão para
+ME/EPP. Não envia `regApTribSN` ou `pTotTribSN`. A alíquota de ISS (`pAliq`),
+quando declarada na DPS de origem, é preservada na mesma posição do layout;
+quando ausente, não recebe um padrão. O ISS calculado pelo autorizador não é copiado.
+
+A totalização mantém `indTotTrib=0` ou os percentuais federal, estadual e
+municipal de `pTotTrib`, incluindo zeros. Montantes de `vTotTrib` não são
+transformados em percentuais por inferência: essa referência fica pendente.
+
+PIS/COFINS permite ausência do grupo ou CST 00, 04, 06, 07, 08 e 09 sem campos
+de cálculo adicionais. Para CST 01/02, exige base igual ao valor integral do
+serviço da referência, alíquotas explícitas e valores que comprovem o cálculo
+com arredondamento ao centavo. Na nova consulta calcula uma nova base e novos
+valores usando essas alíquotas; os montantes antigos não são persistidos na
+política. Preserva a ausência do tipo de retenção ou os indicadores 0/2
+quando declarados. Outros indicadores de retenção, IRRF/CP/CSLL, base reduzida,
+descontos e campos desconhecidos continuam bloqueados.
+
+Os novos parâmetros ficam no JSON da política existente e participam da
+comparação com a referência e da auditoria. Não há migração nova. Após implantar,
+use **Buscar nota pelo certificado** para reanalisar referências importadas
+antes deste suporte e depois confirme **Usar nota como padrão**. Não é necessário
+upload de XML nem recadastro do A1. A busca usa a última nota disponível como antes.
+
+Testes usam referências sintéticas e transmissão simulada. Suporte estrutural
+não comprova autorização de uma nota real ou cobertura de todos os municípios
+e tratamentos tributários.
+
+Na verificação desta entrega, seis grupos tributários gerados passaram na
+validação dos tipos do XSD nacional 1.01 de referência. A validação da DPS
+inteira com libxml2 encontrou incompatibilidade no padrão ancorado da série
+(`^0{0,4}\d{1,5}$`) do XSD usado; não foi alterado o XML nem o schema para
+contornar isso. Não afirmamos validação integral da DPS por esse teste.

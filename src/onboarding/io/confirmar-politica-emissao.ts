@@ -32,7 +32,9 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
         const mensagem = texto.includes('tribMun/pAliq')
           ? 'A nota contém uma alíquota de ISS que o emissor do Noto ainda não consegue reproduzir. A configuração permanece pendente para análise da equipe.'
           : texto.includes('não optante pelo Simples')
-          ? 'A nota usa um regime fora do Simples Nacional cuja emissão ainda não é suportada pelo Noto. A equipe precisa preparar esse suporte antes de liberar a emissão.'
+          ? 'Esta referência foi analisada antes do suporte ao regime fora do Simples. Clique em Buscar nota pelo certificado para atualizar a análise e confirme novamente.'
+          : texto.includes('totTrib/vTotTrib')
+          ? 'A nota informa tributos aproximados em valores, sem uma regra explícita para recalculá-los nas próximas consultas. A equipe precisa analisar essa forma de totalização antes de liberar a emissão.'
           : texto.includes('IBSCBS') || texto.includes('IBS/CBS')
           ? 'A nota contém informações de IBS/CBS que o Noto ainda não consegue reproduzir integralmente. A configuração permanece pendente para análise da equipe.'
           : texto.includes('tribFed')
@@ -46,7 +48,7 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
         const campos = [...new Set(candidato.error.issues.map(erro => erro.path.join('.')))];
         const nomes: Record<string, string> = { ambiente: 'ambiente de emissão', municipioPrestacao: 'município da prestação',
           opcaoSimplesNacional: 'regime tributário', regimeApuracaoSn: 'regime de apuração', regimeEspecialTributacao: 'regime especial',
-          tribISSQN: 'tratamento do ISS', tpRetISSQN: 'retenção do ISS', cstPisCofins: 'PIS/COFINS', percentualTotTribSN: 'totalização dos tributos', ibscbs: 'IBS/CBS' };
+          tribISSQN: 'tratamento do ISS', tpRetISSQN: 'retenção do ISS', cstPisCofins: 'PIS/COFINS', percentualTotTribSN: 'totalização dos tributos', aliquotaIss: 'alíquota do ISS', totalTributos: 'totalização dos tributos', pisCofinsCalculo: 'cálculo de PIS/COFINS', ibscbs: 'IBS/CBS' };
         const motivos = [...new Set(campos.map(campo => nomes[campo.split('.')[0]] || 'informações tributárias adicionais'))];
         throw new ErroAdocaoReferencia('PARAMETROS_REFERENCIA_PENDENTES',
           `A referência precisa de análise em: ${motivos.join(', ')}. Esses dados estão ausentes ou ainda não são suportados pelo Noto; o consentimento não substitui essa verificação.`, { campos });

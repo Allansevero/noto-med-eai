@@ -1483,7 +1483,7 @@
       const p = referenciaFiscalAtual?.parametrosSugeridos || {};
       notaPadraoDisponivel = Boolean(referenciaFiscalAtual?.hash);
       const semPendenciasConhecidas = notaPadraoDisponivel && !(referenciaFiscalAtual?.pendencias || []).length &&
-        ['mei', 'me_epp'].includes(p.opcaoSimplesNacional);
+        ['nao_optante', 'mei', 'me_epp'].includes(p.opcaoSimplesNacional);
       document.getElementById('confirmarNotaPadrao').checked = false;
       atualizarConfirmacaoNota();
       document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';

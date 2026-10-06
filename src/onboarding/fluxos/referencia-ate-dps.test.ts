@@ -5,6 +5,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { processarOnboardingXml } from './processar-onboarding-xml.js';
 import { confirmarPoliticaEmissao } from '../io/confirmar-politica-emissao.js';
 import { prepararEmissao } from '../../fiscal/preparacao/preparar-emissao.js';
+import { montarDps } from '../../io/fiscal/montar-dps.js';
 import { gerarXmlDps } from '../../io/fiscal/gerar-xml-dps.js';
 import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
 
@@ -176,4 +177,83 @@ test('titular divergente e falha no storage não alteram cadastro; falha ao salv
   const servico = contexto('servico');
   await assert.rejects(() => processarOnboardingXml(servico.deps, 'med', xml), /serviço/);
   assert.equal(servico.queries.at(-1), 'rollback');
+});
+
+function referenciaNaoOptante(tributos = '<indTotTrib>0</indTotTrib>', pis = '<CST>08</CST>') {
+  return xml.replace('<opSimpNac>3</opSimpNac><regApTribSN>1</regApTribSN>', '<opSimpNac>1</opSimpNac>')
+    .replace('</tribMun>', '<pAliq>2.00</pAliq></tribMun>')
+    .replace('<CST>06</CST>', pis).replace('<pTotTribSN>0.00</pTotTribSN>', tributos);
+}
+function gerarNaoOptante(politica: any, valor: number) {
+  return gerarXmlDps({ nDPS: '43', tomador: { CPF: '98765432100', xNome: 'Paciente Novo' },
+    xDescServ: 'Nova consulta', vServ: valor, cTribNac: politica.ctribNac, cNBS: politica.cnbs,
+    cTribMun: politica.ctribMun, cIndOp: '', cClassTrib: '',
+    fiscal: { ...politica.parametros, competencia: politica.parametros.vigenciaInicio } }, {
+    cnpj: '11222333000181', im: '', codMunicipio: '3550308', ambiente: 2, serie: '12', pTotTribSN: 9,
+    regTrib: { opSimpNac: 1, regApTribSN: 1, regEspTrib: 0 }
+  }).xml;
+}
+test('não optante preserva ISS, totalização e IBS/CBS sem herdar parâmetros do Simples', async () => {
+  for (const total of ['<indTotTrib>0</indTotTrib>', '<pTotTrib><pTotTribFed>13.45</pTotTribFed><pTotTribEst>0.00</pTotTribEst><pTotTribMun>2.00</pTotTribMun></pTotTrib>']) {
+    const c = contexto(); const origem = referenciaNaoOptante(total);
+    await processarOnboardingXml(c.deps, 'med', origem);
+    assert.deepEqual(c.referencia().pendencias, []);
+    assert.equal(c.referencia().parametrosSugeridos.opcaoSimplesNacional, 'nao_optante');
+    await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash });
+    const politica = c.politica();
+    const preparo = prepararEmissao({ id: 'sol', medicoId: 'med', pacienteId: 'p', valorServicoCentavos: 17005,
+      ctribNac: '040101', cnbs: '122051900', xdescServ: 'Nova consulta' }, {
+      perfil: { ...politica.perfil, confirmado: true, referenciaFiscal: c.referencia() },
+      competenciaInformada: politica.parametros.vigenciaInicio, datasConsultas: [],
+      servicos: [{ id: 'serv', ctribNac: '040101', cnbs: '122051900', ctribMun: '001', politica }]
+    }, politica.parametros.vigenciaInicio);
+    assert.equal(preparo.ok, true);
+    const json = montarDps({ nDPS: '43', tomador: { CPF: '98765432100', xNome: 'Paciente Novo' },
+      xDescServ: 'Consulta', vServ: 170.05, cTribNac: '040101', cNBS: '', cIndOp: '', cClassTrib: '',
+      fiscal: { ...politica.parametros, competencia: politica.parametros.vigenciaInicio } },
+      { cnpj: '11222333000181', im: '', codMunicipio: '3550308', ambiente: 2, pTotTribSN: 9, regTrib: { opSimpNac: 1, regApTribSN: 1, regEspTrib: 0 } });
+    assert.equal((json.infDps.valores.trib.tribMun as any).pAliq, '2.00');
+    assert.equal(json.infDps.prest.regTrib.opSimpNac, 1);
+    const parser = new XMLParser({ parseTagValue: false });
+    const nova = parser.parse(gerarNaoOptante(politica, 170.05)).DPS.infDPS;
+    const original = parser.parse(origem).NFSe.infNFSe.DPS.infDPS;
+    assert.deepEqual(nova.prest.regTrib, original.prest.regTrib);
+    assert.deepEqual(nova.valores.trib, original.valores.trib);
+    assert.deepEqual(nova.IBSCBS, original.IBSCBS);
+    assert.equal(nova.valores.vServPrest.vServ, '170.05');
+    assert.ok(validarReferenciaFiscal(c.referencia(), { ...politica, parametros: { ...politica.parametros, aliquotaIss: 5 } }).length);
+    assert.equal(validarReferenciaFiscal(c.referencia(), { ...politica, parametros: { ...politica.parametros, totalTributos: { tipo: 'nao_informado' } } }).length > 0, total.startsWith('<pTotTrib>'));
+  }
+});
+test('recalcula PIS/COFINS com alíquotas explícitas sobre o valor da nova consulta', async () => {
+  const c = contexto();
+  await processarOnboardingXml(c.deps, 'med', referenciaNaoOptante(undefined,
+    '<CST>01</CST><vBCPisCofins>999.99</vBCPisCofins><pAliqPis>0.65</pAliqPis><pAliqCofins>3.00</pAliqCofins><vPis>6.50</vPis><vCofins>30.00</vCofins><tpRetPisCofins>2</tpRetPisCofins>'));
+  assert.deepEqual(c.referencia().pendencias, []);
+  await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash });
+  const nova = new XMLParser({ parseTagValue: false }).parse(gerarNaoOptante(c.politica(), 170.05)).DPS.infDPS;
+  assert.deepEqual(nova.valores.trib.tribFed.piscofins, { CST: '01', vBCPisCofins: '170.05', pAliqPis: '0.65', pAliqCofins: '3.00', vPis: '1.11', vCofins: '5.10', tpRetPisCofins: '2' });
+  assert.ok(!JSON.stringify(c.politica()).includes('999.99'));
+});
+test('não optante não copia montantes, base reduzida, retenção ou alíquotas incoerentes', async () => {
+  for (const origem of [referenciaNaoOptante('<vTotTrib><vTotTribFed>20.00</vTotTribFed><vTotTribEst>0.00</vTotTribEst><vTotTribMun>2.00</vTotTribMun></vTotTrib>'),
+    referenciaNaoOptante(undefined, '<CST>01</CST><vBCPisCofins>500.00</vBCPisCofins><pAliqPis>0.65</pAliqPis><pAliqCofins>3.00</pAliqCofins><vPis>3.25</vPis><vCofins>15.00</vCofins>'),
+    referenciaNaoOptante().replace('<indTotTrib>0</indTotTrib>', '<pTotTrib><pTotTribFed></pTotTribFed><pTotTribEst>0.00</pTotTribEst><pTotTribMun>2.00</pTotTribMun></pTotTrib>'),
+    referenciaNaoOptante().replace('<pAliq>2.00</pAliq>', '<pAliq></pAliq>'),
+    referenciaNaoOptante(undefined, '<CST>01</CST><vBCPisCofins>999.99</vBCPisCofins><pAliqPis>0.65</pAliqPis><pAliqCofins>3.00</pAliqCofins><vPis>6.50</vPis><vCofins>30.00</vCofins><tpRetPisCofins>1</tpRetPisCofins>'),
+    referenciaNaoOptante().replace('</tribFed>', '<vRetIRRF>10.00</vRetIRRF></tribFed>'),
+    referenciaNaoOptante(undefined, '<CST>01</CST><vBCPisCofins>999.99</vBCPisCofins><pAliqPis>0.65</pAliqPis><pAliqCofins>3.00</pAliqCofins><vPis>999.00</vPis><vCofins>30.00</vCofins>')]) {
+    const c = contexto(); await processarOnboardingXml(c.deps, 'med', origem);
+    await assert.rejects(() => confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash }));
+    assert.equal(c.politica(), undefined);
+  }
+});
+
+test('preserva alíquotas zero e indicador de não retenção zero quando declarados', async () => {
+  const c = contexto();
+  await processarOnboardingXml(c.deps, 'med', referenciaNaoOptante(undefined,
+    '<CST>02</CST><vBCPisCofins>999.99</vBCPisCofins><pAliqPis>0.00</pAliqPis><pAliqCofins>0.00</pAliqCofins><vPis>0.00</vPis><vCofins>0.00</vCofins><tpRetPisCofins>0</tpRetPisCofins>'));
+  await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash });
+  const nova = new XMLParser({ parseTagValue: false }).parse(gerarNaoOptante(c.politica(), 170.05)).DPS.infDPS;
+  assert.deepEqual(nova.valores.trib.tribFed.piscofins, { CST: '02', vBCPisCofins: '170.05', pAliqPis: '0.00', pAliqCofins: '0.00', vPis: '0.00', vCofins: '0.00', tpRetPisCofins: '0' });
 });
