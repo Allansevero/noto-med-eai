@@ -28,13 +28,15 @@ export async function salvarPerfilProfissional(pool: pg.Pool, entrada: unknown) 
       [medico.id, dados.nome ?? null, dados.crm !== undefined, dados.crm ?? null,
         dados.rqe !== undefined, dados.rqe ?? null]);
     if (rows.length !== 1) throw new ErroPerfilProfissional('Não foi possível salvar os dados profissionais.');
-    if (dados.nome !== undefined) {
-      const usuario = await client.query(`update usuarios set nome = $2, atualizado_em = now()
-        where id = $1 returning id`, [medico.usuario_id, dados.nome]);
-      if (usuario.rows.length !== 1) throw new ErroPerfilProfissional('Não foi possível salvar o nome da conta.');
+    let emailSalvo: string | undefined;
+    if (dados.nome !== undefined || dados.email !== undefined) {
+      const usuario = await client.query(`update usuarios set nome = coalesce($2, nome), email = coalesce($3, email), atualizado_em = now()
+        where id = $1 returning id, email`, [medico.usuario_id, dados.nome ?? null, dados.email ?? null]);
+      if (usuario.rows.length !== 1) throw new ErroPerfilProfissional('Não foi possível salvar os dados da conta.');
+      if (dados.email !== undefined) emailSalvo = usuario.rows[0].email;
     }
     await client.query('commit');
-    return rows[0] as { medicoId: string; nome: string; crm: string | null; rqe: string | null };
+    return { ...rows[0], ...(emailSalvo !== undefined ? { email: emailSalvo } : {}) } as { medicoId: string; nome: string; crm: string | null; rqe: string | null; email?: string };
   } catch (erro) {
     await client.query('rollback');
     throw erro;

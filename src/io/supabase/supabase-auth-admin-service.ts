@@ -144,7 +144,9 @@ export class SupabaseAuthAdminService implements AuthAdminService {
   }
 
   private async buscarEmailPorAuthId(authUserId: string): Promise<string | null> {
-    const { rows } = await this.pool.query('select email from usuarios where auth_user_id = $1 limit 1', [authUserId]);
-    return rows[0]?.email || null;
+    // O e-mail editável é de contato; a identidade de login continua no Auth.
+    const { data, error } = await this.supabase.auth.admin.getUserById(authUserId);
+    if (error || !data.user?.email) throw new Error('Não foi possível localizar a identidade de acesso.');
+    return data.user.email;
   }
 }

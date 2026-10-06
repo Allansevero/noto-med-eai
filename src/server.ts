@@ -231,13 +231,14 @@ export function criarAppExpress() {
   // Atualizar Perfil do Médico (Nome, CRM, RQE) na aba Conta
   app.post('/api/conta/perfil', async (req: Request, res: Response) => {
     try {
-      const { usuarioId, medicoId: medicoIdRaw, nome, crm, rqe } = req.body || {};
+      const { usuarioId, medicoId: medicoIdRaw, nome, crm, rqe, email } = req.body || {};
       const medicoIdFinal = await resolverMedicoId(pool, medicoIdRaw || usuarioId);
 
-      const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe });
+      const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe, email });
       return res.json({ ok: true, ...perfil });
     } catch (err: any) {
       if (err instanceof ZodError) return res.status(400).json({ ok: false, detalhe: err.issues[0]?.message });
+      if (err?.code === '23505') return res.status(409).json({ ok: false, detalhe: 'Este e-mail já está associado a outra conta.' });
       if (err instanceof ErroPerfilProfissional) return res.status(400).json({ ok: false, detalhe: err.message });
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao atualizar perfil' });
     }

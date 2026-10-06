@@ -768,6 +768,14 @@
     button.btn-secondary:hover, button.btn-link:hover { color: rgba(18, 28, 34, 0.7) !important; }
     body p, body label, body h1, body h2, body h3,
     .drop-zone, .access-subtitle, .alert, .code-box { text-align: left !important; }
+    .conta-menu-container { background: #E9E9EB; border-radius: 20px; padding: 0.5rem 0; width: 100%; }
+    #contaMenu { width: 100%; }
+    button.conta-menu-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 1.1rem 1.25rem; border: none; background: transparent !important; color: var(--text) !important; text-align: left; cursor: pointer; border-radius: 0; }
+    button.conta-menu-item:hover { background: rgba(18, 28, 34, 0.05) !important; }
+    button.conta-menu-item.conta-menu-danger { color: #C43232 !important; }
+    button.conta-sair { margin-top: 1.25rem; }
+    .conta-interna, .conta-secao { display: flex; flex-direction: column; align-items: flex-start; gap: var(--gap); width: 100%; }
+    .conta-secao > .access-title { margin: 0; }
     .fiscal-parametros { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem 1rem; margin-top: 1rem; }
     .fiscal-parametros dt, .fiscal-parametros dd { overflow-wrap: anywhere; font-size: 15px; font-weight: 400; text-align: left; }
     .fiscal-parametros dt { color: var(--text-secondary); }
@@ -988,37 +996,6 @@
           </div>
         </div>
 
-        <!-- PLANO E LIMITES DE EMISSÃO STRIPE -->
-        <div class="params-card" style="width: 100%;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-            <span style="font-size: 15px; font-weight: 700; color: var(--text);">Plano &amp; Limites</span>
-            <span id="badgePlano" class="tag-active">GRATUITO</span>
-          </div>
-          <div class="stat-row" style="padding: 0.5rem 0;">
-            <span style="color: var(--text-secondary);">Notas emitidas hoje</span>
-            <span id="lblNotasHoje" style="font-weight: 700;">0 / 5 notas</span>
-          </div>
-          <div class="stat-row" style="padding: 0.5rem 0; border-bottom: none;">
-            <span style="color: var(--text-secondary);">Notas este mês</span>
-            <span id="lblNotasMes" style="font-weight: 700;">0 / 100 notas</span>
-          </div>
-          
-          <div id="boxUpgrade" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
-              Plano Mensal: 100 notas/mês por R$ 100,00. Liberação imediata via Stripe.
-            </p>
-            <button type="button" class="btn-action" id="btnAssinarPlano" style="height: 48px; font-size: 15px;">
-              Assinar Plano Mensal (R$ 100/mês)
-            </button>
-          </div>
-
-          <div id="boxGerenciar" class="hidden" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <button type="button" class="btn-action" id="btnGerenciarAssinatura" style="height: 48px; font-size: 14px; background: #FFFFFF; border: 1px solid var(--border-line); color: var(--text);">
-              Gerenciar Assinatura (Stripe)
-            </button>
-          </div>
-        </div>
-
         <div style="width: 100%;">
           <p style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; text-align: left;">Respostas Rápidas no seu WhatsApp:</p>
           <div class="code-box"><strong>/agendamento</strong> → "Consulta agendada!"</div>
@@ -1056,36 +1033,22 @@
 
     <!-- CONTEÚDO DA ABA CONTA -->
     <div id="tabContentConta" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnConta">
-      <div class="access-header">
-        <h2 class="access-title" style="font-size: 34px;">Sua Conta</h2>
-        <p class="access-subtitle">Dados profissionais e configurações do consultório.</p>
-        <p class="access-subtitle">Nome completo, CRM e RQE salvos aqui serão usados na descrição das novas solicitações de nota. Notas já emitidas não são alteradas.</p>
+      <div id="contaMenu">
+        <nav class="conta-menu-container" aria-label="Configurações da conta">
+          <button type="button" class="conta-menu-item" id="btnContaDados" data-conta-secao="dados">Dados da conta<span aria-hidden="true">›</span></button>
+          <button type="button" class="conta-menu-item" id="btnContaFiscal" data-conta-secao="fiscal">Dados fiscais<span aria-hidden="true">›</span></button>
+          <button type="button" class="conta-menu-item" id="btnContaPreferencias" data-conta-secao="preferencias">Preferências<span aria-hidden="true">›</span></button>
+          <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
+          <button type="button" class="conta-menu-item" id="btnContaMembros" data-conta-secao="membros">Membros<span aria-hidden="true">›</span></button>
+          <button type="button" class="conta-menu-item" id="btnContaConvites" data-conta-secao="convites">Convites<span aria-hidden="true">›</span></button>
+          <button type="button" class="conta-menu-item conta-menu-danger" id="btnContaDeletar" data-conta-secao="deletar">Deletar conta<span aria-hidden="true">›</span></button>
+        </nav>
+        <button type="button" class="btn-link conta-sair" id="btnLogoutConta">Sair da conta</button>
       </div>
-
-      <!-- Dados obtidos automaticamente pelo A1 de cada emitente -->
-      <div id="step2View" class="step-view">
-        <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Parâmetros fiscais</h2>
-          <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
-        </div>
-        <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
-        <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
-        <div id="previewFiscal" class="hidden" style="width:100%">
-          <div class="params-card">
-            <p id="resumoNotaReferencia"></p>
-            <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
-            <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
-            <p id="resumoIbscbs"></p>
-            <p id="pendenciasNotaReferencia" role="status"></p>
-            <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
-          </div>
-          <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
-          <p id="statusAdocaoFiscalConta">Os parâmetros são validados automaticamente após o consentimento ao cadastrar o certificado.</p>
-        </div>
-      </div>
-
-
-      <button type="button" class="btn-action btn-secondary" id="btnAtualizarCertificado">Atualizar certificado</button>
+      <div id="contaInterna" class="hidden conta-interna">
+        <button type="button" class="btn-link" id="btnVoltarConta">← Voltar</button>
+        <section id="contaSecaoDados" class="conta-secao hidden" aria-labelledby="tituloContaDados">
+          <h2 class="access-title" id="tituloContaDados">Dados da conta</h2>
       <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
       <div class="account-fields-list">
         <!-- NOME COMPLETO -->
@@ -1150,26 +1113,120 @@
 
         <!-- NÚMERO DE TELEFONE DA PESSOA -->
         <div class="account-field-group">
-          <label class="field-label-data">Número de Telefone</label>
+          <label class="field-label-data" id="labelContaTelefone">Número conectado</label>
           <div class="input-with-action">
             <input 
               type="text" 
               id="inputContaTelefone" 
               class="input-data-field" 
-              placeholder="Telefone vinculado" 
+              placeholder="Número do WhatsApp conectado"
               readonly 
             />
           </div>
         </div>
+        <!-- EMAIL -->
+        <div class="account-field-group">
+          <label class="field-label-data">E-mail</label>
+          <div class="input-with-action">
+            <input
+              type="email"
+              id="inputContaEmail"
+              class="input-data-field"
+              placeholder="Seu e-mail"
+              readonly
+            />
+            <button type="button" class="btn-input-action" id="btnActionEmail" title="Editar E-mail">
+              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+              </svg>
+              <span class="btn-save-inline-text hidden">Salvar</span>
+            </button>
+          </div>
+        </div>
+
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%; margin-top: 0.5rem;">
-        <button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">
-          Atualizar
-        </button>
-        <button type="button" class="btn-action btn-danger" id="btnLogoutConta">
-          Sair da Conta
-        </button>
+<button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">Atualizar dados</button>
+        </section>
+        <section id="contaSecaoFiscal" class="conta-secao hidden" aria-labelledby="tituloContaFiscal">
+          <h2 class="access-title" id="tituloContaFiscal">Dados fiscais</h2>
+      <!-- Dados obtidos automaticamente pelo A1 de cada emitente -->
+      <div id="step2View" class="step-view">
+        <div class="access-header">
+          <h2 class="access-title" style="font-size: 34px;">Parâmetros fiscais</h2>
+          <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
+        </div>
+        <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
+        <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
+        <div id="previewFiscal" class="hidden" style="width:100%">
+          <div class="params-card">
+            <p id="resumoNotaReferencia"></p>
+            <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
+            <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
+            <p id="resumoIbscbs"></p>
+            <p id="pendenciasNotaReferencia" role="status"></p>
+            <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
+          </div>
+          <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
+          <p id="statusAdocaoFiscalConta">Os parâmetros são validados automaticamente após o consentimento ao cadastrar o certificado.</p>
+        </div>
+      </div>
+
+
+      <button type="button" class="btn-action btn-secondary" id="btnAtualizarCertificado">Atualizar certificado</button>
+
+        </section>
+        <section id="contaSecaoPreferencias" class="conta-secao hidden" aria-labelledby="tituloContaPreferencias">
+          <h2 class="access-title" id="tituloContaPreferencias">Preferências</h2>
+<p>As opções de preferências serão disponibilizadas aqui.</p>
+        </section>
+        <section id="contaSecaoFaturamento" class="conta-secao hidden" aria-labelledby="tituloContaFaturamento">
+          <h2 class="access-title" id="tituloContaFaturamento">Faturamento</h2>
+        <!-- PLANO E LIMITES DE EMISSÃO STRIPE -->
+        <div class="params-card" style="width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <span style="font-size: 15px; font-weight: 700; color: var(--text);">Plano &amp; Limites</span>
+            <span id="badgePlano" class="tag-active">GRATUITO</span>
+          </div>
+          <div class="stat-row" style="padding: 0.5rem 0;">
+            <span style="color: var(--text-secondary);">Notas emitidas hoje</span>
+            <span id="lblNotasHoje" style="font-weight: 700;">0 / 5 notas</span>
+          </div>
+          <div class="stat-row" style="padding: 0.5rem 0; border-bottom: none;">
+            <span style="color: var(--text-secondary);">Notas este mês</span>
+            <span id="lblNotasMes" style="font-weight: 700;">0 / 100 notas</span>
+          </div>
+
+          <div id="boxUpgrade" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+              Plano Mensal: 100 notas/mês por R$ 100,00. Liberação imediata via Stripe.
+            </p>
+            <button type="button" class="btn-action" id="btnAssinarPlano" style="height: 48px; font-size: 15px;">
+              Assinar Plano Mensal (R$ 100/mês)
+            </button>
+          </div>
+
+          <div id="boxGerenciar" class="hidden" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <button type="button" class="btn-action" id="btnGerenciarAssinatura" style="height: 48px; font-size: 14px; background: #FFFFFF; border: 1px solid var(--border-line); color: var(--text);">
+              Gerenciar Assinatura (Stripe)
+            </button>
+          </div>
+        </div>
+
+
+        </section>
+        <section id="contaSecaoMembros" class="conta-secao hidden" aria-labelledby="tituloContaMembros">
+          <h2 class="access-title" id="tituloContaMembros">Membros</h2>
+<p>A gestão de membros será disponibilizada aqui.</p>
+        </section>
+        <section id="contaSecaoConvites" class="conta-secao hidden" aria-labelledby="tituloContaConvites">
+          <h2 class="access-title" id="tituloContaConvites">Convites</h2>
+<p>A gestão de convites será disponibilizada aqui.</p>
+        </section>
+        <section id="contaSecaoDeletar" class="conta-secao hidden" aria-labelledby="tituloContaDeletar">
+          <h2 class="access-title" id="tituloContaDeletar">Deletar conta</h2>
+<p>A exclusão da conta será disponibilizada aqui, com confirmação antes de executar a ação.</p>
+        </section>
       </div>
     </div>
   </section>
@@ -1577,7 +1634,7 @@
         document.getElementById('notaPadraoStatus').textContent = erro.message;
       } finally { btn.disabled = false; }
     });
-    document.getElementById('btnRevisarFiscal').addEventListener('click', () => alternarAba('conta'));
+    document.getElementById('btnRevisarFiscal').addEventListener('click', () => { alternarAba('conta'); abrirSecaoConta('fiscal'); });
     // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---
     document.getElementById('linkConsentimentoFiscal').addEventListener('click', e => e.preventDefault()); // URL dos termos será definida depois.
     document.getElementById('btnAtualizarCertificado').addEventListener('click', () => { hideAlert(alertOnboarding); mostrarPasso(3); });
@@ -1896,6 +1953,7 @@
     const tabConta = document.getElementById('tabContentConta');
 
     function alternarAba(abaDestino) {
+      voltarMenuConta();
       if (!painelDisponivel) abaDestino = 'painel';
       tabBtns.forEach(btn => {
         const ativo = btn.dataset.tab === abaDestino;
@@ -1912,6 +1970,28 @@
       }
     }
 
+    const secoesConta = { dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
+    function voltarMenuConta() {
+      document.getElementById('contaMenu').classList.remove('hidden');
+      document.getElementById('contaInterna').classList.add('hidden');
+      for (const slug of Object.values(secoesConta)) document.getElementById('contaSecao' + slug).classList.add('hidden');
+      document.getElementById('tabsNavigation').classList.toggle('hidden', !painelDisponivel);
+      document.getElementById('onboardingTopBar').classList.toggle('hidden', !painelDisponivel);
+    }
+    function abrirSecaoConta(secao) {
+      if (!painelDisponivel || !secoesConta[secao]) return;
+      document.getElementById('contaMenu').classList.add('hidden');
+      document.getElementById('contaInterna').classList.remove('hidden');
+      document.getElementById('tabsNavigation').classList.add('hidden');
+      document.getElementById('onboardingTopBar').classList.add('hidden');
+      for (const [chave, slug] of Object.entries(secoesConta)) document.getElementById('contaSecao' + slug).classList.toggle('hidden', chave !== secao);
+      if (secao === 'dados' || secao === 'fiscal') atualizarVisualizacaoConta();
+      if (secao === 'faturamento') carregarStatusBilling();
+      document.getElementById('btnVoltarConta').focus();
+    }
+    for (const [chave, slug] of Object.entries(secoesConta)) document.getElementById('btnConta' + slug).addEventListener('click', () => abrirSecaoConta(chave));
+    document.getElementById('btnVoltarConta').addEventListener('click', voltarMenuConta);
+
     async function atualizarVisualizacaoConta() {
       const nome = sessaoAtual?.usuario?.nome || '';
       const tel = sessaoAtual?.usuario?.telefone || telefoneAtual || '';
@@ -1921,7 +2001,8 @@
       const inputRqe = document.getElementById('inputContaRqe');
 
       if (inputNome && inputNome.readOnly) inputNome.value = nome;
-      if (inputTel) inputTel.value = tel ? (formatarCom55(tel) || tel) : '';
+      if (inputTel) inputTel.value = '';
+      const inputEmail = document.getElementById('inputContaEmail');
 
       const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
       if (medicoId) {
@@ -1932,7 +2013,9 @@
             if (inputNome && inputNome.readOnly) inputNome.value = data.status.passos?.passo1Nome ? data.status.nomeUsuario : '';
             if (inputCrm && inputCrm.readOnly) inputCrm.value = data.status.crm || '';
             if (inputRqe && inputRqe.readOnly) inputRqe.value = data.status.rqe || '';
-            if (data.status.telefone && inputTel) inputTel.value = formatarCom55(data.status.telefone);
+            if (inputTel) inputTel.value = formatarCom55(data.status.numeroWhatsapp || data.status.telefone || '');
+            document.getElementById('labelContaTelefone').textContent = data.status.numeroWhatsapp ? 'Número conectado' : 'Número cadastrado';
+            if (inputEmail && inputEmail.readOnly) inputEmail.value = data.status.email || '';
             document.getElementById('statusAdocaoFiscalConta').textContent = data.status.passos?.passo2FiscalConfirmado
               ? 'Configuração fiscal validada e adotada automaticamente.'
               : 'Configuração fiscal pendente. Se você cadastrou o certificado antes deste consentimento, atualize-o para registrar o aceite. Pendências técnicas precisam de análise.';
@@ -1980,6 +2063,10 @@
           const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
           const usuarioId = sessaoAtual?.usuario?.usuarioId;
           if (!medicoId) return;
+          if (campo === 'email' && !input.checkValidity()) {
+            if (statusPerfil) statusPerfil.textContent = 'Informe um e-mail válido.';
+            input.focus(); return;
+          }
           if (campo === 'nome' && novoValor.length < 2) {
             if (statusPerfil) statusPerfil.textContent = 'Informe o nome completo antes de salvar.';
             input.focus();
@@ -2018,7 +2105,7 @@
                 const resNome = document.getElementById('resumoNomeMedico');
                 if (resNome) resNome.textContent = data.nome;
               }
-              if (statusPerfil) statusPerfil.textContent = 'Dados salvos. Serão usados nas novas solicitações de nota.';
+              if (statusPerfil) statusPerfil.textContent = campo === 'email' ? 'E-mail salvo.' : 'Dados salvos. Serão usados nas novas solicitações de nota.';
             } else {
               if (statusPerfil) statusPerfil.textContent = data.detalhe || 'Não foi possível salvar. Tente novamente.';
             }
@@ -2054,6 +2141,7 @@
     configurarCampoEditavel('inputContaNome', 'btnActionNome', 'nome');
     configurarCampoEditavel('inputContaCrm', 'btnActionCrm', 'crm');
     configurarCampoEditavel('inputContaRqe', 'btnActionRqe', 'rqe');
+    configurarCampoEditavel('inputContaEmail', 'btnActionEmail', 'email');
 
     const btnAtualizarConta = document.getElementById('btnAtualizarConta');
     if (btnAtualizarConta) {

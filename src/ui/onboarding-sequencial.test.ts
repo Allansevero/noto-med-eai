@@ -131,3 +131,25 @@ test('alertas de sucesso não aparecem entre etapas; erros locais continuam vis�
   vm.runInContext('mostrarPasso(4)', t.contexto);
   assert.equal(t.node('alertOnboarding').classList.contains('hidden'), true);
 });
+
+test('menu da Conta abre seção interna sem abas e Voltar restaura o menu', () => {
+  const t = tela();
+  vm.runInContext('mostrarPasso(5); alternarAba("conta"); abrirSecaoConta("dados")', t.contexto);
+  assert.equal(t.node('tabsNavigation').classList.contains('hidden'), true);
+  assert.equal(t.node('contaMenu').classList.contains('hidden'), true);
+  assert.equal(t.node('contaSecaoDados').classList.contains('hidden'), false);
+  vm.runInContext('voltarMenuConta()', t.contexto);
+  assert.equal(t.node('tabsNavigation').classList.contains('hidden'), false);
+  assert.equal(t.node('contaMenu').classList.contains('hidden'), false);
+  assert.equal(t.node('contaSecaoDados').classList.contains('hidden'), true);
+});
+test('cada opção da Conta abre apenas sua seção e fiscal permanece separado dos dados pessoais', () => {
+  const t = tela();vm.runInContext('mostrarPasso(5); alternarAba("conta")', t.contexto);
+  for (const secao of ['fiscal', 'preferencias', 'faturamento', 'membros', 'convites', 'deletar']) {
+    t.contexto.secaoTeste = secao;vm.runInContext('abrirSecaoConta(secaoTeste)', t.contexto);
+    assert.equal(t.node('tabsNavigation').classList.contains('hidden'), true);
+    assert.equal(t.node('contaSecaoDados').classList.contains('hidden'), true);
+  }
+  vm.runInContext('abrirSecaoConta("fiscal")', t.contexto);
+  assert.equal(t.node('contaSecaoFiscal').classList.contains('hidden'), false);
+});

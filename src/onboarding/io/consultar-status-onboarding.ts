@@ -15,6 +15,8 @@ export type StatusOnboardingMedico = {
   crm?: string | null;
   rqe?: string | null;
   telefone?: string | null;
+  email?: string | null;
+  numeroWhatsapp?: string | null;
   passos: {
     passo1Nome: boolean;
     passo2XmlEnviado: boolean;
@@ -56,6 +58,7 @@ export async function consultarStatusOnboarding(
       m.rqe,
       u.nome as usuario_nome,
       u.telefone,
+      u.email,
       pf.razao_social,
       pf.inscricao_municipal,
       pf.uf,
@@ -68,6 +71,7 @@ export async function consultarStatusOnboarding(
       pf.dados_reforma_tributaria,
       msf.aliquota_iss,
       to_jsonb(msf)->'parametros_emissao' as parametros_emissao,
+      (select w.numero_telefone from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado' order by w.conectado_em desc nulls last limit 1) as numero_whatsapp,
       (select count(*) from medico_certificados c where c.medico_id = m.id and c.status = 'ativo') as cert_ativos,
       (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado') as whats_conectados
     from medicos m
@@ -105,6 +109,8 @@ export async function consultarStatusOnboarding(
     crm: r.crm || null,
     rqe: r.rqe || null,
     telefone: r.telefone || null,
+    numeroWhatsapp: r.numero_whatsapp || null,
+    email: r.email?.endsWith("@auth.notomed.local") ? null : r.email || null,
     passos: {
       passo1Nome,
       passo2XmlEnviado,

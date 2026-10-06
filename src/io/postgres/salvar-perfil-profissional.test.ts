@@ -30,8 +30,8 @@ function banco(opcoes: { falharUsuario?: boolean; semMedico?: boolean; semUpdate
     if (sql.startsWith('update usuarios')) {
       if (opcoes.falharUsuario) throw new Error('Falha no banco');
       assert.equal(params[0], usuarioId);
-      nomeUsuario = params[1];
-      return { rows: [{ id: usuarioId }] };
+      nomeUsuario = params[1] ?? nomeUsuario;
+      return { rows: [{ id: usuarioId, email: params[2] ?? 'anterior@example.com' }] };
     }
     if (sql.includes('select m.id, m.nome_completo')) return { rows: [{ ...medico, especialidade: 'Cardiologia', ctrib_nac_padrao: '040101' }] };
     return { rows: [] };
@@ -99,4 +99,16 @@ test('rejeita nome vazio, tipo inválido, ausência de alterações e campos nã
     await assert.rejects(() => salvarPerfilProfissional(b.pool, { medicoId, ...alteracoes }));
     assert.equal(b.queries.length, 0);
   }
+});
+
+test('salva email de contato normalizado sem alterar nome ou registros profissionais', async () => {
+  const b = banco();
+  const perfil = await salvarPerfilProfissional(b.pool, { medicoId, usuarioId, email: '  Medico@Example.com  ' });
+  assert.equal(perfil.email, 'medico@example.com');
+  assert.equal(b.nomeUsuario(), 'Nome anterior');
+  assert.equal(perfil.crm, '111/SP');
+  assert.equal(b.queries.at(-1), 'commit');
+  const invalido = banco();
+  await assert.rejects(() => salvarPerfilProfissional(invalido.pool, { medicoId, email: 'invalido' }));
+  assert.equal(invalido.queries.length, 0);
 });

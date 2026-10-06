@@ -14,6 +14,7 @@ export const perfilProfissionalSchema = z.object({
   nome: texto.pipe(z.string().min(2, 'Informe o nome completo.')
     .max(200, 'O nome deve ter até 200 caracteres.')).optional(),
   crm: registro,
-  rqe: registro
-}).strict().refine(dados => dados.nome !== undefined || dados.crm !== undefined || dados.rqe !== undefined,
+  rqe: registro,
+  email: z.string().trim().toLowerCase().email("Informe um e-mail válido.").max(254).optional()
+}).strict().refine(dados => dados.nome !== undefined || dados.crm !== undefined || dados.rqe !== undefined || dados.email !== undefined,
   'Informe um campo para atualizar.');
