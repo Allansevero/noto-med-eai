@@ -13,12 +13,12 @@
       --text: #121C22;
       --text-secondary: rgba(18, 28, 34, 0.72);
       --text-muted: rgba(18, 28, 34, 0.45);
-      --primary: #25D366;
-      --primary-hover: #20ba5a;
+      --primary: #000000;
+      --primary-hover: #202020;
       --border-line: #121C22;
       --font-family: "Geist", sans-serif;
       --font-size-base: 15px;
-      --title-size: 45px;
+      --title-size: 42px;
       --gap: 2rem;
     }
 
@@ -88,7 +88,7 @@
     h1.access-title,
     .access-title {
       font-size: var(--title-size);
-      font-weight: 700;
+      font-weight: 500;
       line-height: 1.12;
       letter-spacing: -0.025em;
       color: var(--text);
@@ -707,15 +707,57 @@
     .btn-input-action.is-saving:hover {
       background: var(--primary-hover);
     }
+    /* Cadastro e onboarding: um único conteúdo central, sem navegação do painel. */
+    body.onboarding-active {
+      min-height: 100dvh;
+      justify-content: center;
+      padding: 2rem 1.5rem;
+    }
+    body.onboarding-active .access-container { margin: 0 auto; }
+    body.onboarding-active .access-container,
+    body.onboarding-active .onboarding-card,
+    body.onboarding-active .access-header,
+    body.onboarding-active .access-form,
+    body.onboarding-active .step-view {
+      align-items: center;
+      text-align: center;
+    }
+    body.onboarding-active .dash-top-bar,
+    body.onboarding-active .tabs-wrapper,
+    body.onboarding-active .tag-active { display: none; }
+    .access-title { font-size: 42px !important; font-weight: 500 !important; }
+    body.onboarding-active h1,
+    body.onboarding-active h2 { font-size: 42px !important; font-weight: 500 !important; text-align: center; }
+    body.onboarding-active p,
+    body.onboarding-active label,
+    body.onboarding-active .alert,
+    body.onboarding-active .access-subtitle {
+      font-size: 15px !important;
+      font-weight: 400 !important;
+      text-align: center !important;
+    }
+    body.onboarding-active #notaPadraoStatus,
+    body.onboarding-active .param-label,
+    body.onboarding-active .param-val { font-size: 15px; font-weight: 400; }
+    button {
+      background: #000000 !important;
+      color: #FFFFFF !important;
+      font-weight: 500 !important;
+      font-size: 15px;
+    }
+    button:hover { background: #202020 !important; }
+    button.btn-link { width: 100%; padding: 1rem; border-radius: 12px; opacity: 1; text-decoration: none; }
+    .tab-btn.active { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px #000000; }
+    .cadastro-voltar { width: 100%; }
   </style>
 </head>
-<body>
+<body class="onboarding-active">
   <div class="page-wrapper">
 
     <!-- ÁREA DE ACESSO / LOGIN MINIMALISTA -->
     <main class="access-container" id="cardAuth">
-      <div class="access-header">
-        <h1 class="access-title">Faça login no Noto</h1>
+      <div class="access-header" id="authHeader">
+        <h1 class="access-title">Crie sua conta</h1>
         <p class="access-subtitle">Enviaremos um código para você fazer login.</p>
       </div>
 
@@ -723,6 +765,10 @@
 
       <!-- ETAPA 1: DIGITAR TELEFONE COM BANDEIRA E +55 AUTOMÁTICO -->
       <form id="formTelefone" class="access-form">
+        <div class="field-wrapper">
+          <label class="field-label" for="inputNomeCadastro">Nome completo</label>
+          <input type="text" id="inputNomeCadastro" class="input-text" placeholder="Seu nome completo" autocomplete="name" required />
+        </div>
         <div class="field-wrapper">
           <div class="phone-input-wrapper">
             <div class="flag-icon-container" title="Brasil (+55)">
@@ -781,7 +827,7 @@
           Entrar no Noto
         </button>
 
-        <div style="width: 100%; text-align: left;">
+        <div class="cadastro-voltar">
           <button type="button" class="btn-link" id="linkVoltar">
             ← Voltar e alterar número
           </button>
@@ -792,7 +838,7 @@
     <!-- PAINEL / ONBOARDING SEQUENCIAL (APÓS LOGIN) -->
     <section class="onboarding-card hidden" id="cardOnboarding">
       <!-- BARRA DE TOPO COM LOGO E BOTÃO DE LOGOUT -->
-      <div class="dash-top-bar">
+      <div class="dash-top-bar hidden" id="onboardingTopBar">
         <span class="dash-brand">Noto</span>
         <button type="button" class="btn-logout-small" id="btnLogoutTop" title="Encerrar sessão">
           Sair
@@ -800,7 +846,7 @@
       </div>
 
       <!-- TABS DE NAVEGAÇÃO SEGMENTADAS (RADIUM 100%) -->
-      <div class="tabs-wrapper" id="tabsNavigation">
+      <div class="tabs-wrapper hidden" id="tabsNavigation">
         <div class="segmented-control" role="tablist" aria-label="Navegação Noto">
           <button type="button" class="tab-btn active" data-tab="painel" role="tab" aria-selected="true" id="tabBtnPainel">
             Painel
@@ -877,8 +923,8 @@
           <input type="file" id="fileCertInput" accept=".pfx,.p12" class="hidden" />
         </div>
 
-        <div class="field-wrapper">
-          <label class="field-label">Senha do Certificado Digital</label>
+        <div class="field-wrapper hidden" id="senhaCertWrapper">
+          <label class="field-label" for="inputSenhaCert">Senha do Certificado Digital</label>
           <input type="password" id="inputSenhaCert" class="input-text" placeholder="Digite a senha do certificado A1" />
         </div>
 
@@ -1131,6 +1177,10 @@
     const formTelefone = document.getElementById('formTelefone');
     const formOtp = document.getElementById('formOtp');
     const inputTelefone = document.getElementById('inputTelefone');
+    const inputNomeCadastro = document.getElementById('inputNomeCadastro');
+    const authHeader = document.getElementById('authHeader');
+    let painelDisponivel = false;
+    let leituraCertificado = 0;
     const alertBox = document.getElementById('alertBox');
     const otpDigits = document.querySelectorAll('.otp-digit');
     const linkVoltar = document.getElementById('linkVoltar');
@@ -1163,6 +1213,18 @@
 
       // Limpa os formulários
       inputTelefone.value = '';
+      inputNomeCadastro.value = '';
+      authHeader.classList.remove('hidden');
+      painelDisponivel = false;
+      document.body.classList.add('onboarding-active');
+      document.getElementById('onboardingTopBar').classList.add('hidden');
+      document.getElementById('tabsNavigation').classList.add('hidden');
+      certArquivoBase64 = '';
+      certNomeArquivo = '';
+      leituraCertificado++;
+      fileCertInput.value = '';
+      document.getElementById('inputSenhaCert').value = '';
+      document.getElementById('senhaCertWrapper').classList.add('hidden');
       otpDigits.forEach(i => i.value = '');
       formOtp.classList.add('hidden');
       formTelefone.classList.remove('hidden');
@@ -1179,6 +1241,9 @@
         btnEnviar.textContent = 'Enviar código';
       }
 
+      document.getElementById('btnValidarOtp').disabled = false;
+      document.getElementById('btnValidarOtp').textContent = 'Entrar no Noto';
+      document.getElementById('labelCertName').textContent = '';
       showAlert('Sessão encerrada com sucesso.', false);
     }
 
@@ -1272,6 +1337,10 @@
     formTelefone.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
+      if (inputNomeCadastro.value.trim().length < 3) {
+        showAlert('Digite seu nome completo.');
+        return;
+      }
 
       let valorSemDdi = inputTelefone.value.trim();
       if (valorSemDdi.startsWith('+55')) {
@@ -1309,6 +1378,7 @@
         showAlert('Código enviado para o seu WhatsApp!', false);
         lblTelefoneDestino.textContent = inputTelefone.value;
         formTelefone.classList.add('hidden');
+        authHeader.classList.add('hidden');
         formOtp.classList.remove('hidden');
         otpDigits[0].focus();
       } catch (err) {
@@ -1322,6 +1392,7 @@
     linkVoltar.addEventListener('click', (e) => {
       e.preventDefault();
       hideAlert();
+      authHeader.classList.remove('hidden');
       formOtp.classList.add('hidden');
       formTelefone.classList.remove('hidden');
       const btn = document.getElementById('btnEnviarOtp');
@@ -1360,7 +1431,27 @@
 
         sessaoAtual = data.sessao;
         localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
-        carregarFluxoOnboarding();
+        // O nome é persistido apenas depois que a posse do telefone foi validada.
+        const nome = inputNomeCadastro.value.trim();
+        if (nome) {
+          document.getElementById('inputNomeMedico').value = nome;
+          const nomeRes = await fetch('/api/onboarding/nome', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuarioId: sessaoAtual.usuario.usuarioId,
+              medicoId: sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId, nome })
+          });
+          const nomeData = await nomeRes.json();
+          if (!nomeRes.ok || !nomeData.ok) {
+            cardAuth.classList.add('hidden'); cardOnboarding.classList.remove('hidden');
+            mostrarPasso(1);
+            showAlert(nomeData.detalhe || 'Não foi possível salvar seu nome. Tente novamente.', true, alertOnboarding);
+            return;
+          }
+          if (nomeData.medicoId) sessaoAtual.usuario.medicoId = nomeData.medicoId;
+          sessaoAtual.usuario.nome = nome;
+          localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
+        }
+        await carregarFluxoOnboarding();
       } catch (err) {
         showAlert('Erro ao autenticar.');
         btn.disabled = false;
@@ -1420,6 +1511,11 @@
     }
 
     function mostrarPasso(passoNum) {
+      painelDisponivel = passoNum === 5;
+      document.body.classList.toggle('onboarding-active', !painelDisponivel);
+      document.getElementById('onboardingTopBar').classList.toggle('hidden', !painelDisponivel);
+      document.getElementById('tabsNavigation').classList.toggle('hidden', !painelDisponivel);
+      alternarAba('painel');
       if (passoNum !== 4) {
         pararPollingConexao();
       }
@@ -1559,17 +1655,34 @@
 
     // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---
     const fileCertInput = document.getElementById('fileCertInput');
-    fileCertInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
+    function carregarCertificado(file) {
+      const leitura = ++leituraCertificado;
+      certArquivoBase64 = ''; certNomeArquivo = '';
+      document.getElementById('inputSenhaCert').value = '';
+      document.getElementById('senhaCertWrapper').classList.add('hidden');
+      document.getElementById('labelCertName').textContent = '';
       if (!file) return;
-      certNomeArquivo = file.name;
-      document.getElementById('labelCertName').textContent = file.name;
       const reader = new FileReader();
       reader.onload = (evt) => {
+        if (leitura !== leituraCertificado) return;
         const binary = evt.target.result;
         certArquivoBase64 = btoa(new Uint8Array(binary).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+        certNomeArquivo = file.name;
+        document.getElementById('labelCertName').textContent = file.name;
+        document.getElementById('senhaCertWrapper').classList.remove('hidden');
+        document.getElementById('inputSenhaCert').focus();
+      };
+      reader.onerror = () => {
+        if (leitura !== leituraCertificado) return;
+        showAlert('Não foi possível carregar o certificado. Selecione o arquivo novamente.', true, alertOnboarding);
       };
       reader.readAsArrayBuffer(file);
+    }
+    fileCertInput.addEventListener('change', e => carregarCertificado(e.target.files[0]));
+    const dropZoneCert = document.getElementById('dropZoneCert');
+    dropZoneCert.addEventListener('dragover', e => e.preventDefault());
+    dropZoneCert.addEventListener('drop', e => {
+      e.preventDefault(); carregarCertificado(e.dataTransfer.files[0]);
     });
 
     document.getElementById('btnSalvarCertificado').addEventListener('click', async () => {
@@ -1861,6 +1974,7 @@
     const tabConta = document.getElementById('tabContentConta');
 
     function alternarAba(abaDestino) {
+      if (!painelDisponivel) abaDestino = 'painel';
       tabBtns.forEach(btn => {
         const ativo = btn.dataset.tab === abaDestino;
         btn.classList.toggle('active', ativo);
