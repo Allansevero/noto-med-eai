@@ -48,3 +48,28 @@ test('revisão fiscal altera razão social e especialidade sem substituir nome, 
   assert.ok(c.queries.some(q => q.sql.includes('set razao_social') && q.params?.[1] === 'Clínica Exemplo Ltda'));
   assert.equal(c.queries.at(-1)?.sql, 'commit');
 });
+
+test('pendências da referência explicam todos os campos bloqueados sem expor valores técnicos', async () => {
+  const pendencias = ['aliquotaIss: Number must be less than or equal to 9.99',
+    'totalTributos: Invalid discriminator value', 'tpRetISSQN: Invalid literal value'];
+  const queries: string[] = [];
+  const pool = { async connect() { return { async query(sql: string) {
+    queries.push(sql);
+    if (sql.startsWith('select cod_municipio')) return { rows: [{ dados_reforma_tributaria: {
+      versao: 2, hash: 'ref', pendencias, parametrosSugeridos: {} } }] };
+    if (sql.startsWith('select id,')) return { rows: [{ id: 's' }] };
+    return { rows: [] };
+  }, release() {} }; } } as any;
+  await assert.rejects(() => confirmarPoliticaEmissao(pool, { medicoId: 'm', usarReferencia: true, referenciaHash: 'ref' }), (erro: any) => {
+    assert.equal(erro.codigo, 'REFERENCIA_FISCAL_PENDENTE');
+    assert.match(erro.message, /alíquota de ISS/);
+    assert.match(erro.message, /totalização dos tributos/);
+    assert.match(erro.message, /retenção de ISS/);
+    assert.doesNotMatch(erro.message, /Invalid|Number must|9\.99/);
+    assert.deepEqual(erro.diagnostico.campos, ['aliquotaIss', 'totalTributos', 'tpRetISSQN']);
+    assert.deepEqual(erro.diagnostico.pendencias, pendencias);
+    return true;
+  });
+  assert.equal(queries.at(-1), 'rollback');
+  assert.ok(!queries.some(q => q.startsWith('update')));
+});

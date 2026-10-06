@@ -165,3 +165,21 @@ validação dos tipos do XSD nacional 1.01 de referência. A validação da DPS
 inteira com libxml2 encontrou incompatibilidade no padrão ancorado da série
 (`^0{0,4}\d{1,5}$`) do XSD usado; não foi alterado o XML nem o schema para
 contornar isso. Não afirmamos validação integral da DPS por esse teste.
+
+## Nota mais recente de substituição
+
+O grupo `DPS/subst` contém a chave da nota substituída e o motivo da operação
+anterior. Os campos conhecidos (`chSubstda`, `cMotivo`, `xMotivo`) são
+reconhecidos como contexto da nota de origem, sem virar parâmetros fiscais
+da nova consulta. Assim, a busca mantém a nota mais recente e reutiliza suas
+regras declaradas; a nova DPS não substitui uma nota antiga. O XML completo
+da referência continua armazenado, mas chave e motivo não entram na política.
+Campos desconhecidos, grupos repetidos ou inválidos e outras pendências fiscais
+continuam impedindo a adoção. Não há mudança na autorização da nota anterior
+nem suporte automático a emitir substituições.
+
+As pendências da confirmação também registram os caminhos em `diagnostico.campos`
+e traduzem as categorias fiscais para a tela, sem mensagens cruas do validador.
+A correção foi reproduzida com referência sintética contendo o mesmo caminho
+`DPS/subst` identificado nos logs de produção. Após implantar, busque novamente
+a nota pelo certificado para atualizar as pendências persistidas.

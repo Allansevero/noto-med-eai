@@ -10,6 +10,30 @@ export class ErroAdocaoReferencia extends Error {
     this.name = 'ErroAdocaoReferencia';
   }
 }
+/** Explica categorias fiscais sem encaminhar mensagens cruas do validador. */
+function explicarCamposPendentes(campos: string[]): string {
+  const regras: Array<[RegExp, string]> = [
+    [/^aliquotaIss(?:\.|$)|(?:^|\/)pAliq$/, 'alíquota de ISS'],
+    [/tpRetISSQN/, 'retenção de ISS'],
+    [/tribISSQN/, 'tratamento do ISS'],
+    [/totalTributos|totTrib|percentualTotTribSN/, 'forma de totalização dos tributos'],
+    [/pisCofinsCalculo|cstPisCofins|piscofins/, 'declaração e cálculo de PIS/COFINS'],
+    [/tribFed/, 'declaração de tributos federais'],
+    [/municipioPrestacao|locPrest/, 'município da prestação'],
+    [/regime|opcaoSimplesNacional|regTrib/, 'regime tributário e forma de apuração'],
+    [/ambiente/, 'ambiente de emissão'],
+    [/IBSCBS|ibscbs/, 'informações de IBS/CBS'],
+    [/^tribMun/, 'regras municipais de ISS'],
+    [/^serv/, 'identificação e classificação do serviço'],
+    [/^valores/, 'base de cálculo e composição dos valores'],
+    [/^DPS/, 'informações adicionais da declaração']
+  ];
+  const motivos = [...new Set(campos.map(campo => regras.find(([padrao]) => padrao.test(campo))?.[1]
+    || 'informações adicionais da referência'))];
+  return motivos.length
+    ? `A nota tem pendências em: ${motivos.join('; ')}. Esses dados estão incompletos, inconsistentes ou exigem suporte adicional. A equipe precisa analisar esses itens antes de liberar a emissão.`
+    : 'A declaração original da nota precisa de análise antes de liberar a emissão. A equipe pode consultar as pendências específicas nos registros de validação.';
+}
 export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId: string; referenciaHash?: string; usarReferencia?: boolean; parametrosEmissao?: unknown; opcaoSimplesNacional?: string; serieDps?: string; proximoNumeroDps?: number; razaoSocial?: string; especialidade?: string; aliquotaIss?: number }): Promise<void> {
   let parametros: ParametrosEmissao | undefined = input.usarReferencia ? undefined : parametrosEmissaoSchema.parse(input.parametrosEmissao);
   const client = await pool.connect();
@@ -29,6 +53,8 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
       const pendenciasReferencia: string[] = referencia.pendencias || [];
       if (pendenciasReferencia.length) {
         const texto = pendenciasReferencia.join(' ');
+        const campos = [...new Set(pendenciasReferencia.map(pendencia => pendencia.split(':')[0].trim())
+          .filter(campo => /^[A-Za-z_][A-Za-z0-9_/.]{0,119}$/.test(campo)))];
         const mensagem = texto.includes('tribMun/pAliq')
           ? 'A nota contém uma alíquota de ISS que o emissor do Noto ainda não consegue reproduzir. A configuração permanece pendente para análise da equipe.'
           : texto.includes('não optante pelo Simples')
@@ -39,8 +65,8 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
           ? 'A nota contém informações de IBS/CBS que o Noto ainda não consegue reproduzir integralmente. A configuração permanece pendente para análise da equipe.'
           : texto.includes('tribFed')
           ? 'A forma de declaração dos tributos federais dessa nota ainda precisa de suporte no Noto. A configuração permanece pendente para análise da equipe.'
-          : 'A nota contém informações do serviço ou da tributação que o Noto ainda não consegue reproduzir integralmente. A equipe precisa analisar esses campos antes de liberar a emissão.';
-        throw new ErroAdocaoReferencia('REFERENCIA_FISCAL_PENDENTE', mensagem, { pendencias: pendenciasReferencia });
+          : explicarCamposPendentes(campos);
+        throw new ErroAdocaoReferencia('REFERENCIA_FISCAL_PENDENTE', mensagem, { campos, pendencias: pendenciasReferencia });
       }
       const candidato = parametrosEmissaoSchema.safeParse({ ...referencia.parametrosSugeridos,
         vigenciaInicio: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) });

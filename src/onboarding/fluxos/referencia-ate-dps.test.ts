@@ -257,3 +257,43 @@ test('preserva alíquotas zero e indicador de não retenção zero quando declar
   const nova = new XMLParser({ parseTagValue: false }).parse(gerarNaoOptante(c.politica(), 170.05)).DPS.infDPS;
   assert.deepEqual(nova.valores.trib.tribFed.piscofins, { CST: '02', vBCPisCofins: '170.05', pAliqPis: '0.00', pAliqCofins: '0.00', vPis: '0.00', vCofins: '0.00', tpRetPisCofins: '0' });
 });
+
+test('usa os parâmetros da nota de substituição sem substituir novamente a nota anterior', async () => {
+  const chaveAnterior = '35261011222333000181000000000000000000000000000001';
+  const origem = referenciaNaoOptante().replace('<prest>', `<subst><chSubstda>${chaveAnterior}</chSubstda><cMotivo>01</cMotivo><xMotivo>Corrigir dados da consulta anterior</xMotivo></subst><prest>`);
+  const c = contexto();
+  await processarOnboardingXml(c.deps, 'med', origem);
+  assert.deepEqual(c.referencia().pendencias, []);
+  await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash });
+  assert.equal(c.politica().parametros.opcaoSimplesNacional, 'nao_optante');
+  const resultado = gerarNaoOptante(c.politica(), 170.05);
+  const parser = new XMLParser({ parseTagValue: false });
+  const nova = parser.parse(resultado).DPS.infDPS;
+  const original = parser.parse(origem).NFSe.infNFSe.DPS.infDPS;
+  assert.deepEqual(nova.valores.trib, original.valores.trib);
+  assert.deepEqual(nova.IBSCBS, original.IBSCBS);
+  assert.equal(nova.subst, undefined);
+  assert.ok(!resultado.includes(chaveAnterior));
+  assert.ok(!JSON.stringify(c.referencia()).includes(chaveAnterior));
+  assert.ok(!JSON.stringify(c.politica()).includes('Corrigir dados'));
+});
+test('nota de substituição não libera campos fiscais desconhecidos', async () => {
+  const c = contexto();
+  await processarOnboardingXml(c.deps, 'med', referenciaNaoOptante()
+    .replace('<prest>', '<subst><chSubstda>35261011222333000181000000000000000000000000000001</chSubstda><cMotivo>01</cMotivo></subst><prest>')
+    .replace('</tribMun>', '<campoFiscalNovo>1</campoFiscalNovo></tribMun>'));
+  assert.ok(c.referencia().pendencias.some((p: string) => p.includes('tribMun/campoFiscalNovo')));
+  await assert.rejects(() => confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash }));
+  assert.equal(c.politica(), undefined);
+});
+
+test('não trata substituição desconhecida, repetida ou inválida como contexto reconhecido', async () => {
+  const grupo = '<subst><chSubstda>35261011222333000181000000000000000000000000000001</chSubstda><cMotivo>01</cMotivo></subst>';
+  for (const subst of [grupo.replace('</subst>', '<campoNovo>1</campoNovo></subst>'), grupo + grupo, '<subst>invalida</subst>']) {
+    const c = contexto();
+    await processarOnboardingXml(c.deps, 'med', referenciaNaoOptante().replace('<prest>', `${subst}<prest>`));
+    assert.ok(c.referencia().pendencias.some((p: string) => p.startsWith('DPS/subst')));
+    await assert.rejects(() => confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', usarReferencia: true, referenciaHash: c.referencia().hash }));
+    assert.equal(c.politica(), undefined);
+  }
+});

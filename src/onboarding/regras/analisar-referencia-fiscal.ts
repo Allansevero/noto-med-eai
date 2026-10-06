@@ -21,7 +21,13 @@ export function analisarReferenciaFiscal(xmlObj: any) {
   if (!nfse.DPS?.infDPS) pendencias.push('A nota de referência precisa conter a DPS original do padrão nacional.');
   if (String(dps.tpEmit) !== '1') pendencias.push('A referência precisa ser uma emissão pelo próprio prestador.');
   if (!ibscbs.presente && (nfse.IBSCBS || nfse.IBSCBSSEL)) pendencias.push('Há IBS/CBS calculado, mas faltam os parâmetros declarados na DPS.');
-  detectar(dps, ['tpAmb','dhEmi','verAplic','serie','nDPS','dCompet','tpEmit','cLocEmi','prest','toma','serv','valores','IBSCBS'], 'DPS');
+  detectar(dps, ['tpAmb','dhEmi','verAplic','serie','nDPS','dCompet','tpEmit','cLocEmi','subst','prest','toma','serv','valores','IBSCBS'], 'DPS');
+  // A substituição identifica a operação anterior. Não vira política tributária
+  // nem vínculo de substituição nas próximas notas; o XML de origem fica preservado.
+  if (dps.subst !== undefined && (!dps.subst || typeof dps.subst !== 'object')) {
+    pendencias.push('DPS/subst: grupo de substituição inválido.');
+  }
+  detectar(dps.subst, ['chSubstda','cMotivo','xMotivo'], 'DPS/subst');
   detectar(dps.prest?.regTrib, ['opSimpNac','regApTribSN','regEspTrib'], 'prest/regTrib');
   detectar(dps.serv?.cServ, ['cTribNac','cTribMun','cNBS','xDescServ'], 'serv/cServ');
   detectar(dps.serv, ['locPrest','cServ','infoCompl'], 'serv');
