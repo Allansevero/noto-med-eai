@@ -12,9 +12,12 @@ compatibilidade; não é uma etapa do cadastro.
 
 ## Busca e adoção
 
-A busca percorre os lotes por NSU até o máximo informado na primeira consulta,
-sem pular o meio do histórico. Filtra notas emitidas pelo titular e escolhe a mais
-recente entre os documentos recebidos. Falhas, paginação sem avanço ou limites
+A busca percorre os lotes por NSU sem pular o meio do histórico. Quando existe
+um total explícito, usa esse limite; no contrato sem total, continua até o retorno
+sem documentos. Nunca interpreta o maior NSU do primeiro lote como o fim do
+histórico. Filtra notas emitidas pelo titular e escolhe pela data de emissão
+`DPS/infDPS/dhEmi`, com data do envelope como fallback apenas quando a data do XML
+não pode ser lida. A ordem de redistribuição não substitui a data de emissão. Falhas, paginação sem avanço ou limites
 operacionais (100 consultas ou 45 segundos entre consultas, além do tempo da
 requisição em andamento) impedem a adoção de uma referência parcial. Não há loop
 infinito nem nova busca automática em sequência. Uma nova consulta é iniciada
@@ -96,3 +99,18 @@ Não registra a mensagem bruta do Storage nem conteúdo do XML ou credenciais.
 Nenhum perfil fiscal é atualizado se a preservação falhar. A chave de serviço do
 servidor precisa estar configurada e autorizada para esse Storage; a correção
 não contorna permissões nem torna o XML público.
+
+## Verificação da nota mais recente
+
+Os logs de busca concluída incluem quantidade de lotes e documentos consultados,
+quantidade de notas do titular e data de emissão selecionada. Não incluem os
+XMLs, identificadores do contribuinte ou do paciente. Essa data é a mais recente
+dentre as notas devolvidas pela fonte consultada; não prova que a nota mais
+recente de um portal municipal está disponível no ADN.
+
+A paginação foi conferida com o contrato de distribuição publicado no espelho:
+https://github.com/nfse-nacional/nfse-php/blob/main/references/api-specs/production/prod-API-NFS-e-ADN-Contribuinte-(v1).json
+Esse contrato não declara `MaxNSU`. O cliente mantém compatibilidade com totais
+explícitos de outras respostas e trata fim de distribuição com status próprio,
+inclusive quando acompanhado de HTTP 404. Outros erros HTTP continuam bloqueando
+a adoção de uma referência parcial.

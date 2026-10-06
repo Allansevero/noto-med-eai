@@ -5,17 +5,20 @@
 
 import https from 'node:https';
 import zlib from 'node:zlib';
+import { XMLParser } from 'fast-xml-parser';
 
 export type DocumentoAdn = {
   nsu: number;
   chaveAcesso?: string;
   dataHoraGeracao?: string;
+  dataHoraEmissao?: string;
   xml: string;
 };
 
 export type ResultadoConsultaAdn = {
   documento: DocumentoAdn;
   maxNsu: number;
+  resumo: { lotesConsultados: number; documentosConsultados: number; notasDoTitular: number; dataEmissaoSelecionada: string | null };
 };
 
 type RespostaHttp = { status: number; corpo: string };
@@ -28,8 +31,9 @@ export type HttpMtlsAdn = (
 
 type LoteAdn = {
   documentos: DocumentoAdn[];
-  maxNsu: number;
+  maxNsu: number | null;
   ultimoNsu: number;
+  quantidadeRecebida: number;
 };
 
 export class AdnNfseClient {
@@ -50,14 +54,22 @@ export class AdnNfseClient {
     let cursor = loteInicial.ultimoNsu;
     const inicio = Date.now();
     let consultas = 1;
-    while (cursor < limite) {
+    let quantidadeRecebida = loteInicial.quantidadeRecebida;
+    let documentosConsultados = quantidadeRecebida;
+    while (quantidadeRecebida > 0 && (limite === null || cursor < limite)) {
       if (consultas >= 100 || Date.now() - inicio >= 45000) {
         throw new Error('Busca incompleta: o histórico é extenso. Nenhuma referência foi substituída; tente novamente mais tarde.');
       }
       const lote = await this.consultarLote(cursor, pfxBuffer, senhaCertificado);
       consultas++;
+      quantidadeRecebida = lote.quantidadeRecebida;
+      documentosConsultados += quantidadeRecebida;
+      if (!quantidadeRecebida) {
+        if (limite !== null && cursor < limite) throw new Error('Busca incompleta: o ADN encerrou os lotes antes do total informado.');
+        break;
+      }
       if (lote.ultimoNsu <= cursor) throw new Error('Busca incompleta: o ADN não avançou no histórico. Tente novamente mais tarde.');
-      documentos.push(...lote.documentos.filter(item => item.nsu <= limite));
+      documentos.push(...lote.documentos.filter(item => limite === null || item.nsu <= limite));
       cursor = lote.ultimoNsu;
     }
 
@@ -66,8 +78,8 @@ export class AdnNfseClient {
     const notas = notasLocalizadas
       .filter((item) => this.extrairDocumentoPrestador(item.xml) === titular)
       .sort((a, b) => {
-        const dataA = a.dataHoraGeracao ? Date.parse(a.dataHoraGeracao) : 0;
-        const dataB = b.dataHoraGeracao ? Date.parse(b.dataHoraGeracao) : 0;
+        const dataA = Date.parse(a.dataHoraEmissao || a.dataHoraGeracao || '') || 0;
+        const dataB = Date.parse(b.dataHoraEmissao || b.dataHoraGeracao || '') || 0;
         return dataB - dataA || b.nsu - a.nsu;
       });
 
@@ -81,7 +93,9 @@ export class AdnNfseClient {
       throw new Error(`O ADN retornou ${notasLocalizadas.length} NFS-e(s), mas nenhuma foi emitida pelo titular deste certificado.`);
     }
 
-    return { documento: notas[0], maxNsu: loteInicial.maxNsu };
+    return { documento: notas[0], maxNsu: limite ?? cursor,
+      resumo: { lotesConsultados: consultas, documentosConsultados, notasDoTitular: notas.length,
+        dataEmissaoSelecionada: notas[0].dataHoraEmissao ?? null } };
   }
 
   private extrairDocumentoPrestador(xml: string): string | null {
@@ -121,35 +135,40 @@ export class AdnNfseClient {
       throw new Error(`O ADN retornou uma resposta invalida (HTTP ${resposta.status}).`);
     }
 
-    if (resposta.status >= 400) {
-      const detalhe = this.extrairErro(json);
-      throw new Error(`Consulta ao ADN recusada (HTTP ${resposta.status}): ${detalhe}`);
-    }
-
     const statusProcessamento = String(
       json.StatusProcessamento ?? json.statusProcessamento ?? json.status ?? ''
     ).toUpperCase();
+    // A API pode representar o fim da distribuição com HTTP 404 e status próprio.
+    if (resposta.status >= 400 && !(resposta.status === 404 && statusProcessamento === 'NENHUM_DOCUMENTO_LOCALIZADO')) {
+      throw new Error(`Consulta ao ADN recusada (HTTP ${resposta.status}): ${this.extrairErro(json)}`);
+    }
+
     if (statusProcessamento.includes('REJEICAO') || statusProcessamento.includes('REJEIÇÃO')) {
       throw new Error(`Consulta ao ADN rejeitada: ${this.extrairErro(json)}`);
     }
 
-    const loteRaw = json.LoteDFe ?? json.loteDFe ?? json.documentos ?? [];
+    const loteRaw = json.LoteDFe ?? json.loteDFe ?? json.documentos;
+    if (loteRaw === undefined && statusProcessamento !== 'NENHUM_DOCUMENTO_LOCALIZADO') {
+      throw new Error('Busca incompleta: o ADN não informou o lote de documentos.');
+    }
     const itens = Array.isArray(loteRaw) ? loteRaw : loteRaw ? [loteRaw] : [];
     const documentos = itens
       .map((item: Record<string, any>) => this.normalizarDocumento(item))
       .filter((item: DocumentoAdn | null): item is DocumentoAdn => item !== null);
 
-    const maxNsu = Number(
-      json.MaxNSU ?? json.maxNSU ?? json.MaxNsu ?? json.maxNsu ??
-      documentos.reduce((maior, item) => Math.max(maior, item.nsu), ultimoNsu)
-    );
+    // O contrato nacional não exige um total. Ausência nunca significa fim do histórico.
+    const maxRaw = json.MaiorNSU ?? json.maiorNSU ?? json.MaxNSU ?? json.maxNSU ?? json.MaxNsu ?? json.maxNsu;
+    const maxNsu = maxRaw === undefined || maxRaw === null ? null : Number(maxRaw);
+    if (maxNsu !== null && (!Number.isSafeInteger(maxNsu) || maxNsu < 0)) {
+      throw new Error('Busca incompleta: o ADN informou um total inválido.');
+    }
 
     const ultimoRecebido = itens.reduce((maior: number, item: Record<string, any>) => {
       const nsu = Number(item.NSU ?? item.nsu);
       return Number.isSafeInteger(nsu) && nsu > maior ? nsu : maior;
     }, ultimoNsu);
     // Avança pelos envelopes, inclusive eventos e documentos não decodificados.
-    return { documentos, maxNsu: Number.isFinite(maxNsu) ? maxNsu : ultimoNsu, ultimoNsu: ultimoRecebido };
+    return { documentos, maxNsu, ultimoNsu: ultimoRecebido, quantidadeRecebida: itens.length };
   }
 
   private normalizarDocumento(item: Record<string, any>): DocumentoAdn | null {
@@ -163,8 +182,18 @@ export class AdnNfseClient {
       nsu: Number(item.NSU ?? item.nsu ?? 0),
       chaveAcesso: item.ChaveAcesso ?? item.chaveAcesso,
       dataHoraGeracao: item.DataHoraGeracao ?? item.dataHoraGeracao,
+      dataHoraEmissao: this.extrairDataEmissao(xml),
       xml
     };
+  }
+
+  private extrairDataEmissao(xml: string): string | undefined {
+    if (/<!DOCTYPE|<!ENTITY/i.test(xml)) return undefined;
+    try {
+      const obj = new XMLParser({ removeNSPrefix: true, parseTagValue: false }).parse(xml);
+      const data = obj.NFSe?.infNFSe?.DPS?.infDPS?.dhEmi;
+      return typeof data === 'string' && Number.isFinite(Date.parse(data)) ? new Date(data).toISOString() : undefined;
+    } catch { return undefined; }
   }
 
   private decodificarXml(valor: string): string | null {

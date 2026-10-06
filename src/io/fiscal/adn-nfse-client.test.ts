@@ -9,6 +9,52 @@ describe('AdnNfseClient', () => {
   const xmlAntigo = `<NFSe><infNFSe><emit><CNPJ>${documento}</CNPJ></emit><nNFSe>1</nNFSe></infNFSe></NFSe>`;
   const xmlRecente = `<NFSe><infNFSe><emit><CNPJ>${documento}</CNPJ></emit><nNFSe>99</nNFSe></infNFSe></NFSe>`;
 
+  it('percorre o contrato sem MaxNSU até não haver mais documentos, incluindo lote intermediário curto', async () => {
+    const urls: string[] = [];
+    const transmissor = async (url: string) => {
+      urls.push(url);
+      const cursor = Number(new URL(url).pathname.split('/').at(-1));
+      const lotes: Record<number, any[]> = {
+        0: [{ NSU: 1, ArquivoXml: xmlAntigo }],
+        1: [{ NSU: 2, ArquivoXml: '<Evento/>' }],
+        2: [{ NSU: 3, ArquivoXml: xmlRecente }]
+      };
+      return { status: 200, corpo: JSON.stringify({ StatusProcessamento: lotes[cursor] ? 'DOCUMENTOS_LOCALIZADOS' : 'NENHUM_DOCUMENTO_LOCALIZADO',
+        LoteDFe: lotes[cursor] || [] }) };
+    };
+    const resultado = await new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento);
+    assert.equal(resultado.documento.nsu, 3);
+    assert.equal(urls.length, 4);
+  });
+
+  it('não aceita nota antiga se a paginação sem total repetir o mesmo lote', async () => {
+    const transmissor = async () => ({ status: 200, corpo: JSON.stringify({ StatusProcessamento: 'DOCUMENTOS_LOCALIZADOS',
+      LoteDFe: [{ NSU: 1, ArquivoXml: xmlAntigo }] }) });
+    await assert.rejects(() => new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento), /incompleta/i);
+  });
+
+  it('reconhece fim de distribuição com HTTP 404 somente quando o status informa ausência de documentos', async () => {
+    for (const status of ['NENHUM_DOCUMENTO_LOCALIZADO', 'REJEICAO']) {
+      const transmissor = async (url: string) => url.includes('/DFe/0?')
+        ? { status: 200, corpo: JSON.stringify({ StatusProcessamento: 'DOCUMENTOS_LOCALIZADOS', LoteDFe: [{ NSU: 1, ArquivoXml: xmlAntigo }] }) }
+        : { status: 404, corpo: JSON.stringify({ StatusProcessamento: status, LoteDFe: [] }) };
+      const consulta = new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento);
+      if (status === 'NENHUM_DOCUMENTO_LOCALIZADO') assert.equal((await consulta).documento.nsu, 1);
+      else await assert.rejects(() => consulta, /recusada/i);
+    }
+  });
+
+  it('escolhe a emissão pelo dhEmi do XML quando a data de distribuição favorece nota antiga', async () => {
+    const antiga = xmlAntigo.replace('</infNFSe>', '<DPS><infDPS><dhEmi>2024-09-27T10:00:00-03:00</dhEmi></infDPS></DPS></infNFSe>');
+    const recente = xmlRecente.replace('</infNFSe>', '<DPS><infDPS><dhEmi>2026-10-01T10:00:00-03:00</dhEmi></infDPS></DPS></infNFSe>');
+    const transmissor = async () => ({ status: 200, corpo: JSON.stringify({ MaxNSU: 2, LoteDFe: [
+      { NSU: 1, DataHoraGeracao: '2026-10-01T13:00:00Z', ArquivoXml: recente },
+      { NSU: 2, DataHoraGeracao: '2026-10-05T13:00:00Z', ArquivoXml: antiga }
+    ] }) });
+    const resultado = await new AdnNfseClient(transmissor).buscarNfseMaisRecente(pfx, 'senha', documento);
+    assert.equal(resultado.documento.nsu, 1);
+  });
+
   it('encontra a emissão no meio do histórico mesmo com notas recebidas no último lote', async () => {
     const itens = Array.from({ length: 150 }, (_, i) => ({ NSU: i + 1,
       ArquivoXml: i === 74 ? xmlRecente : xmlAntigo.replace(documento, '11222333000181') }));

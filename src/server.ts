@@ -252,6 +252,7 @@ export function criarAppExpress() {
       if (!titular.documentoTitular || !titular.validoAte || titular.validoAte < new Date()
         || (titular.validoDe && titular.validoDe > new Date())) throw new Error('O certificado precisa estar válido e identificar seu titular.');
       const consulta = await adnNfseClient.buscarNfseMaisRecente(certificado.pfxBuffer, certificado.senhaCertificado, titular.documentoTitular);
+      console.info('[ADN] Busca de referência concluída:', consulta.resumo);
       const fiscal = await processarOnboardingXml({ pool, supabase: authAdminService.supabaseClient,
         documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper },
       medicoId, consulta.documento.xml);
@@ -373,6 +374,7 @@ export function criarAppExpress() {
           throw new Error('Nao foi possivel identificar o CPF/CNPJ do titular no certificado A1.');
         }
         const consulta = await adnNfseClient.buscarNfseMaisRecente(arquivoBuffer, senha, documentoTitular);
+        console.info('[ADN] Busca de referência concluída:', consulta.resumo);
         const fiscal = await processarOnboardingXml(
           {
             pool,
