@@ -257,7 +257,7 @@ export function criarAppExpress() {
       medicoId, consulta.documento.xml);
       return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu });
     } catch (erro: any) {
-      console.warn('[ADN] Busca de referência pendente:', erro?.message);
+      console.warn('[ADN] Busca de referência pendente:', { etapa: 'busca_referencia', codigo: erro?.codigo || 'BUSCA_FALHOU', diagnostico: erro?.diagnostico, mensagem: erro?.message });
       return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos obter sua nota padrão pelo certificado. Você não precisa enviar arquivos. Tente novamente mais tarde; se persistir, a equipe precisa verificar a disponibilidade da nota no sistema de origem.' });
     }
   });
@@ -396,12 +396,14 @@ export function criarAppExpress() {
           }
         });
       } catch (err: any) {
-        console.warn('[ADN] Importacao automatica indisponivel:', err?.message || err);
+        console.warn('[ADN] Importacao automatica indisponivel:', { etapa: 'importacao_referencia', codigo: err?.codigo || 'IMPORTACAO_FALHOU', diagnostico: err?.diagnostico, mensagem: err?.message });
         return res.json({
           ...resultado,
           medicoId,
           importacaoFiscal: {
             ok: false,
+            codigo: err?.codigo || 'IMPORTACAO_FALHOU',
+            diagnostico: err?.diagnostico,
             detalhe: err?.message || 'Nenhuma NFS-e compativel foi encontrada no ADN.'
           }
         });

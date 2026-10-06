@@ -128,6 +128,14 @@ test('mesmo fluxo reaproveita municípios distintos sem configuração fixa', as
   }
 });
 
+test('referência nacional 1.00 é importada e confirmada sem perder os bloqueios fiscais', async () => {
+  const c = contexto(); await processarOnboardingXml(c.deps, 'med', xml.replaceAll('versao="1.01"', 'versao="1.00"'));
+  assert.equal(c.referencia().layout, '1.00');
+  await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', referenciaHash: c.referencia().hash, usarReferencia: true });
+  assert.equal(c.politica().parametros.cstPisCofins, '06');
+  assert.equal(c.politica().parametros.ibscbs.cClassTrib, '000001');
+});
+
 test('não ignora regras declaradas no serviço, regime ou totalização da referência', async () => {
   for (const alterado of [xml.replace('</cServ>', '<cIntContrib>ABC</cIntContrib></cServ>'),
     xml.replace('</regTrib>', '<campoNovo>1</campoNovo></regTrib>'),

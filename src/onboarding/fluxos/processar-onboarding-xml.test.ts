@@ -84,7 +84,7 @@ describe('processarOnboardingXml', () => {
   it('deve rejeitar XML inválido ou legado', async () => {
     await assert.rejects(
       async () => processarOnboardingXml(deps, 'medico-uuid-123', '<xml>invalido</xml>'),
-      /O XML não contém grupo de emissor/
+      (erro: any) => erro.codigo === 'LAYOUT_NAO_SUPORTADO'
     );
   });
 });

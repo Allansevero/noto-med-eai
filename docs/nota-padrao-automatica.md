@@ -43,7 +43,9 @@ municipais legados. Quando a referência não pode ser obtida, a interface infor
 a pendência sem pedir upload; os detalhes técnicos ficam nos logs. O município
 continua individual por emitente, podendo orientar um conector futuro.
 
-O leitor ainda suporta apenas NFS-e nacional 1.01 com DPS original. A preparação
+O leitor reconhece referências NFS-e nacionais 1.00 e 1.01 com DPS original.
+Isso não converte a versão do XML nem adiciona suporte aos campos fiscais que
+ainda não são representados pelo emissor. A nova DPS continua na versão 1.01. A preparação
 continua conservadora: MEI ou ME/EPP, operação tributável sem retenção de ISS e
 somente os grupos tributários já suportados. Não optante pelo Simples, alíquota
 ISS declarada, retenções, cálculos adicionais e extensões sem suporte ficam
@@ -65,3 +67,17 @@ Testes usam HTTP, Storage e banco simulados, com os componentes reais de leitura
 extração, confirmação, preparação e geração de DPS. Conferem paginação, dados de
 municípios diferentes, fidelidade dos grupos tributários e bloqueio de alterações.
 Não substituem um teste com A1 real, acesso ao ADN e autorização pela SEFIN.
+
+## Diagnóstico da importação
+
+A rejeição antiga usava uma mensagem única e exigia versão exatamente 1.01.
+Desde a correção, erros de versão, namespace/layout e ausência da DPS têm códigos
+separados. Os logs de importação registram etapa, código, versão da NFS-e, versão
+da DPS, presença da DPS e se o namespace nacional foi reconhecido. Não registram
+XML, CPF/CNPJ, dados do paciente, certificado ou senha.
+
+A compatibilidade 1.00 foi reproduzida com fixtures sintéticas. Exemplos de
+referência comunitária também usam essa versão:
+https://github.com/nfse-nacional/nfse-php/blob/main/tests/Unit/Service/ContribuinteServiceTest.php
+A verificação realizada é de leitura e preservação dos campos suportados, não
+homologação completa de XSD nem confirmação da causa de um certificado real.
