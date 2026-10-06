@@ -15,7 +15,7 @@ function contexto() {
       async reservarEtapa(id) {
         const r = registros.get(id)!;
         if (r.estado !== 'pendente' || r.etapa >= MENSAGENS_TREINO.length) return null;
-        r.estado = 'enviando'; return r.etapa;
+        r.estado = 'enviando'; return { etapa: r.etapa, mensagem: MENSAGENS_TREINO[r.etapa] };
       },
       async registrarResultado(id, etapa, resultado) {
         const r = registros.get(id)!;
@@ -85,11 +85,35 @@ test('reinício entre mensagens confirmadas retoma a próxima etapa', async () =
 });
 
 test('modelo preenchido produz valor e data esperados no reconhecedor existente', () => {
-  const texto = MODELO_EMISSAO_TREINO.replace('[preecha]', '350,00').replace('[preecha]', '01/10/2026');
+  const texto = MODELO_EMISSAO_TREINO.replace('[valor]', '350,00').replace('[data]', '01/10/2026');
   const resultado = casarRespostaRapida(texto, true);
   assert.ok(resultado.casou && resultado.tipo === 'emissao');
   assert.equal(resultado.valorDigitadoCentavos, 35000);
   assert.equal(resultado.datasTexto, '01/10/2026');
   assert.equal(resultado.datas?.length, 1);
   assert.equal(casarRespostaRapida(texto, false).casou, false);
+});
+
+
+test('novos usuários recebem exatamente cinco mensagens, com cópia integral apenas na terceira', () => {
+  assert.deepEqual(MENSAGENS_TREINO, [
+    {texto:'Olá! Eu sou o Noto, seu assistente fiscal aqui no WhatsApp. Pode contar comigo para emitir suas notas no automático e tirar qualquer dúvida tributária.'},
+    {texto:'A emissão é bem simples. Para começar, copie a mensagem abaixo e salve nas suas Mensagens Rápidas do WhatsApp (sugiro usar o atalho /nota):'},
+    {texto:'Vou enviar em instantes a sua nota fiscal no valor de R$ [valor] referente à consulta de [data].', copiarTexto:'Vou enviar em instantes a sua nota fiscal no valor de R$ [valor] referente à consulta de [data].'},
+    {texto:'Pronto. Agora, sempre que quiser emitir uma nota, basta enviar essa mensagem preenchida para o seu paciente. Em poucos segundos, a nota pronta aparece na conversa.'},
+    {texto:'E um detalhe muito bom: você não vai precisar cadastrar ninguém. Eu mesmo puxo os dados do paciente no histórico da conversa. Se faltar o CPF, eu peço com toda a educação, como se fosse você. Simples assim.'}
+  ]);
+});
+
+
+test('treino já iniciado usa a mensagem reservada, sem trocar pelo roteiro novo', async () => {
+  const c = contexto();let reservado = false;
+  c.registros.set('m', {etapa:5,estado:'pendente'});
+  c.deps.repositorio.reservarEtapa = async () => {
+    if (reservado) return null; reservado = true;
+    c.registros.get('m')!.estado = 'enviando';
+    return {etapa:5,mensagem:{texto:'Última mensagem do roteiro anterior.'}};
+  };
+  await enviarTreino('m', c.deps);
+  assert.deepEqual(c.envios.map(e => e.texto), ['Última mensagem do roteiro anterior.']);
 });

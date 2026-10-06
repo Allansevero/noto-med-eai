@@ -1,16 +1,16 @@
 # Treino de emissão pelo Noto Oficial
 
-Após completar o onboarding, o médico recebe seis mensagens no telefone
+Após completar o onboarding, o médico recebe cinco mensagens no telefone
 cadastrado em `usuarios.telefone`, enviadas pela instância
 `EVOLUTION_OFFICIAL_INSTANCE_NAME` (padrão `notomed_oficial`).
 
-O roteiro reproduz literalmente as seis mensagens aprovadas pelo usuário,
-inclusive a grafia. O botão de copiar aparece na terceira mensagem e copia
-o modelo enviado separadamente na quarta mensagem:
+O roteiro reproduz literalmente as cinco mensagens aprovadas pelo usuário,
+inclusive a grafia. A terceira mensagem contém o modelo e o botão que copia
+a frase inteira:
 
-> Vou enviar em instantes a sua NF no valor de R$ [preecha] referente a consulta [preecha]
+> Vou enviar em instantes a sua nota fiscal no valor de R$ [valor] referente à consulta de [data].
 
-O nome do atalho é livre. O texto preenchido continua sendo reconhecido pelo
+O atalho sugerido é `/nota`; o nome é livre. O texto preenchido continua sendo reconhecido pelo
 fluxo determinístico existente. O envio ao paciente solicita uma nota real;
 o treino não cria nota fictícia nem faz uma transmissão à SEFIN.
 
@@ -31,7 +31,9 @@ o valor literal de exemplo anteriormente aceito pelo servidor foi removido.
 `onboarding_treinos_whatsapp` mantém uma linha por médico, versão do roteiro,
 próxima etapa e eventos com reserva, resultado, horário, formato e ID de mensagem
 quando retornado pela Evolution. RLS bloqueia leitura/escrita dos clientes;
-somente o backend opera a tabela. O conteúdo da versão 1 está em
+somente o backend opera a tabela. A versão 1 da estrutura da tabela é mantida. Novos registros guardam uma cópia
+do roteiro em um evento `roteiro`, na coluna JSONB `eventos`. Registros antigos
+sem esse evento mantêm as seis mensagens anteriores. O conteúdo está em
 `src/onboarding/treino/mensagens-treino.ts`.
 
 Cada etapa passa de `pendente` a `enviando` em um UPDATE condicional antes da
@@ -41,8 +43,8 @@ fica `concluido`. A resposta da Evolution confirma aceitação, não leitura ou
 entrega final no aparelho. O envio acontece em segundo plano no serviço web.
 
 O botão usa o mesmo contrato `type: copy` já usado pelo OTP. Se a Evolution
-rejeitar o formato com 400/404/405/422, envia a terceira mensagem em texto, sem adicionar instruções. O modelo
-continua sendo enviado separadamente na quarta mensagem. O suporte visual ao botão
+rejeitar o formato com 400/404/405/422, envia a terceira mensagem em texto, sem adicionar instruções. A frase inteira
+permanece no corpo da terceira mensagem. O suporte visual ao botão
 depende da versão da Evolution e do WhatsApp; precisa ser verificado no aparelho.
 
 Timeout, rede e erro 5xx ficam `incerto`, sem novo envio automático. Uma rejeição

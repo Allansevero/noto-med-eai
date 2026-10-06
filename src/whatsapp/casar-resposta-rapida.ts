@@ -81,7 +81,7 @@ export function casarRespostaRapida(
 
   // 3. Fallback inteligente para variações de emissão da NF
   // Ex: "Vou enviar em instantes a sua NF no valor de R$ 350", "sua NF no valor de R$ 200" ou "/emissao 200" / "/emissão 200"
-  const regexEmissaoNatural = /(?:vou(?:\s+lhe)?\s+enviar\s+(?:em\s+instantes?\s+)?(?:a\s+)?sua\s+nf(?:\s+no\s+valor\s+de\s*(?:r\$)?)?|\/emiss[aã]o)/i;
+  const regexEmissaoNatural = /(?:vou(?:\s+lhe)?\s+enviar\s+(?:em\s+instantes?\s+)?(?:a\s+)?sua\s+(?:nf\b|nota\s+fiscal)(?:\s+no\s+valor\s+de\s*(?:r\$)?)?|\/emiss[aã]o)/i;
   const match = textoLimpo.match(regexEmissaoNatural);
   if (match && match.index !== undefined) {
     const resto = textoLimpo.slice(match.index + match[0].length);
