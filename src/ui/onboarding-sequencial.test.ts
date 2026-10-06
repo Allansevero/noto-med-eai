@@ -72,6 +72,8 @@ test('certificado salvo avança ao WhatsApp sem expor parâmetros ou exigir conf
   assert.equal(t.node('step4View').classList.contains('hidden'), false);
   assert.equal(t.node('tabContentConta').classList.contains('hidden'), true);
   assert.equal(t.pedidos.some(p => p.url === '/api/onboarding/confirmar-fiscal'), false);
+  assert.equal(t.pedidos.find(p => p.url === '/api/onboarding/certificado').body.consentimentoFiscal, 'continuar-a1-v1');
+  assert.equal(t.node('alertOnboarding').classList.contains('hidden'), true);
 });
 test('nome e confirmação fiscal pendentes não bloqueiam acesso à Conta após WhatsApp', () => {
   const t = tela();
@@ -104,7 +106,7 @@ test('sair do painel restaura o cadastro e permite autenticar novamente por OTP'
   assert.equal(t.node('btnValidarOtp').disabled, false);
 });
 
-test('Conta mostra os parâmetros extraídos e mantém fiscal pendente até consentimento', async () => {
+test('Conta mostra parâmetros pendentes sem pedir um novo aceite ou contornar a validação', async () => {
   const t = tela();
   t.status.passos.passo3CertificadoValido = true; t.status.passos.passo4WhatsappConectado = true;
   t.status.passos.passo2FiscalConfirmado = false;
@@ -115,7 +117,17 @@ test('Conta mostra os parâmetros extraídos e mantém fiscal pendente até cons
   await vm.runInContext('atualizarVisualizacaoConta()', t.contexto);
   assert.deepEqual(t.node('parametrosFiscaisConta').children.map((el: any) => el.textContent),
     ['Simples Nacional', 'Não optante', 'Alíquota de ISS (%)', '2']);
-  assert.equal(t.node('btnConfirmarFiscal').disabled, true);
+  assert.equal(t.node('statusAdocaoFiscalConta').textContent.includes('pendente'), true);
   assert.equal(t.node('statusFiscalPainel').textContent, 'PENDENTE');
   assert.equal(t.pedidos.some(p => p.url === '/api/onboarding/confirmar-fiscal'), false);
+});
+
+test('alertas de sucesso não aparecem entre etapas; erros locais continuam visíveis', () => {
+  const t = tela();
+  vm.runInContext('showAlert("Código enviado", false)', t.contexto);
+  assert.equal(t.node('alertBox').classList.contains('hidden'), true);
+  vm.runInContext('showAlert("Senha incorreta", true, alertOnboarding)', t.contexto);
+  assert.equal(t.node('alertOnboarding').classList.contains('hidden'), false);
+  vm.runInContext('mostrarPasso(4)', t.contexto);
+  assert.equal(t.node('alertOnboarding').classList.contains('hidden'), true);
 });

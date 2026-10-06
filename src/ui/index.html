@@ -749,6 +749,23 @@
     button.btn-link { width: 100%; padding: 1rem; border-radius: 12px; opacity: 1; text-decoration: none; }
     .tab-btn.active { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px #000000; }
     .cadastro-voltar { width: 100%; }
+    button.btn-secondary, button.btn-link,
+    button.btn-secondary:hover, button.btn-link:hover {
+      background: transparent !important;
+      color: rgba(18, 28, 34, 0.45) !important;
+      border: none;
+      padding: 0.5rem 0;
+      border-radius: 0;
+      text-align: left;
+      justify-content: flex-start;
+      width: auto;
+      box-shadow: none;
+      transform: none;
+      text-decoration: none;
+      opacity: 1;
+    }
+    button.btn-secondary::before { content: '←'; margin-right: 0.5rem; }
+    button.btn-secondary:hover, button.btn-link:hover { color: rgba(18, 28, 34, 0.7) !important; }
     body p, body label, body h1, body h2, body h3,
     .drop-zone, .access-subtitle, .alert, .code-box { text-align: left !important; }
     .fiscal-parametros { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem 1rem; margin-top: 1rem; }
@@ -895,10 +912,11 @@
         <div class="field-wrapper hidden" id="senhaCertWrapper">
           <label class="field-label" for="inputSenhaCert">Senha do Certificado Digital</label>
           <input type="password" id="inputSenhaCert" class="input-text" placeholder="Digite a senha do certificado A1" />
+          <p class="legal-disclaimer" id="consentimentoFiscalTexto" style="margin-top: 0.75rem;">Ao clicar no botão "Continuar" você concorda com os <a href="#" id="linkConsentimentoFiscal">termos de consentimento fiscal</a>.</p>
         </div>
 
         <button type="button" class="btn-action" id="btnSalvarCertificado">
-          Salvar e buscar dados fiscais
+          Continuar
         </button>
       </div>
 
@@ -1061,13 +1079,13 @@
             <p id="pendenciasNotaReferencia" role="status"></p>
             <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
           </div>
-          <label><input type="checkbox" id="confirmarNotaPadrao" /> Esta nota representa o serviço e o tipo de consulta que vou emitir pelo Noto.</label>
           <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
-          <button type="button" class="btn-action" id="btnConfirmarFiscal" disabled>Confirmar configuração fiscal</button>
+          <p id="statusAdocaoFiscalConta">Os parâmetros são validados automaticamente após o consentimento ao cadastrar o certificado.</p>
         </div>
       </div>
 
 
+      <button type="button" class="btn-action btn-secondary" id="btnAtualizarCertificado">Atualizar certificado</button>
       <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
       <div class="account-fields-list">
         <!-- NOME COMPLETO -->
@@ -1187,6 +1205,7 @@
     const step5View = document.getElementById('step5View');
 
     function showAlert(msg, isError = true, targetBox = alertBox) {
+      if (!isError) { hideAlert(targetBox); return; }
       targetBox.textContent = msg;
       targetBox.className = `alert ${isError ? 'alert-error' : 'alert-success'}`;
       targetBox.classList.remove('hidden');
@@ -1462,6 +1481,7 @@
     }
 
     function mostrarPasso(passoNum) {
+      hideAlert(alertBox); hideAlert(alertOnboarding);
       painelDisponivel = passoNum === 5;
       document.body.classList.toggle('onboarding-active', !painelDisponivel);
       document.getElementById('onboardingTopBar').classList.toggle('hidden', !painelDisponivel);
@@ -1486,20 +1506,12 @@
     // --- NOTA PADRÃO: consulta automática, sem entrada de campos tributários ---
     let referenciaFiscalAtual = null;
     let notaPadraoDisponivel = false;
-    let confirmacaoNotaEmAndamento = false;
-    function atualizarConfirmacaoNota() {
-      document.getElementById('btnConfirmarFiscal').disabled = confirmacaoNotaEmAndamento || !notaPadraoDisponivel ||
-        !document.getElementById('confirmarNotaPadrao').checked;
-    }
-    document.getElementById('confirmarNotaPadrao').addEventListener('change', atualizarConfirmacaoNota);
     function mostrarReferenciaFiscal(referencia, perfil) {
       referenciaFiscalAtual = referencia?.versao === 2 ? referencia : null;
       const p = referenciaFiscalAtual?.parametrosSugeridos || {};
       notaPadraoDisponivel = Boolean(referenciaFiscalAtual?.hash);
       const semPendenciasConhecidas = notaPadraoDisponivel && !(referenciaFiscalAtual?.pendencias || []).length &&
         ['nao_optante', 'mei', 'me_epp'].includes(p.opcaoSimplesNacional);
-      document.getElementById('confirmarNotaPadrao').checked = false;
-      atualizarConfirmacaoNota();
       document.getElementById('txtRazaoSocial').textContent = perfil.razaoSocial || '—';
       document.getElementById('txtMunUf').textContent = `${perfil.codMunicipioIbge || '—'} (${perfil.uf || '—'})`;
       document.getElementById('resumoNotaReferencia').textContent = referenciaFiscalAtual
@@ -1509,9 +1521,9 @@
         ? 'A configuração de IBS/CBS declarada nessa nota também será preservada.'
         : 'Não adicionaremos parâmetros de IBS/CBS que não estejam declarados nessa referência.';
       document.getElementById('pendenciasNotaReferencia').textContent = semPendenciasConhecidas ? ''
-        : 'A referência precisa de uma verificação fiscal. Marque o consentimento e clique em continuar para verificar o que falta.';
+        : 'A referência precisa de uma verificação fiscal. O sistema manterá a emissão pendente até concluir a análise desses dados.';
       document.getElementById('notaPadraoStatus').textContent = notaPadraoDisponivel
-        ? 'Nota encontrada. Confirme abaixo se ela representa suas consultas habituais. O Noto validará a configuração antes de avançar.'
+        ? 'Nota encontrada. Os parâmetros desta referência passam pela validação fiscal automática.'
         : 'A emissão ainda não foi liberada com esta referência.';
       document.getElementById('previewFiscal').classList.remove('hidden');
       exibirParametrosConta(p);
@@ -1552,7 +1564,6 @@
       const btn = document.getElementById('btnBuscarReferencia');
       btn.disabled = true;
       notaPadraoDisponivel = false;
-      atualizarConfirmacaoNota();
       hideAlert(alertOnboarding);
       document.getElementById('notaPadraoStatus').textContent = 'Buscando sua nota com o certificado já cadastrado…';
       try {
@@ -1567,29 +1578,9 @@
       } finally { btn.disabled = false; }
     });
     document.getElementById('btnRevisarFiscal').addEventListener('click', () => alternarAba('conta'));
-    document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
-      if (confirmacaoNotaEmAndamento || !notaPadraoDisponivel || !document.getElementById('confirmarNotaPadrao').checked) return;
-      confirmacaoNotaEmAndamento = true;
-      const btn = document.getElementById('btnConfirmarFiscal');
-      btn.disabled = true;
-      hideAlert(alertOnboarding);
-      try {
-        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
-        const res = await fetch('/api/onboarding/confirmar-fiscal', { method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, referenciaHash: referenciaFiscalAtual.hash, usarReferencia: true }) });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          document.getElementById('pendenciasNotaReferencia').textContent = data.detalhe || 'Ainda não foi possível adotar sua nota padrão.';
-          throw new Error(data.detalhe || 'Ainda não foi possível adotar sua nota padrão.');
-        }
-        showAlert('Configuração da nota padrão salva.', false, alertOnboarding);
-        await carregarFluxoOnboarding('conta');
-      } catch (erro) { showAlert(erro.message, true, alertOnboarding); }
-      finally { confirmacaoNotaEmAndamento = false; atualizarConfirmacaoNota(); }
-    });
-
     // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---
+    document.getElementById('linkConsentimentoFiscal').addEventListener('click', e => e.preventDefault()); // URL dos termos será definida depois.
+    document.getElementById('btnAtualizarCertificado').addEventListener('click', () => { hideAlert(alertOnboarding); mostrarPasso(3); });
     const fileCertInput = document.getElementById('fileCertInput');
     function carregarCertificado(file) {
       const leitura = ++leituraCertificado;
@@ -1640,6 +1631,7 @@
             medicoId,
             arquivoBase64: certArquivoBase64,
             nomeArquivo: certNomeArquivo,
+            consentimentoFiscal: 'continuar-a1-v1',
             senha
           })
         });
@@ -1657,7 +1649,7 @@
         showAlert('Erro de conexão ao enviar certificado', true, alertOnboarding);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Salvar e buscar dados fiscais';
+        btn.textContent = 'Continuar';
       }
     });
 
@@ -1941,12 +1933,15 @@
             if (inputCrm && inputCrm.readOnly) inputCrm.value = data.status.crm || '';
             if (inputRqe && inputRqe.readOnly) inputRqe.value = data.status.rqe || '';
             if (data.status.telefone && inputTel) inputTel.value = formatarCom55(data.status.telefone);
+            document.getElementById('statusAdocaoFiscalConta').textContent = data.status.passos?.passo2FiscalConfirmado
+              ? 'Configuração fiscal validada e adotada automaticamente.'
+              : 'Configuração fiscal pendente. Se você cadastrou o certificado antes deste consentimento, atualize-o para registrar o aceite. Pendências técnicas precisam de análise.';
             if (data.status.perfilFiscal) {
               exibirPreviewPerfilFiscal(data.status.perfilFiscal);
               exibirParametrosConta(data.status.perfilFiscal.parametrosEmissao?.parametros ||
                 data.status.perfilFiscal.referenciaFiscal?.parametrosSugeridos || {});
             } else {
-              referenciaFiscalAtual = null; notaPadraoDisponivel = false; atualizarConfirmacaoNota();
+              referenciaFiscalAtual = null; notaPadraoDisponivel = false;
               document.getElementById('previewFiscal').classList.add('hidden');
               document.getElementById('parametrosFiscaisConta').replaceChildren();
               document.getElementById('notaPadraoStatus').textContent = 'Ainda não localizamos sua nota de referência. Tente buscar novamente pelo certificado.';

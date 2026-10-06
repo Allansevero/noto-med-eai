@@ -22,6 +22,7 @@ import { processarMensagemWebhook } from './fluxos/processar-mensagem-webhook.js
 import { processarOnboardingXml } from './onboarding/fluxos/processar-onboarding-xml.js';
 import { ErroAdocaoReferencia } from './onboarding/io/confirmar-politica-emissao.js';
 import { confirmarParametrosFiscais } from './onboarding/fluxos/confirmar-parametros-fiscais.js';
+import { registrarConsentimentoFiscal, adotarReferenciaConsentida, versaoConsentimentoFiscal } from './onboarding/fluxos/consentimento-fiscal.js';
 import { salvarCertificadoMedico } from './onboarding/fluxos/salvar-certificado-medico.js';
 import { conectarInstanciaWhatsappMedico } from './onboarding/io/conectar-instancia-whatsapp-medico.js';
 import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-status-instancia-whatsapp.js';
@@ -271,7 +272,10 @@ export function criarAppExpress() {
       const fiscal = await processarOnboardingXml({ pool, supabase: authAdminService.supabaseClient,
         documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper },
       medicoId, consulta.documento.xml);
-      return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu });
+      const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
+        medicoId, fiscal.parametros.dadosReformaTributaria.hash);
+      if (adocaoFiscal.ok) dispararTreino(medicoId);
+      return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu, adocaoFiscal });
     } catch (erro: any) {
       console.warn('[ADN] Busca de referência pendente:', { etapa: 'busca_referencia', codigo: erro?.codigo || 'BUSCA_FALHOU', diagnostico: erro?.diagnostico, mensagem: erro?.message });
       return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos obter sua nota padrão pelo certificado. Você não precisa enviar arquivos. Tente novamente mais tarde; se persistir, a equipe precisa verificar a disponibilidade da nota no sistema de origem.' });
@@ -357,7 +361,10 @@ export function criarAppExpress() {
   // Passo 2: Certificado A1 + importacao automatica da ultima NFS-e pelo ADN
   app.post('/api/onboarding/certificado', async (req: Request, res: Response) => {
     try {
-      const { medicoId: medicoIdRaw, arquivoBase64, nomeArquivo, senha } = req.body || {};
+      const { medicoId: medicoIdRaw, arquivoBase64, nomeArquivo, senha, consentimentoFiscal } = req.body || {};
+      if (consentimentoFiscal !== undefined && consentimentoFiscal !== versaoConsentimentoFiscal) {
+        return res.status(400).json({ ok: false, detalhe: 'Atualize a página antes de continuar com o certificado.' });
+      }
       if (!medicoIdRaw || !arquivoBase64 || !senha) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId, arquivo e senha são obrigatórios' });
       }
@@ -385,6 +392,10 @@ export function criarAppExpress() {
         senhaCertificado: senha
       });
 
+      if (consentimentoFiscal === versaoConsentimentoFiscal) {
+        await registrarConsentimentoFiscal(pool, medicoId, resultado.certificadoId);
+      }
+
       try {
         if (!documentoTitular) {
           throw new Error('Nao foi possivel identificar o CPF/CNPJ do titular no certificado A1.');
@@ -403,9 +414,13 @@ export function criarAppExpress() {
           consulta.documento.xml
         );
 
+        const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
+          medicoId, fiscal.parametros.dadosReformaTributaria.hash);
+        if (adocaoFiscal.ok) dispararTreino(medicoId);
         return res.json({
           ...resultado,
           medicoId,
+          adocaoFiscal,
           importacaoFiscal: {
             ...fiscal,
             fonte: 'adn',
