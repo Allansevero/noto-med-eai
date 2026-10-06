@@ -719,22 +719,22 @@
     body.onboarding-active .access-header,
     body.onboarding-active .access-form,
     body.onboarding-active .step-view {
-      align-items: center;
-      text-align: center;
+      align-items: flex-start;
+      text-align: left;
     }
     body.onboarding-active .dash-top-bar,
     body.onboarding-active .tabs-wrapper,
     body.onboarding-active .tag-active { display: none; }
     .access-title { font-size: 42px !important; font-weight: 500 !important; }
     body.onboarding-active h1,
-    body.onboarding-active h2 { font-size: 42px !important; font-weight: 500 !important; text-align: center; }
+    body.onboarding-active h2 { font-size: 42px !important; font-weight: 500 !important; text-align: left; }
     body.onboarding-active p,
     body.onboarding-active label,
     body.onboarding-active .alert,
     body.onboarding-active .access-subtitle {
       font-size: 15px !important;
       font-weight: 400 !important;
-      text-align: center !important;
+      text-align: left !important;
     }
     body.onboarding-active #notaPadraoStatus,
     body.onboarding-active .param-label,
@@ -749,6 +749,18 @@
     button.btn-link { width: 100%; padding: 1rem; border-radius: 12px; opacity: 1; text-decoration: none; }
     .tab-btn.active { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px #000000; }
     .cadastro-voltar { width: 100%; }
+    body p, body label, body h1, body h2, body h3,
+    .drop-zone, .access-subtitle, .alert, .code-box { text-align: left !important; }
+    .fiscal-parametros { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem 1rem; margin-top: 1rem; }
+    .fiscal-parametros dt, .fiscal-parametros dd { overflow-wrap: anywhere; font-size: 15px; font-weight: 400; text-align: left; }
+    .fiscal-parametros dt { color: var(--text-secondary); }
+    @media (max-width: 600px) {
+      body { --font-size-base: 13px; font-size: 13px; }
+      body.onboarding-active p, body.onboarding-active label, body.onboarding-active .alert, body.onboarding-active .access-subtitle,
+      body p, body label, body .access-subtitle, body .alert, body .param-label, body .param-val,
+      body .code-box, body .stat-row, body .fiscal-parametros dt, body .fiscal-parametros dd,
+      body #notaPadraoStatus, body button { font-size: 13px !important; }
+    }
   </style>
 </head>
 <body class="onboarding-active">
@@ -757,7 +769,7 @@
     <!-- ÁREA DE ACESSO / LOGIN MINIMALISTA -->
     <main class="access-container" id="cardAuth">
       <div class="access-header" id="authHeader">
-        <h1 class="access-title">Crie sua conta</h1>
+        <h1 class="access-title">Acesse seu Noto</h1>
         <p class="access-subtitle">Enviaremos um código para você fazer login.</p>
       </div>
 
@@ -765,10 +777,6 @@
 
       <!-- ETAPA 1: DIGITAR TELEFONE COM BANDEIRA E +55 AUTOMÁTICO -->
       <form id="formTelefone" class="access-form">
-        <div class="field-wrapper">
-          <label class="field-label" for="inputNomeCadastro">Nome completo</label>
-          <input type="text" id="inputNomeCadastro" class="input-text" placeholder="Seu nome completo" autocomplete="name" required />
-        </div>
         <div class="field-wrapper">
           <div class="phone-input-wrapper">
             <div class="flag-icon-container" title="Brasil (+55)">
@@ -860,50 +868,11 @@
         </div>
       </div>
 
+      <div id="alertOnboarding" class="alert alert-error hidden"></div>
+
       <!-- CONTEÚDO DA ABA PAINEL (TUDO ATUALMENTE AQUI) -->
       <div id="tabContentPainel" class="tab-content" role="tabpanel" aria-labelledby="tabBtnPainel">
-        <div id="alertOnboarding" class="alert alert-error hidden"></div>
 
-        <!-- ETAPA 1: NOME DO MÉDICO -->
-        <div id="step1View" class="step-view">
-        <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Identificação</h2>
-          <p class="access-subtitle">
-            Como você gostaria de ser identificado nos atendimentos e mensagens aos pacientes?
-          </p>
-        </div>
-
-        <div class="field-wrapper">
-          <label class="field-label">Nome Completo</label>
-          <input type="text" id="inputNomeMedico" class="input-text" placeholder="Ex: Dr. Allan Severo" required />
-        </div>
-
-        <button type="button" class="btn-action" id="btnSalvarPasso1">
-          Continuar
-        </button>
-      </div>
-
-      <!-- Dados obtidos automaticamente pelo A1 de cada emitente -->
-      <div id="step2View" class="step-view hidden">
-        <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Sua nota padrão</h2>
-          <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
-        </div>
-        <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
-        <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
-        <div id="previewFiscal" class="hidden" style="width:100%">
-          <div class="params-card">
-            <p id="resumoNotaReferencia"></p>
-            <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
-            <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
-            <p id="resumoIbscbs"></p>
-            <p id="pendenciasNotaReferencia" role="status"></p>
-          </div>
-          <label><input type="checkbox" id="confirmarNotaPadrao" /> Esta nota representa o serviço e o tipo de consulta que vou emitir pelo Noto.</label>
-          <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
-          <button type="button" class="btn-action" id="btnConfirmarFiscal" disabled>Usar esta nota como padrão e continuar</button>
-        </div>
-      </div>
 
       <!-- ETAPA 2: CERTIFICADO A1 E BUSCA AUTOMATICA NO ADN -->
       <div id="step3View" class="step-view hidden">
@@ -912,7 +881,7 @@
           <p class="access-subtitle">
             Usaremos o A1 para localizar sua última NFS-e no Ambiente Nacional e preencher seus dados fiscais automaticamente.
           </p>
-          <p class="access-subtitle">Antes do cadastro, emita sua nota no portal da prefeitura com os dados tributários atualizados para o serviço que usará no Noto. Confira a nota localizada na próxima etapa. Se ela ainda não estiver disponível no Ambiente Nacional, a configuração ficará pendente até conseguirmos localizar a referência automaticamente.</p>
+          <p class="access-subtitle">Antes do cadastro, emita sua nota no portal da prefeitura com os dados tributários atualizados para o serviço que usará no Noto. Os dados da nota localizada estarão disponíveis na opção Conta. Se ela ainda não estiver disponível no Ambiente Nacional, a configuração ficará pendente até conseguirmos localizar a referência automaticamente.</p>
         </div>
 
         <div class="drop-zone" id="dropZoneCert" onclick="document.getElementById('fileCertInput').click()">
@@ -974,10 +943,10 @@
       <!-- ETAPA 5: LIBERADO / PAINEL FINAL -->
       <div id="step5View" class="step-view hidden">
         <div class="access-header">
-          <span class="tag-active" style="align-self: flex-start; margin-bottom: 0.5rem;">ATIVO &amp; LIBERADO</span>
-          <h2 class="access-title" style="font-size: 34px;">Consultório Pronto!</h2>
-          <p class="access-subtitle">
-            Você já pode emitir notas fiscais pelo WhatsApp. O sistema opera de forma invisível.
+          <span class="tag-active" style="align-self: flex-start; margin-bottom: 0.5rem;">WHATSAPP CONECTADO</span>
+          <h2 class="access-title" style="font-size: 34px;">Seu Noto</h2>
+          <p class="access-subtitle" id="mensagemPainel">
+            Seu WhatsApp está conectado. Confira sua configuração fiscal na opção Conta.
           </p>
         </div>
 
@@ -989,7 +958,7 @@
           </div>
           <div class="stat-row">
             <span style="color: var(--text-secondary);">Parâmetros Fiscais</span>
-            <span class="tag-active">CONFIRMADO</span>
+            <span class="tag-active" id="statusFiscalPainel">PENDENTE</span>
           </div>
           <div class="stat-row">
             <span style="color: var(--text-secondary);">Certificado Digital A1</span>
@@ -1074,6 +1043,30 @@
         <p class="access-subtitle">Dados profissionais e configurações do consultório.</p>
         <p class="access-subtitle">Nome completo, CRM e RQE salvos aqui serão usados na descrição das novas solicitações de nota. Notas já emitidas não são alteradas.</p>
       </div>
+
+      <!-- Dados obtidos automaticamente pelo A1 de cada emitente -->
+      <div id="step2View" class="step-view">
+        <div class="access-header">
+          <h2 class="access-title" style="font-size: 34px;">Parâmetros fiscais</h2>
+          <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
+        </div>
+        <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
+        <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
+        <div id="previewFiscal" class="hidden" style="width:100%">
+          <div class="params-card">
+            <p id="resumoNotaReferencia"></p>
+            <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
+            <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
+            <p id="resumoIbscbs"></p>
+            <p id="pendenciasNotaReferencia" role="status"></p>
+            <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
+          </div>
+          <label><input type="checkbox" id="confirmarNotaPadrao" /> Esta nota representa o serviço e o tipo de consulta que vou emitir pelo Noto.</label>
+          <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
+          <button type="button" class="btn-action" id="btnConfirmarFiscal" disabled>Confirmar configuração fiscal</button>
+        </div>
+      </div>
+
 
       <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
       <div class="account-fields-list">
@@ -1177,7 +1170,6 @@
     const formTelefone = document.getElementById('formTelefone');
     const formOtp = document.getElementById('formOtp');
     const inputTelefone = document.getElementById('inputTelefone');
-    const inputNomeCadastro = document.getElementById('inputNomeCadastro');
     const authHeader = document.getElementById('authHeader');
     let painelDisponivel = false;
     let leituraCertificado = 0;
@@ -1189,7 +1181,6 @@
     // Elementos Onboarding
     const cardOnboarding = document.getElementById('cardOnboarding');
     const alertOnboarding = document.getElementById('alertOnboarding');
-    const step1View = document.getElementById('step1View');
     const step2View = document.getElementById('step2View');
     const step3View = document.getElementById('step3View');
     const step4View = document.getElementById('step4View');
@@ -1213,7 +1204,6 @@
 
       // Limpa os formulários
       inputTelefone.value = '';
-      inputNomeCadastro.value = '';
       authHeader.classList.remove('hidden');
       painelDisponivel = false;
       document.body.classList.add('onboarding-active');
@@ -1337,11 +1327,6 @@
     formTelefone.addEventListener('submit', async (e) => {
       e.preventDefault();
       hideAlert();
-      if (inputNomeCadastro.value.trim().length < 3) {
-        showAlert('Digite seu nome completo.');
-        return;
-      }
-
       let valorSemDdi = inputTelefone.value.trim();
       if (valorSemDdi.startsWith('+55')) {
         valorSemDdi = valorSemDdi.slice(3);
@@ -1431,26 +1416,6 @@
 
         sessaoAtual = data.sessao;
         localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
-        // O nome é persistido apenas depois que a posse do telefone foi validada.
-        const nome = inputNomeCadastro.value.trim();
-        if (nome) {
-          document.getElementById('inputNomeMedico').value = nome;
-          const nomeRes = await fetch('/api/onboarding/nome', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuarioId: sessaoAtual.usuario.usuarioId,
-              medicoId: sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId, nome })
-          });
-          const nomeData = await nomeRes.json();
-          if (!nomeRes.ok || !nomeData.ok) {
-            cardAuth.classList.add('hidden'); cardOnboarding.classList.remove('hidden');
-            mostrarPasso(1);
-            showAlert(nomeData.detalhe || 'Não foi possível salvar seu nome. Tente novamente.', true, alertOnboarding);
-            return;
-          }
-          if (nomeData.medicoId) sessaoAtual.usuario.medicoId = nomeData.medicoId;
-          sessaoAtual.usuario.nome = nome;
-          localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
-        }
         await carregarFluxoOnboarding();
       } catch (err) {
         showAlert('Erro ao autenticar.');
@@ -1460,7 +1425,7 @@
     });
 
     // --- CARREGAR ONBOARDING / PAINEL ---
-    async function carregarFluxoOnboarding() {
+    async function carregarFluxoOnboarding(abaFinal) {
       if (!sessaoAtual?.usuario) return;
       cardAuth.classList.add('hidden');
       cardOnboarding.classList.remove('hidden');
@@ -1475,39 +1440,25 @@
             localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
           }
           renderizarPassos(data.status);
+          if (abaFinal && painelDisponivel) alternarAba(abaFinal);
         } else {
-          mostrarPasso(1);
+          mostrarPasso(3);
         }
       } catch (err) {
-        mostrarPasso(1);
+        mostrarPasso(3);
       }
     }
 
     function renderizarPassos(status) {
       const p = status.passos;
-      if (status.liberadoParaEmitir) {
-        document.getElementById('resumoNomeMedico').textContent = status.nomeUsuario;
-        mostrarPasso(5);
-        return;
-      }
-
-      if (!p.passo1Nome) {
-        mostrarPasso(1);
-      } else if (!p.passo3CertificadoValido) {
-        mostrarPasso(3);
-      } else if (!p.passo2XmlEnviado || !p.passo2FiscalConfirmado) {
-        mostrarPasso(2);
-        if (p.passo2XmlEnviado && status.perfilFiscal) {
-          exibirPreviewPerfilFiscal(status.perfilFiscal);
-        } else {
-          referenciaFiscalAtual = null;
-          document.getElementById('previewFiscal').classList.add('hidden');
-        }
-      } else if (!p.passo4WhatsappConectado) {
-        mostrarPasso(4);
-      } else {
-        mostrarPasso(5);
-      }
+      document.getElementById('resumoNomeMedico').textContent = p.passo1Nome ? status.nomeUsuario : 'Preencha na Conta';
+      document.getElementById('statusFiscalPainel').textContent = p.passo2FiscalConfirmado ? 'CONFIRMADO' : 'PENDENTE';
+      document.getElementById('mensagemPainel').textContent = status.liberadoParaEmitir
+        ? 'Você já pode emitir notas fiscais pelo WhatsApp.'
+        : 'Seu WhatsApp está conectado. Confira as pendências fiscais na opção Conta para liberar a emissão.';
+      if (!p.passo3CertificadoValido) mostrarPasso(3);
+      else if (!p.passo4WhatsappConectado) mostrarPasso(4);
+      else mostrarPasso(5);
     }
 
     function mostrarPasso(passoNum) {
@@ -1519,51 +1470,18 @@
       if (passoNum !== 4) {
         pararPollingConexao();
       }
-      [step1View, step2View, step3View, step4View, step5View].forEach(v => v.classList.add('hidden'));
+      [step3View, step4View, step5View].forEach(v => v.classList.add('hidden'));
 
-      if (passoNum === 1) step1View.classList.remove('hidden');
-      if (passoNum === 2) step2View.classList.remove('hidden');
       if (passoNum === 3) step3View.classList.remove('hidden');
       if (passoNum === 4) step4View.classList.remove('hidden');
       if (passoNum === 5) {
         step5View.classList.remove('hidden');
-        if (sessaoAtual?.usuario?.nome) {
+        if (sessaoAtual?.usuario?.nome && sessaoAtual.usuario.nome !== 'Médico') {
           document.getElementById('resumoNomeMedico').textContent = sessaoAtual.usuario.nome;
         }
         carregarStatusBilling();
       }
     }
-
-    // --- PASSO 1: SALVAR NOME ---
-    document.getElementById('btnSalvarPasso1').addEventListener('click', async () => {
-      hideAlert(alertOnboarding);
-      const nome = document.getElementById('inputNomeMedico').value.trim();
-      if (nome.length < 3) {
-        showAlert('Digite o nome completo do médico.', true, alertOnboarding);
-        return;
-      }
-      const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
-      try {
-        const res = await fetch('/api/onboarding/nome', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ usuarioId: sessaoAtual.usuario.usuarioId, medicoId, nome })
-        });
-        const data = await res.json();
-        if (data.ok) {
-          if (data.medicoId) {
-            sessaoAtual.usuario.medicoId = data.medicoId;
-            localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
-          }
-          showAlert('Identificação salva com sucesso!', false, alertOnboarding);
-          mostrarPasso(3);
-        } else {
-          showAlert(data.detalhe || 'Erro ao salvar nome', true, alertOnboarding);
-        }
-      } catch (err) {
-        showAlert('Falha de conexão', true, alertOnboarding);
-      }
-    });
 
     // --- NOTA PADRÃO: consulta automática, sem entrada de campos tributários ---
     let referenciaFiscalAtual = null;
@@ -1596,6 +1514,33 @@
         ? 'Nota encontrada. Confirme abaixo se ela representa suas consultas habituais. O Noto validará a configuração antes de avançar.'
         : 'A emissão ainda não foi liberada com esta referência.';
       document.getElementById('previewFiscal').classList.remove('hidden');
+      exibirParametrosConta(p);
+    }
+    function exibirParametrosConta(parametros) {
+      const lista = document.getElementById('parametrosFiscaisConta');
+      lista.replaceChildren();
+      const nomes = { ambiente: 'Ambiente', vigenciaInicio: 'Vigência inicial', vigenciaFim: 'Vigência final',
+        municipioPrestacao: 'Município de prestação', opcaoSimplesNacional: 'Simples Nacional',
+        regimeApuracaoSn: 'Regime de apuração', regimeEspecialTributacao: 'Regime especial',
+        tribISSQN: 'Tributação do ISSQN', tpRetISSQN: 'Retenção do ISSQN', aliquotaIss: 'Alíquota de ISS (%)',
+        cstPisCofins: 'CST de PIS/COFINS', percentualTotTribSN: 'Tributos do Simples (%)',
+        ibscbs: 'IBS/CBS', cIndOp: 'Indicador da operação', cClassTrib: 'Classificação tributária',
+        CST: 'CST', totalTributos: 'Total de tributos', tipo: 'Forma de informação', federal: 'Federal (%)',
+        estadual: 'Estadual (%)', municipal: 'Municipal (%)', pisCofinsCalculo: 'Cálculo de PIS/COFINS',
+        base: 'Base de cálculo', aliquotaPis: 'Alíquota de PIS (%)', aliquotaCofins: 'Alíquota de COFINS (%)', tipoRetencao: 'Tipo de retenção' };
+      const valores = { producao: 'Produção', homologacao: 'Homologação', nao_optante: 'Não optante',
+        mei: 'MEI', me_epp: 'ME/EPP', nao_informado: 'Não informado', percentual: 'Percentual', valor_servico: 'Valor do serviço' };
+      function adicionar(obj, prefixo = '') {
+        for (const [campo, valor] of Object.entries(obj)) {
+          if (valor === undefined || valor === null) continue;
+          const nome = prefixo + (nomes[campo] || campo);
+          if (typeof valor === 'object') { adicionar(valor, nome + ' · '); continue; }
+          const termo = document.createElement('dt'), detalhe = document.createElement('dd');
+          termo.textContent = nome; detalhe.textContent = valores[valor] || String(valor);
+          lista.append(termo, detalhe);
+        }
+      }
+      adicionar(parametros);
     }
     function exibirPreviewFiscal(data) {
       mostrarReferenciaFiscal(data.parametros.dadosReformaTributaria, data.parametros);
@@ -1621,16 +1566,7 @@
         document.getElementById('notaPadraoStatus').textContent = erro.message;
       } finally { btn.disabled = false; }
     });
-    document.getElementById('btnRevisarFiscal').addEventListener('click', async () => {
-      try {
-        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
-        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
-        const data = await res.json();
-        if (!data.ok || !data.status?.perfilFiscal) throw new Error('Nota padrão ainda não localizada.');
-        mostrarPasso(2);
-        exibirPreviewPerfilFiscal(data.status.perfilFiscal);
-      } catch (erro) { showAlert('Não foi possível abrir sua nota padrão agora.', true, alertOnboarding); }
-    });
+    document.getElementById('btnRevisarFiscal').addEventListener('click', () => alternarAba('conta'));
     document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
       if (confirmacaoNotaEmAndamento || !notaPadraoDisponivel || !document.getElementById('confirmarNotaPadrao').checked) return;
       confirmacaoNotaEmAndamento = true;
@@ -1648,7 +1584,7 @@
           throw new Error(data.detalhe || 'Ainda não foi possível adotar sua nota padrão.');
         }
         showAlert('Configuração da nota padrão salva.', false, alertOnboarding);
-        await carregarFluxoOnboarding();
+        await carregarFluxoOnboarding('conta');
       } catch (erro) { showAlert(erro.message, true, alertOnboarding); }
       finally { confirmacaoNotaEmAndamento = false; atualizarConfirmacaoNota(); }
     });
@@ -1709,17 +1645,11 @@
         });
         const data = await res.json();
         if (data.ok) {
-          mostrarPasso(2);
-          if (data.importacaoFiscal?.ok) {
-            exibirPreviewFiscal(data.importacaoFiscal);
-            showAlert('Nota encontrada. Confira se ela representa suas consultas habituais.', false, alertOnboarding);
-          } else {
-            referenciaFiscalAtual = null;
-            notaPadraoDisponivel = false;
-            atualizarConfirmacaoNota();
-            document.getElementById('previewFiscal').classList.add('hidden');
-            document.getElementById('notaPadraoStatus').textContent = 'Certificado salvo. Ainda não conseguimos localizar sua nota padrão. Você pode tentar novamente sem reenviar o certificado. Se persistir, a equipe precisa verificar a disponibilidade da nota no sistema de origem.';
-          }
+          certArquivoBase64 = ''; certNomeArquivo = '';
+          document.getElementById('inputSenhaCert').value = '';
+          document.getElementById('senhaCertWrapper').classList.add('hidden');
+          mostrarPasso(4);
+          showAlert('Certificado salvo. Agora conecte seu WhatsApp. Os dados fiscais estarão na opção Conta.', false, alertOnboarding);
         } else {
           showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);
         }
@@ -1752,7 +1682,7 @@
             statusDiv.innerHTML = '<span>✓ WhatsApp Conectado com Sucesso!</span>';
           }
           showAlert('WhatsApp do consultório conectado com sucesso!', false, alertOnboarding);
-          setTimeout(() => mostrarPasso(5), 1200);
+          setTimeout(() => carregarFluxoOnboarding(), 1200);
         }
       } catch {
         // Ignora transitório
@@ -1824,7 +1754,7 @@
 
         if (data.status === 'open') {
           showAlert('WhatsApp já está conectado!', false, alertOnboarding);
-          mostrarPasso(5);
+          await carregarFluxoOnboarding();
           return;
         }
 
@@ -2007,10 +1937,20 @@
           const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
           const data = await res.json();
           if (data.ok && data.status) {
-            if (data.status.nomeUsuario && inputNome && inputNome.readOnly) inputNome.value = data.status.nomeUsuario;
+            if (inputNome && inputNome.readOnly) inputNome.value = data.status.passos?.passo1Nome ? data.status.nomeUsuario : '';
             if (inputCrm && inputCrm.readOnly) inputCrm.value = data.status.crm || '';
             if (inputRqe && inputRqe.readOnly) inputRqe.value = data.status.rqe || '';
             if (data.status.telefone && inputTel) inputTel.value = formatarCom55(data.status.telefone);
+            if (data.status.perfilFiscal) {
+              exibirPreviewPerfilFiscal(data.status.perfilFiscal);
+              exibirParametrosConta(data.status.perfilFiscal.parametrosEmissao?.parametros ||
+                data.status.perfilFiscal.referenciaFiscal?.parametrosSugeridos || {});
+            } else {
+              referenciaFiscalAtual = null; notaPadraoDisponivel = false; atualizarConfirmacaoNota();
+              document.getElementById('previewFiscal').classList.add('hidden');
+              document.getElementById('parametrosFiscaisConta').replaceChildren();
+              document.getElementById('notaPadraoStatus').textContent = 'Ainda não localizamos sua nota de referência. Tente buscar novamente pelo certificado.';
+            }
           }
         } catch {}
       }

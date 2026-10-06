@@ -95,7 +95,8 @@ export async function consultarStatusOnboarding(
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
 
-  const liberadoParaEmitir = passo1Nome && passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
+  // Nome profissional é preenchido na Conta; não é uma etapa do onboarding.
+  const liberadoParaEmitir = passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
 
   return {
     medicoId: r.medico_id,

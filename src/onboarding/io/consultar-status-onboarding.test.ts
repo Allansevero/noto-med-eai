@@ -72,3 +72,12 @@ describe('consultarStatusOnboarding', () => {
     assert.equal(status.liberadoParaEmitir, false);
   });
 });
+
+it('nome pode ser preenchido na Conta sem bloquear uma configuração fiscal já validada', async () => {
+  const pool: any = { query: async () => ({ rows: [{ medico_id: 'med', usuario_id: 'user',
+    medico_nome: 'Médico', usuario_nome: 'Médico', extraido_automaticamente: true,
+    confirmado_pelo_medico: true, cert_ativos: 1, whats_conectados: 1 }] }) };
+  const status = await consultarStatusOnboarding(pool, 'med');
+  assert.equal(status.passos.passo1Nome, false);
+  assert.equal(status.liberadoParaEmitir, true);
+});

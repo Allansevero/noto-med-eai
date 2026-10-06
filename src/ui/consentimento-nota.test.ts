@@ -11,12 +11,13 @@ function tela(resposta: any = { ok: true }) {
   const nodes = new Map<string, any>();
   const get = (id: string) => {
     if (!nodes.has(id)) nodes.set(id, { checked: false, disabled: false, textContent: '', handlers: {} as any,
+      children: [] as any[], replaceChildren() { this.children = []; }, append(...els: any[]) { this.children.push(...els); },
       classList: { add() {}, remove() {} }, addEventListener(e: string, h: any) { this.handlers[e] = h; } });
     return nodes.get(id);
   };
   const pedidos: any[] = [], mensagens: string[] = [];
   let avancos = 0;
-  const contexto = vm.createContext({ document: { getElementById: get }, sessaoAtual: { usuario: { medicoId: 'med' } },
+  const contexto = vm.createContext({ document: { getElementById: get, createElement() { return { textContent: '' }; } }, sessaoAtual: { usuario: { medicoId: 'med' } },
     alertOnboarding: {}, hideAlert() {}, showAlert(m: string) { mensagens.push(m); }, mostrarPasso() {},
     async carregarFluxoOnboarding() { avancos++; },
     async fetch(url: string, opcoes: any) { pedidos.push({ url, body: JSON.parse(opcoes.body) });
