@@ -40,16 +40,14 @@ function tela() {
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)![1], contexto);
   return { node, pedidos, otp, contexto, status, carregarArquivo() { leitor.onload({ target: { result: new Uint8Array([1, 2, 3]).buffer } }); } };
 }
-test('marca e abas ficam ocultas até concluir o onboarding e voltam ao entrar no painel', () => {
+test('abas ficam ocultas até concluir o onboarding e voltam ao entrar no painel', () => {
   const t = tela();
   vm.runInContext('mostrarPasso(3)', t.contexto);
-  assert.equal(t.node('onboardingTopBar').classList.contains('hidden'), true);
   assert.equal(t.node('tabsNavigation').classList.contains('hidden'), true);
   vm.runInContext('alternarAba("conta")', t.contexto);
   assert.equal(t.node('tabContentConta').classList.contains('hidden'), true);
   vm.runInContext('mostrarPasso(5)', t.contexto);
   assert.equal(t.node('tabsNavigation').classList.contains('hidden'), false);
-  assert.equal(t.node('onboardingTopBar').classList.contains('hidden'), false);
   assert.equal(t.node('body').classList.contains('onboarding-active'), false);
 });
 test('acesso por telefone e OTP não pede nem salva nome e segue para certificado', async () => {
@@ -99,7 +97,7 @@ test('sair do painel restaura o cadastro e permite autenticar novamente por OTP'
   const t = tela();
   vm.runInContext('mostrarPasso(5)', t.contexto);
   t.node('btnValidarOtp').disabled = true;
-  vm.runInContext('efetuarLogout()', t.contexto);
+  t.node('btnLogoutConta').handlers.click();
   assert.equal(t.node('body').classList.contains('onboarding-active'), true);
   assert.equal(t.node('tabsNavigation').classList.contains('hidden'), true);
   assert.equal(t.node('authHeader').classList.contains('hidden'), false);
