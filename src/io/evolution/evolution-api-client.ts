@@ -104,9 +104,7 @@ export class EvolutionApiClient
         },
         body: JSON.stringify({
           number: this.normalizarTelefone(telefone),
-          title: 'Código de verificação',
           description: textoFallback,
-          footer: 'Noto',
           buttons: [{
             type: 'copy',
             displayText: 'Copiar código',

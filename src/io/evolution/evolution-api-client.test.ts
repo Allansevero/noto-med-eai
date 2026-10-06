@@ -24,6 +24,9 @@ describe('EvolutionApiClient OTP', () => {
       assert.equal(chamadas.length, 1);
       assert.ok(chamadas[0].url.endsWith('/message/sendButtons/notomed_oficial'));
       assert.equal(chamadas[0].body.number, '5551999998888');
+      assert.equal(chamadas[0].body.description, 'Seu código de verificação é *123456*.');
+      assert.equal(chamadas[0].body.title, undefined);
+      assert.equal(chamadas[0].body.footer, undefined);
       assert.deepEqual(chamadas[0].body.buttons, [{
         type: 'copy',
         displayText: 'Copiar código',
@@ -52,7 +55,7 @@ describe('EvolutionApiClient OTP', () => {
       assert.equal(resultado.sucesso, true);
       assert.equal(chamadas.length, 2);
       assert.ok(chamadas[1].url.endsWith('/message/sendText/notomed_oficial'));
-      assert.ok(chamadas[1].body.text.includes('654321'));
+      assert.equal(chamadas[1].body.text, 'Seu código de verificação é *654321*.');
     } finally {
       globalThis.fetch = fetchOriginal;
     }

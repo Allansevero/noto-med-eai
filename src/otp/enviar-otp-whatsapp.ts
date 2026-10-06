@@ -18,6 +18,6 @@ export interface EnviarOtpWhatsapp {
   enviar(params: EnviarOtpParams): Promise<ResultadoEnvioOtp>;
 }
 
-export function formatarMensagemOtp(codigo: string, ttlMinutos: number = 5): string {
-  return `Seu código de verificação é *${codigo}*.\n\nVálido por ${ttlMinutos} minutos. Se você não solicitou este código, ignore esta mensagem.`;
+export function formatarMensagemOtp(codigo: string): string {
+  return `Seu código de verificação é *${codigo}*.`;
 }
