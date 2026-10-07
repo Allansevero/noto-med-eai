@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { criarRouterWhatsappDesenvolvedor } from './whatsapp-router.js';
 import type { EvolutionColetor } from './evolution-coletor.js';
+import { ErroEvolutionColetor } from './evolution-coletor.js';
 const token='chave-de-desenvolvedor-somente-para-teste-123456';
 const mensagem={key:{id:'m1',remoteJid:'5551999998888@s.whatsapp.net',fromMe:false},message:{conversation:'CPF 52998224725 e ana@example.com'}};
 async function ambiente(t:any,opcoes:any={}) {
   let agora=0;const criadas:string[]=[],removidas:string[]=[];let paginas=0;
-  const evolution:EvolutionColetor={async criar(n){criadas.push(n);},async estado(){return opcoes.estado||'open';},async qrcode(){return 'data:image/png;base64,AAAA';},
+  const evolution:EvolutionColetor={async criar(n){criadas.push(n);if(opcoes.preparar)await opcoes.preparar;if(opcoes.falhaCriacao)throw new ErroEvolutionColetor('instance/create','HTTP_ERRO',503);},async estado(){return opcoes.estado||'open';},async qrcode(){return 'data:image/png;base64,AAAA';},
     async pagina(_n,p){paginas++;if(opcoes.pagina)return opcoes.pagina(p);if(opcoes.esperar)await opcoes.esperar;
       if(opcoes.falha&&p===2)throw new Error('segredo externo que não deve vazar');
       return {mensagens:p===1?[mensagem]:[],registros:p===1?1:0,invalidos:0,totalPaginas:opcoes.semMetadados?null:opcoes.falha?2:1};},
@@ -16,12 +17,25 @@ async function ambiente(t:any,opcoes:any={}) {
   const server=await new Promise<any>(r=>{const s=app.listen(0,'127.0.0.1',()=>r(s));});
   t.after(()=>new Promise<void>(r=>{server.closeAllConnections();server.close(()=>r());}));
   const pedir=async(path:string,method='GET',chave=token)=>{const res=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method,headers:{Authorization:'Bearer '+chave}});return {status:res.status,data:await res.json()};};
-  const iniciar=async()=>{const s=await pedir('/sessoes','POST');return s.data.sessaoId;};
+  const iniciar=async()=>{const s=await pedir('/sessoes','POST');const id=s.data.sessaoId;for(let i=0;i<100;i++){const r=await pedir('/sessoes/'+id);if(r.data.estado!=='preparando')return id;await new Promise<void>(r=>setImmediate(r));}throw new Error('Preparation did not finish');};
   const aguardar=async(id:string)=>{for(let i=0;i<100;i++){const r=await pedir('/sessoes/'+id);if(r.data.estado!=='varrendo')return r;await new Promise<void>(r=>setImmediate(r));}throw new Error('Scan did not finish');};
   return {pedir,iniciar,aguardar,criadas,removidas,paginas:()=>paginas,avancar:()=>{agora=31*60000;}};
 }
 test('chave inválida e área desativada não criam instância',async t=>{
   for(const ativo of [true,false]){const a=await ambiente(t,{ativo});assert.equal((await a.pedir('/sessoes','POST','errada')).status,ativo?401:404);assert.equal(a.criadas.length,0);}
+});
+test('falha ao preparar mantém diagnóstico seguro e permite limpar a sessão',async t=>{
+ const a=await ambiente(t,{falhaCriacao:true}),id=await a.iniciar();const r=await a.pedir('/sessoes/'+id);
+ assert.equal(r.data.estado,'falha');assert.deepEqual(r.data.diagnostico,{etapa:'instance/create',codigo:'HTTP_ERRO',statusHttp:503});
+ assert.equal(r.data.qrcodeBase64,null);assert.equal((await a.pedir('/sessoes/'+id+'/varrer','POST')).status,409);
+ assert.equal((await a.pedir('/sessoes/'+id,'DELETE')).status,200);assert.deepEqual(a.removidas,a.criadas);
+});
+test('responde antes de a Evolution preparar a instância e preserva o QR para a consulta',async t=>{
+ let liberar!:()=>void;const preparar=new Promise<void>(r=>{liberar=r;});const a=await ambiente(t,{preparar});
+ const requisicao=a.pedir('/sessoes','POST');
+ let s:any;try{s=await Promise.race([requisicao,new Promise((_,reject)=>{const timeout=setTimeout(()=>reject(new Error('A requisição ficou presa na Evolution')),250);timeout.unref();})]);}finally{liberar();}
+ assert.equal(s.status,202);assert.equal(s.data.estado,'preparando');
+ const r=await a.pedir('/sessoes/'+s.data.sessaoId);assert.equal(r.data.estado,'conectando');assert.equal(r.data.qrcodeBase64,'data:image/png;base64,AAAA');
 });
 test('conecta instância de teste, varre, expõe JSON e encerra sem tocar em instância de médico',async t=>{
   const a=await ambiente(t),id=await a.iniciar();assert.match(a.criadas[0],/^noto_dev_coletor_[a-f0-9]{32}$/);

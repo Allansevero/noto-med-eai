@@ -15,6 +15,8 @@ Primeira versão: conectar WhatsApp de teste, consultar o histórico textual dis
 
 Não requer migração de banco. A conexão real depende da versão e disponibilidade da Evolution. O botão de encerramento não remove instâncias de médicos.
 
+A criação responde imediatamente com HTTP 202 e `estado=preparando`. A preparação da Evolution ocorre em segundo plano; a tela consulta a sessão até receber o QR. Cada chamada ao provedor tem limite de 15 segundos. Durante a preparação, renovar QR, varrer e encerrar ficam bloqueados para evitar ações concorrentes. Uma falha libera o encerramento e preserva `diagnostico` (etapa, código e status HTTP quando disponível). Os logs do web usam o prefixo `[Coletor WhatsApp] Operação pendente`, sem corpo da resposta, chave ou conteúdo das conversas. Respostas HTML do proxy são tratadas pela tela como indisponibilidade do servidor, sem expor erro de parsing.
+
 ## Isolamento
 
 O router `/api/desenvolvedor/whatsapp` exige a mesma chave da área fiscal e está desativado quando a área de desenvolvedor está desativada. Não recebe nome de instância, telefone, URL de provedor ou parâmetros de emissão do cliente.

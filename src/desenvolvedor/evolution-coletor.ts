@@ -1,4 +1,3 @@
-import { configurarSincronizacaoHistorico } from '../onboarding/io/configurar-sincronizacao-historico.js';
 import { extrairPaginaMensagens } from '../onboarding/io/sincronizar-historico-evolution.js';
 import type { DadosMensagemEvolution } from '../whatsapp/payload-webhook-schema.js';
 export interface EvolutionColetor {
@@ -8,19 +7,32 @@ export interface EvolutionColetor {
   pagina(nome: string, pagina: number): Promise<{ mensagens: DadosMensagemEvolution[]; registros: number; invalidos: number; totalPaginas: number | null }>;
   remover(nome: string): Promise<void>;
 }
+export class ErroEvolutionColetor extends Error {
+  constructor(public etapa: string, public codigo: string, public statusHttp?: number) {
+    super(`Falha na Evolution: ${etapa} (${codigo}${statusHttp ? ', HTTP '+statusHttp : ''}).`);
+  }
+}
 /** Instâncias exclusivas do coletor. Não cadastra médicos e não configura webhooks de emissão. */
 export class EvolutionColetorClient implements EvolutionColetor {
   constructor(private url: string, private chave: string) {}
   private async api(caminho: string, method = 'GET', body?: unknown, aceitaAusente = false) {
+    const etapa = caminho.split('/').slice(1,3).join('/');
+    try {
     const res = await fetch(this.url.replace(/\/+$/, '') + caminho, { method,
       headers: { apikey: this.chave, 'Content-Type': 'application/json' },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(30000) });
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15000) });
     if (aceitaAusente && res.status === 404) return {};
-    if (!res.ok) throw new Error(`Evolution indisponível (HTTP ${res.status}).`);
+    if (!res.ok) throw new ErroEvolutionColetor(etapa,'HTTP_ERRO',res.status);
     const texto = await res.text();
-    if (texto.length > 5 * 1024 * 1024) throw new Error('Resposta do histórico excede o limite de leitura.');
+    if (texto.length > 5 * 1024 * 1024) throw new ErroEvolutionColetor(etapa,'RESPOSTA_EXCESSIVA');
     if (!texto) return {};
-    return JSON.parse(texto);
+    try {const d=JSON.parse(texto);if(!d||typeof d!=='object'||Array.isArray(d))throw new Error();return d;}
+    catch {throw new ErroEvolutionColetor(etapa,'RESPOSTA_INVALIDA',res.status);}
+    } catch(erro) {
+      if(erro instanceof ErroEvolutionColetor)throw erro;
+      const timeout=erro instanceof Error&&['TimeoutError','AbortError'].includes(erro.name);
+      throw new ErroEvolutionColetor(etapa,timeout?'TEMPO_LIMITE':'FALHA_REDE');
+    }
   }
   private caminho(nome: string) {
     if (!/^noto_dev_coletor_[0-9a-f]{32}$/.test(nome)) throw new Error('Instância de teste inválida.');
@@ -30,7 +42,10 @@ export class EvolutionColetorClient implements EvolutionColetor {
     this.caminho(nome);
     await this.api('/instance/create', 'POST', { instanceName: nome, integration: 'WHATSAPP-BAILEYS', qrcode: false,
       syncFullHistory: true, webhook: { enabled: false }, readMessages: false, readStatus: false, groupsIgnore: true, alwaysOnline: false });
-    if (!await configurarSincronizacaoHistorico({baseUrl:this.url.replace(/\/+$/, ''),apiKey:this.chave,nomeInstancia:nome})) throw new Error('Não foi possível ativar o histórico.');
+    // A instância é nova e exclusiva do teste: configura todos os campos exigidos,
+    // com o mesmo limite de tempo das outras operações da integração.
+    await this.api('/settings/set/' + this.caminho(nome),'POST',{rejectCall:false,msgCall:'',groupsIgnore:true,
+      alwaysOnline:false,readMessages:false,readStatus:false,syncFullHistory:true});
     // Desativa explicitamente o webhook local antes de permitir o pareamento.
     await this.api('/webhook/set/' + this.caminho(nome), 'POST', { webhook: { enabled: false, url: '', events: [] } });
   }

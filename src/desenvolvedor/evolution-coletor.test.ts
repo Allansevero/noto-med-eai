@@ -14,6 +14,21 @@ test('instância isolada sincroniza histórico e desativa webhook antes de obter
   assert.deepEqual(chamadas.at(-1).body,{page:2,offset:100});await c.remover(nome);assert.equal(chamadas.at(-1).method,'DELETE');
   const antes=chamadas.length;await assert.rejects(()=>c.remover('medico_real'));assert.equal(chamadas.length,antes);
 });
+test('timeout é distinguido de HTTP e a chamada possui sinal de cancelamento',async t=>{
+ t.mock.method(globalThis,'fetch',async(_url:any,init:any)=>{assert.ok(init.signal instanceof AbortSignal);throw new DOMException('segredo de conexão','TimeoutError');});
+ const c=new EvolutionColetorClient('https://evolution.test','segredo');
+ await assert.rejects(()=>c.qrcode(nome),(e:any)=>e.codigo==='TEMPO_LIMITE'&&e.etapa==='instance/connect'&&!e.message.includes('segredo'));
+});
+test('HTML inesperado da Evolution é identificado sem expor o corpo da resposta',async t=>{
+ t.mock.method(globalThis,'fetch',async()=>new Response('<!DOCTYPE html><html>segredo</html>'));
+ const c=new EvolutionColetorClient('https://evolution.test','segredo');
+ await assert.rejects(()=>c.criar(nome),(e:any)=>e.codigo==='RESPOSTA_INVALIDA'&&e.etapa==='instance/create'&&!e.message.includes('segredo'));
+});
+test('falha HTTP é identificada por etapa e status sem expor resposta do provedor',async t=>{
+ t.mock.method(globalThis,'fetch',async()=>new Response('segredo',{status:503}));
+ const c=new EvolutionColetorClient('https://evolution.test','segredo');
+ await assert.rejects(()=>c.qrcode(nome),(e:any)=>e.codigo==='HTTP_ERRO'&&e.etapa==='instance/connect'&&e.statusHttp===503);
+});
 test('mensagens inválidas e metadados ausentes são informados; QR não pode injetar URL',async t=>{
   t.mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({base64:'https://externo.test/x',records:[{}, {key:{id:'1',remoteJid:'5511999999999@s.whatsapp.net',fromMe:false},message:{conversation:'oi'}}]})));
   const c=new EvolutionColetorClient('https://evolution.test','segredo');const p=await c.pagina(nome,1);

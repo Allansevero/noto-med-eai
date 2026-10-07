@@ -19,16 +19,20 @@
 </div>
 <script>
 const el=id=>document.getElementById(id);
-let chaveAtual='',sessaoId=null,ocupado=false,conectado=false,varrendo=false,automatico=false,expirado=false,resultadoAtual=null,timer=null,geracao=0;
+let chaveAtual='',sessaoId=null,ocupado=false,conectado=false,varrendo=false,preparando=false,automatico=false,expirado=false,resultadoAtual=null,timer=null,geracao=0;
 function lembrar(id){try{id?sessionStorage.setItem('noto_dev_coletor_sessao',id):sessionStorage.removeItem('noto_dev_coletor_sessao');}catch{}}
-function botoes(){el('btnAcesso').disabled=ocupado;el('btnConectar').disabled=ocupado||Boolean(sessaoId);el('btnQr').disabled=ocupado||varrendo||!sessaoId||conectado||expirado;el('btnEncerrar').disabled=ocupado||varrendo||!sessaoId;el('btnVarrer').disabled=ocupado||varrendo||!conectado||expirado;el('btnBaixar').disabled=!resultadoAtual;}
+function botoes(){el('btnAcesso').disabled=ocupado;el('btnConectar').disabled=ocupado||Boolean(sessaoId);el('btnQr').disabled=ocupado||varrendo||preparando||!sessaoId||conectado||expirado;el('btnEncerrar').disabled=ocupado||varrendo||preparando||!sessaoId;el('btnVarrer').disabled=ocupado||varrendo||preparando||!conectado||expirado;el('btnBaixar').disabled=!resultadoAtual;}
 async function api(path,method='GET'){
- const res=await fetch('/api/desenvolvedor/whatsapp'+path,{method,headers:{Authorization:'Bearer '+chaveAtual}});const d=await res.json();
+ const res=await fetch('/api/desenvolvedor/whatsapp'+path,{method,headers:{Authorization:'Bearer '+chaveAtual}});let d;
+ try{d=JSON.parse(await res.text());if(!d||typeof d!=='object')throw new Error();}
+ catch{const e=new Error(`O servidor não respondeu corretamente (HTTP ${res.status}). Tente novamente e confira os logs do serviço web se persistir.`);e.status=res.status;throw e;}
  if(!res.ok||d.ok===false){if(d.sessaoId){sessaoId=d.sessaoId;lembrar(sessaoId);}const e=new Error(d.detalhe||'Não foi possível concluir a operação.');e.status=res.status;throw e;}return d;
 }
 async function executar(acao){if(ocupado)return;ocupado=true;botoes();try{await acao();}catch(e){el('mensagem').textContent=e.message;}finally{ocupado=false;botoes();}}
 function exibir(d){
- varrendo=d.estado==='varrendo';el('expiracao').textContent='Sessão expira em '+new Date(d.expiraEm).toLocaleString('pt-BR');
+ varrendo=d.estado==='varrendo';preparando=d.estado==='preparando';el('expiracao').textContent='Sessão expira em '+new Date(d.expiraEm).toLocaleString('pt-BR');
+ if(preparando){el('mensagem').textContent='Preparando a instância de teste na Evolution…';el('conexao').textContent='Preparando conexão. Aguarde o QR Code.';}
+ else if(d.estado==='conectando'&&!conectado&&d.qrcodeBase64&&el('qr').src!==d.qrcodeBase64)mostrarQr(d);
  const c=d.cobertura||{};
  el('progresso').textContent=`Estado: ${d.estado}. ${c.paginasConsultadas||0} páginas, ${d.mensagensAnalisadas||0} mensagens e ${(d.contatos||[]).length} conversas analisadas.`;
  if(['concluida','parcial','falha','varrendo'].includes(d.estado)){resultadoAtual=d;el('resultado').textContent=JSON.stringify(d,null,2);}
@@ -50,19 +54,19 @@ function acompanhar(){parar();const versao=geracao;const id=sessaoId;
    else el('conexao').textContent='Aguardando conexão pelo QR Code.';
   }
   if(versao===geracao)timer=setTimeout(tick,3000);
- }catch(e){if(versao!==geracao)return;el('mensagem').textContent=e.message;if(e.status===410){expirado=true;varrendo=false;botoes();}else timer=setTimeout(tick,5000);}}
+ }catch(e){if(versao!==geracao)return;el('mensagem').textContent=e.message;if(e.status===410){expirado=true;varrendo=false;preparando=false;botoes();}else timer=setTimeout(tick,5000);}}
  void tick();
 }
 function mostrarQr(d){if(d.qrcodeBase64&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(d.qrcodeBase64)){el('qr').src=d.qrcodeBase64;el('qr').hidden=false;}else{el('qr').hidden=true;el('mensagem').textContent='QR Code ainda indisponível. Clique em Atualizar QR Code.';}}
 el('formAcesso').addEventListener('submit',async e=>{e.preventDefault();await executar(async()=>{
  chaveAtual=el('chave').value;await api('/acesso');el('chave').value='';el('acesso').hidden=true;el('painel').hidden=false;el('mensagem').textContent='Conecte o WhatsApp de teste para começar.';
  try{sessaoId=sessionStorage.getItem('noto_dev_coletor_sessao');}catch{}
- if(sessaoId){try{const d=await api('/sessoes/'+sessaoId);automatico=d.estado!=='conectando';conectado=d.estado!=='conectando'&&d.estado!=='falha';exibir(d);acompanhar();}catch(e){el('mensagem').textContent=e.message;if(e.status===410){expirado=true;botoes();}}}
+ if(sessaoId){try{const d=await api('/sessoes/'+sessaoId);automatico=['varrendo','parcial','concluida'].includes(d.estado);conectado=automatico;exibir(d);acompanhar();}catch(e){el('mensagem').textContent=e.message;if(e.status===410){expirado=true;botoes();}}}
  });});
-el('btnConectar').addEventListener('click',()=>executar(async()=>{const d=await api('/sessoes','POST');sessaoId=d.sessaoId;lembrar(sessaoId);automatico=false;conectado=false;expirado=false;exibir(d);mostrarQr(d);acompanhar();}));
+el('btnConectar').addEventListener('click',()=>executar(async()=>{const d=await api('/sessoes','POST');sessaoId=d.sessaoId;lembrar(sessaoId);automatico=false;conectado=false;expirado=false;exibir(d);if(d.estado!=='preparando')mostrarQr(d);acompanhar();}));
 el('btnQr').addEventListener('click',()=>executar(async()=>mostrarQr(await api('/sessoes/'+sessaoId+'/qrcode','POST'))));
 el('btnVarrer').addEventListener('click',()=>executar(async()=>{automatico=true;await iniciarVarredura();}));
-el('btnEncerrar').addEventListener('click',()=>executar(async()=>{try{await api('/sessoes/'+sessaoId,'DELETE');}catch(e){if(e.status!==410)throw e;}parar();sessaoId=null;lembrar(null);conectado=false;automatico=false;expirado=false;varrendo=false;resultadoAtual=null;el('qr').hidden=true;el('qr').removeAttribute('src');el('resultado').textContent='Sessão encerrada. Dados removidos.';el('conexao').textContent='Nenhuma sessão conectada.';el('expiracao').textContent='';el('progresso').textContent='Nenhuma varredura realizada.';el('mensagem').textContent='WhatsApp de teste desconectado e instância removida.';}));
+el('btnEncerrar').addEventListener('click',()=>executar(async()=>{try{await api('/sessoes/'+sessaoId,'DELETE');}catch(e){if(e.status!==410)throw e;}parar();sessaoId=null;lembrar(null);conectado=false;automatico=false;expirado=false;varrendo=false;preparando=false;resultadoAtual=null;el('qr').hidden=true;el('qr').removeAttribute('src');el('resultado').textContent='Sessão encerrada. Dados removidos.';el('conexao').textContent='Nenhuma sessão conectada.';el('expiracao').textContent='';el('progresso').textContent='Nenhuma varredura realizada.';el('mensagem').textContent='WhatsApp de teste desconectado e instância removida.';}));
 el('btnBaixar').addEventListener('click',()=>{if(!resultadoAtual)return;const url=URL.createObjectURL(new Blob([JSON.stringify(resultadoAtual,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='noto-coleta-whatsapp.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 window.addEventListener('pagehide',parar);
 botoes();

@@ -2,7 +2,8 @@ import { Router, type RequestHandler } from 'express';
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { ColetorWhatsapp } from './coletor-whatsapp.js';
 import type { EvolutionColetor } from './evolution-coletor.js';
-interface Sessao { id: string; nome: string; expira: number; disponivel: boolean; removendo: boolean; ocupada: boolean; estado: string; paginas: number; registros: number; invalidos: number; motivos: string[]; coletor: ColetorWhatsapp; erro?: string }
+import { ErroEvolutionColetor } from './evolution-coletor.js';
+interface Sessao { id: string; nome: string; expira: number; disponivel: boolean; removendo: boolean; ocupada: boolean; estado: string; paginas: number; registros: number; invalidos: number; motivos: string[]; coletor: ColetorWhatsapp; erro?: string; qrcode?: string | null; diagnostico?: {etapa:string;codigo:string;statusHttp?:number} }
 export function criarRouterWhatsappDesenvolvedor(deps: { ativo: boolean; token?: string; evolution: EvolutionColetor; agora?: () => number }) {
   const router = Router(), sessoes = new Map<string, Sessao>(), agora = deps.agora || Date.now;
   router.use((_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
@@ -20,7 +21,11 @@ export function criarRouterWhatsappDesenvolvedor(deps: { ativo: boolean; token?:
   const timer = setInterval(()=>{for(const s of sessoes.values()) if (s.expira <= agora() && !s.ocupada) {
     s.coletor = new ColetorWhatsapp();void limpar(s).catch(()=>{});
   }},60000);timer.unref();
-  const rota = (h: RequestHandler): RequestHandler => async(req,res,next)=>{try{await h(req,res,next);}catch {res.status(502).json({ok:false,detalhe:'Não foi possível concluir a operação na Evolution. Tente novamente.'});}};
+  const registrarFalha=(erro:unknown,sessaoId?:string)=>{
+    const d=erro instanceof ErroEvolutionColetor?{etapa:erro.etapa,codigo:erro.codigo,statusHttp:erro.statusHttp}:{etapa:'operacao',codigo:'FALHA_OPERACAO'};
+    console.error('[Coletor WhatsApp] Operação pendente:',{sessaoId,...d});return d;
+  };
+  const rota = (h: RequestHandler): RequestHandler => async(req,res,next)=>{try{await h(req,res,next);}catch(erro) {const diagnostico=registrarFalha(erro);res.status(502).json({ok:false,diagnostico,detalhe:'Não foi possível concluir a operação na Evolution. Tente novamente.'});}};
   const obter = (id: string, res: any, encerramento = false) => {
     const s=sessoes.get(id);
     if (!s || (!encerramento && s.expira<=agora())) { res.status(410).json({ok:false,detalhe:'Sessão encerrada ou expirada. Conecte novamente.'});return null; }
@@ -28,24 +33,27 @@ export function criarRouterWhatsappDesenvolvedor(deps: { ativo: boolean; token?:
   };
   const resultado = (s:Sessao) => ({ok:true,sessaoId:s.id,instanciaTeste:s.nome,expiraEm:new Date(s.expira).toISOString(),estado:s.estado,
     cobertura:{origem:'historico_disponivel_na_evolution',paginasConsultadas:s.paginas,registrosRecebidos:s.registros,registrosInvalidos:s.invalidos,
-      paginacaoConcluida:s.estado==='concluida',motivos:s.motivos,limiteMensagens:5000,limitePaginas:50},...s.coletor.resultado(),...(s.erro?{detalhe:s.erro}:{})});
+      paginacaoConcluida:s.estado==='concluida',motivos:s.motivos,limiteMensagens:5000,limitePaginas:50},...s.coletor.resultado(),qrcodeBase64:s.qrcode||null,...(s.erro?{detalhe:s.erro}:{}),...(s.diagnostico?{diagnostico:s.diagnostico}:{})});
+  const preparar=async(s:Sessao)=>{
+    try{await deps.evolution.criar(s.nome);s.disponivel=true;s.qrcode=await deps.evolution.qrcode(s.nome);s.estado='conectando';}
+    catch(erro){s.estado='falha';s.diagnostico=registrarFalha(erro,s.id);s.erro='Não foi possível preparar a conexão com a Evolution. Confira o diagnóstico e encerre esta sessão antes de tentar novamente.';}
+    finally{s.ocupada=false;}
+  };
   router.get('/acesso',(_req,res)=>res.json({ok:true}));
   router.post('/sessoes',rota(async(_req,res)=>{
     if(sessoes.size>=3) {res.status(429).json({ok:false,detalhe:'Encerre uma sessão de teste antes de conectar outra.'});return;}
-    const id=randomUUID(),s:Sessao={id,nome:'noto_dev_coletor_'+id.replace(/-/g,''),expira:agora()+30*60000,disponivel:false,removendo:false,ocupada:true,estado:'conectando',paginas:0,registros:0,invalidos:0,motivos:[],coletor:new ColetorWhatsapp()};
+    const id=randomUUID(),s:Sessao={id,nome:'noto_dev_coletor_'+id.replace(/-/g,''),expira:agora()+30*60000,disponivel:false,removendo:false,ocupada:true,estado:'preparando',paginas:0,registros:0,invalidos:0,motivos:[],coletor:new ColetorWhatsapp()};
     sessoes.set(id,s);
-    try {await deps.evolution.criar(s.nome);s.disponivel=true;const qr=await deps.evolution.qrcode(s.nome);res.json({...resultado(s),qrcodeBase64:qr});}
-    catch {s.estado='falha';res.status(502).json({ok:false,sessaoId:id,detalhe:'Não foi possível conectar. Encerre esta sessão para limpar a instância de teste antes de tentar novamente.'});}
-    finally{s.ocupada=false;}
+    res.status(202).json(resultado(s));void preparar(s);
   }));
   router.get('/sessoes/:id',rota(async(req,res)=>{const s=obter(String(req.params.id),res);if(s)res.json(resultado(s));}));
   router.get('/sessoes/:id/conexao',rota(async(req,res)=>{const s=obter(String(req.params.id),res);if(!s)return;
     if(!s.disponivel) {res.status(409).json({ok:false,detalhe:'A conexão desta sessão não foi preparada.'});return;}
-    const estado=await deps.evolution.estado(s.nome);res.json({ok:true,estado});
+    const estado=await deps.evolution.estado(s.nome);if(estado==='open')s.qrcode=null;res.json({ok:true,estado});
   }));
   router.post('/sessoes/:id/qrcode',rota(async(req,res)=>{const s=obter(String(req.params.id),res);if(!s)return;
     if(!s.disponivel||s.ocupada){res.status(409).json({ok:false,detalhe:'Sessão indisponível ou ocupada.'});return;}
-    s.ocupada=true;try{res.json({ok:true,qrcodeBase64:await deps.evolution.qrcode(s.nome)});}finally{s.ocupada=false;}
+    s.ocupada=true;try{s.qrcode=await deps.evolution.qrcode(s.nome);s.estado='conectando';s.erro=undefined;s.diagnostico=undefined;res.json({ok:true,qrcodeBase64:s.qrcode});}finally{s.ocupada=false;}
   }));
   const varrer = async(s:Sessao)=>{
     try {
