@@ -1,6 +1,7 @@
 import { chromium, type BrowserContext, type Page } from 'playwright-core';
 import { TelaVirtualTribemd } from './tribemd-display.js';
 import { ObservadorRedeLoginTribemd, type DiagnosticoRedeLoginTribemd } from './tribemd-rede.js';
+import { controleLoginTribemd, type ControleLoginTribemd } from './tribemd-controle.js';
 import { createHash } from 'node:crypto';
 import { campoTribemd, type TelaTribemd } from './tribemd-dados.js';
 const origem='https://app.tribemd.com';
@@ -14,9 +15,10 @@ export class ErroTribemd extends Error { constructor(public codigo:string,messag
 export interface OpcaoTribemd { id:string;acao:'abrir_pacientes'|'abrir_agenda'|'ler_cadastro'|'proxima_pagina' }
 export interface VisaoTribemd { ferramentaId:string;imagemBase64:string }
 export interface LeituraTribemd { visao?:VisaoTribemd[]; tela:TelaTribemd;opcoes:OpcaoTribemd[];diagnostico:{caminho:string;tabelas:number;linhas:number;campos:string[];limitada:boolean} }
-export interface NavegadorColetaTribemd { entrar(email:string,senha:string,signal:AbortSignal):Promise<void>;ler():Promise<LeituraTribemd>;executar(id:string):Promise<void>;encerrar():Promise<void>;capturarTela?():Promise<Buffer|null> }
+export interface NavegadorColetaTribemd { entrar(email:string,senha:string,signal:AbortSignal):Promise<void>;ler():Promise<LeituraTribemd>;executar(id:string):Promise<void>;encerrar():Promise<void>;capturarTela?():Promise<Buffer|null>;abrirLoginAssistido?(signal:AbortSignal):Promise<void>;controlarLogin?(c:ControleLoginTribemd):Promise<void>;confirmarLoginAssistido?():Promise<void> }
 export class NavegadorTribemd implements NavegadorColetaTribemd {
  private page?:Page;private autenticado=false;private fechado=false;private fechamento?:Promise<void>;
+ private assistido=false;
  private acoes=new Map<string,{opcao:OpcaoTribemd;url:string;botao?:string}>();private visitadas=new Set<string>();
  constructor(private context:BrowserContext,private fechar:()=>Promise<void>=()=>context.close()){}
  static async criar(executavel:string,signal:AbortSignal):Promise<NavegadorTribemd>{
@@ -55,37 +57,70 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
   }
   return visao;
  }
- async entrar(email:string,senha:string,signal:AbortSignal){
-  signal.throwIfAborted();if(this.fechado)throw new ErroTribemd('SESSAO_ENCERRADA','Sessão encerrada.');
+ private async prepararPagina(signal:AbortSignal){
+  signal.throwIfAborted();if(this.fechado||this.page)throw new ErroTribemd('SESSAO_ENCERRADA','O navegador já foi iniciado ou encerrado.');
   this.page=await this.context.newPage();this.page.setDefaultTimeout(12000);
   this.context.on('page',p=>{if(p!==this.page)void p.close().catch(()=>{});});
   await this.page.route('**/*',async route=>{
    const req=route.request();if(req.isNavigationRequest()&&req.frame()===this.page!.mainFrame()&&new URL(req.url()).origin!==origem){await route.abort();return;}
    await route.fallback();
   });
+ }
+ async abrirLoginAssistido(signal:AbortSignal){
+  await this.prepararPagina(signal);this.assistido=true;
+  signal.addEventListener('abort',()=>{void this.encerrar().catch(()=>{});},{once:true});
+  // Um desafio HTTP pode ser apresentado para o próprio usuário concluir.
+  try{await this.page!.goto(origem+'/login?continue=/inicio',{waitUntil:'domcontentloaded',timeout:25000});signal.throwIfAborted();}
+  catch{throw new ErroTribemd('LOGIN_CONEXAO_FALHOU','Não foi possível abrir a tela de login assistido.');}
+ }
+ async controlarLogin(c:ControleLoginTribemd){
+  const page=this.page;
+  if(!this.assistido||this.autenticado||this.fechado||!page)throw new ErroTribemd('CONTROLE_LOGIN_INDISPONIVEL','O controle humano está disponível somente durante o login.');
+  const url=new URL(page.url());
+  if(url.origin!==origem||!/^\/(?:$|login(?:\/|$)|auth(?:\/|$)|mfa(?:\/|$)|verificacao(?:\/|$)|cdn-cgi\/)/.test(url.pathname))throw new ErroTribemd('CONTROLE_LOGIN_INDISPONIVEL','O portal saiu da tela de login. Clique em Continuar com o Noto.');
+  c=controleLoginTribemd.parse(c);
+  if(c.tipo==='clicar')await page.mouse.click(c.x,c.y);
+  else if(c.tipo==='digitar')await page.keyboard.insertText(c.texto);
+  else if(c.tipo==='tecla')await page.keyboard.press(c.tecla);
+  else await page.mouse.wheel(0,c.deltaY);
+ }
+ async confirmarLoginAssistido(){
+  const page=this.page;
+  if(!this.assistido||this.fechado||!page)throw new ErroTribemd('LOGIN_ASSISTIDO_PENDENTE','O login assistido não está disponível.');
+  const url=new URL(page.url());
+  const menu=page.locator('a,nav button,aside button,[role=navigation] button,[role=tab]').filter({hasText:/^(pacientes|meus pacientes|clientes|agenda|agendamentos)$/i});
+  let pronto=false;
+  if(url.origin===origem&&!/^\/login(?:\/|$)/.test(url.pathname)&&!await page.locator('input[type=password]:visible').count()){
+   try{await menu.first().waitFor({state:'visible',timeout:3000});pronto=true;}catch{}
+  }
+  if(!pronto)throw new ErroTribemd('LOGIN_ASSISTIDO_PENDENTE','Conclua o login e a verificação no navegador virtual antes de continuar.');
+  this.autenticado=true;this.assistido=false;
+ }
+ async entrar(email:string,senha:string,signal:AbortSignal){
+  await this.prepararPagina(signal);const page=this.page!;
   const abort=()=>{void this.encerrar().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
-  const rede=new ObservadorRedeLoginTribemd(this.page);
+  const rede=new ObservadorRedeLoginTribemd(page);
   let etapa='abrindo_login',statusHttp:number|undefined;
   try{
-   const resposta=await this.page.goto(origem+'/login?continue=/inicio',{waitUntil:'domcontentloaded',timeout:25000});statusHttp=resposta?.status();
+   const resposta=await page.goto(origem+'/login?continue=/inicio',{waitUntil:'domcontentloaded',timeout:25000});statusHttp=resposta?.status();
    if(statusHttp&&statusHttp>=400)throw new ErroTribemd('LOGIN_HTTP_ERRO','O TribemD retornou uma resposta de erro ao abrir o login. Confira o status HTTP no diagnóstico.');
    etapa='aguardando_formulario';
-   const senhaInput=this.page.locator('input[type=password]:visible');
-   const emailInput=this.page.locator('input[type=email]:visible, input[autocomplete=username]:visible, input[name=email]:visible, input[name=username]:visible, input[id*=email i]:visible, input[placeholder*=email i]:visible, input[placeholder*="e-mail" i]:visible');
+   const senhaInput=page.locator('input[type=password]:visible');
+   const emailInput=page.locator('input[type=email]:visible, input[autocomplete=username]:visible, input[name=email]:visible, input[name=username]:visible, input[id*=email i]:visible, input[placeholder*=email i]:visible, input[placeholder*="e-mail" i]:visible');
    await senhaInput.first().waitFor({state:'visible'});
    if(await senhaInput.count()!==1||await emailInput.count()!==1)throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','Os campos de login não são únicos ou não foram reconhecidos. O adaptador precisa ser ajustado ao layout real.');
-   const botao=this.page.getByRole('button',{name:/^(entrar|acessar|login|iniciar sess[aã]o|fazer login)$/i});
+   const botao=page.getByRole('button',{name:/^(entrar|acessar|login|iniciar sess[aã]o|fazer login)$/i});
    if(await botao.count()!==1)throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','O botão de login não foi reconhecido com segurança.');
    etapa='preenchendo_email';await emailInput.fill(email);etapa='preenchendo_senha';await senhaInput.fill(senha);signal.throwIfAborted();
    etapa='enviando_login';rede.marcarEnvioLogin();await botao.click();etapa='confirmando_login';
-   try{await this.page.waitForURL(u=>u.origin===origem&&!/^\/login(?:\/|$)/.test(u.pathname),{timeout:15000});}
+   try{await page.waitForURL(u=>u.origin===origem&&!/^\/login(?:\/|$)/.test(u.pathname),{timeout:15000});}
    catch{throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','O login não foi confirmado. Confira as credenciais; também pode haver uma validação adicional. Não repetimos o envio automaticamente.');}
-   etapa='verificando_pos_login';await this.page.waitForLoadState('domcontentloaded');
-   const desafio=await this.page.getByText(/autentica[cç][aã]o de dois fatores|c[oó]digo de verifica[cç][aã]o|captcha/i).count();
+   etapa='verificando_pos_login';await page.waitForLoadState('domcontentloaded');
+   const desafio=await page.getByText(/autentica[cç][aã]o de dois fatores|c[oó]digo de verifica[cç][aã]o|captcha/i).count();
    if(desafio)throw new ErroTribemd('VALIDACAO_ADICIONAL','O TribemD pediu uma validação adicional. Este piloto não contorna CAPTCHA ou autenticação em duas etapas.');
-   if(await this.page.locator('input[type=password]:visible').count())throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','O portal ainda apresenta um formulário de autenticação.');
+   if(await page.locator('input[type=password]:visible').count())throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','O portal ainda apresenta um formulário de autenticação.');
    // Não confundir um redirecionamento intermediário com autenticação.
-   const menu=this.page.locator('a,nav button,aside button,[role=navigation] button,[role=tab]').filter({hasText:/^(pacientes|meus pacientes|clientes|agenda|agendamentos)$/i});
+   const menu=page.locator('a,nav button,aside button,[role=navigation] button,[role=tab]').filter({hasText:/^(pacientes|meus pacientes|clientes|agenda|agendamentos)$/i});
    try{await menu.first().waitFor({state:'visible',timeout:12000});}
    catch{throw new ErroTribemd('POS_LOGIN_LAYOUT_NAO_RECONHECIDO','O portal saiu do login, mas os menus de pacientes e agenda não foram reconhecidos. Precisamos ajustar a navegação ao layout real.');}
    this.autenticado=true;
