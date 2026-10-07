@@ -8,11 +8,13 @@
 import { montarDescricaoServico } from '../emissao/montar-descricao-servico.js';
 import type { AtendimentoRepositorio } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
+import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 
 export interface ProcessarRespostaDataDeps {
   repositorio: AtendimentoRepositorio;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaOficialNome?: string;
+  dadosProfissionais?: DadosProfissionaisService;
 }
 
 export type ResultadoProcessarRespostaData =
@@ -39,7 +41,7 @@ export async function processarRespostaDataConsulta(
     return { ok: false, motivo: 'solicitacao_nao_encontrada' };
   }
 
-  const novaDescricao = montarDescricaoServico(medico, dataInformada);
+  const novaDescricao = montarDescricaoServico({ ...medico, nomeCompleto: medico.nomeCompleto || '' }, dataInformada);
   const paciente = await deps.repositorio.buscarPacientePorId(pendente.pacienteId);
   const fila = paciente?.cpfHash ? 'pronta' : 'pendente_cadastro';
 
@@ -49,11 +51,18 @@ export async function processarRespostaDataConsulta(
     fila
   });
 
+  // A Conta pode ter alterado o perfil depois da leitura inicial. O serviço
+  // verifica o cadastro atual e só pede os dados se ainda forem necessários.
+  if (deps.dadosProfissionais) {
+    await deps.dadosProfissionais.solicitar(medico.id);
+    await deps.dadosProfissionais.retomar(medico.id);
+  }
+
   const instanciaOficial = deps.instanciaOficialNome || 'notomed_oficial';
   await deps.enviarMensagem.enviarTexto({
     instanciaNome: instanciaOficial,
     contatoTelefone: telefoneMedico,
-    texto: `Perfeito! Data registrada (${dataInformada}). A nota fiscal de ${pendente.nomePaciente} está sendo emitida!`
+    texto: `Data registrada (${dataInformada}). A solicitação de nota de ${pendente.nomePaciente} continuará assim que os dados necessários estiverem completos.`
   });
 
   return {

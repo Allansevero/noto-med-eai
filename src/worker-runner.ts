@@ -1,3 +1,4 @@
+import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 /**
  * Processo de background (daemon) que executa o Worker da fila de emissão de NFS-e.
  * Consome periodicamente `solicitacoes_nota` com `fila = 'pronta'` na VPS,
@@ -75,6 +76,7 @@ async function cicloWorker() {
         console.log(`[Worker ${workerId}] Processando solicitação ${item.id} (tentativa ${item.tentativas + 1})...`);
         const res = await processarItemFila(item, {
           filaRepositorio: filaRepo,
+          dadosProfissionais: new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName),
           emissorDps,
           enviarPdfDanfse: evolutionClient,
           notificadorAlertas,

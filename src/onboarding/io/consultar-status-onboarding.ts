@@ -5,6 +5,7 @@
  */
 
 import type pg from 'pg';
+import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
 import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
 
@@ -25,6 +26,7 @@ export type StatusOnboardingMedico = {
     passo4WhatsappConectado: boolean;
   };
   liberadoParaEmitir: boolean;
+  dadosProfissionaisCompletos: boolean;
   perfilFiscal?: {
     referenciaFiscal?: unknown;
     parametrosEmissao?: unknown;
@@ -99,8 +101,9 @@ export async function consultarStatusOnboarding(
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
 
-  // Nome profissional é preenchido na Conta; não é uma etapa do onboarding.
-  const liberadoParaEmitir = passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
+  // Identidade profissional não impede acesso ao painel, mas é obrigatória para emissão.
+  const cadastroProfissionalCompleto = dadosProfissionaisCompletos({ nomeCompleto: r.medico_nome, crm: r.crm });
+  const liberadoParaEmitir = cadastroProfissionalCompleto && passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
 
   return {
     medicoId: r.medico_id,
@@ -119,6 +122,7 @@ export async function consultarStatusOnboarding(
       passo4WhatsappConectado
     },
     liberadoParaEmitir,
+    dadosProfissionaisCompletos: cadastroProfissionalCompleto,
     perfilFiscal: r.razao_social ? {
       referenciaFiscal: r.dados_reforma_tributaria,
       parametrosEmissao: r.parametros_emissao,

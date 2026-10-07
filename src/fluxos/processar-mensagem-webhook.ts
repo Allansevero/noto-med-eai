@@ -6,6 +6,7 @@
  * 3. Descarte seguro de mensagens de grupo e comuns (seções 2 e 3 do plano).
  */
 
+import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 import { validarWebhookSecret } from '../whatsapp/validar-webhook-secret.js';
 import { conexaoWebhookSchema } from '../whatsapp/payload-conexao-webhook-schema.js';
 import { extrairTelefoneJid } from '../whatsapp/extrair-telefone-jid.js';
@@ -33,6 +34,7 @@ import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
+  dadosProfissionais?: DadosProfissionaisService;
   enviarMensagemPaciente: EnviarMensagemPaciente;
   billingRepositorio?: BillingRepositorio;
   consultaCpfProvider?: ConsultaCpfProvider;
@@ -46,7 +48,7 @@ export interface ProcessarWebhookDeps {
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
+      acao: 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
@@ -98,6 +100,13 @@ export async function processarMensagemWebhook(
   }
 
   const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+  if (!payload.data.key.fromMe && medico && deps.dadosProfissionais && deps.segredoConfigurado &&
+      (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
+    const resposta = await deps.dadosProfissionais.processarResposta({
+      medicoId: medico.id, texto, mensagemId: payload.data.key.id
+    });
+    if (resposta.tratada) return { ok: true, acao: 'resposta_perfil_medico', detalhe: resposta };
+  }
   const medicoId = instancia.medicoId || medico?.id || null;
 
   const conversa = await deps.repositorio.buscarOuCriarConversa(instancia.id, medicoId, telefone);
@@ -154,6 +163,7 @@ async function rotearMensagem(
     if (solicitacaoPendente) {
       const resData = await processarRespostaDataConsulta(telefone, texto, {
         repositorio: deps.repositorio,
+        dadosProfissionais: deps.dadosProfissionais,
         enviarMensagem: deps.enviarMensagemPaciente,
         instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
       });
@@ -182,6 +192,7 @@ async function rotearMensagem(
 
   const res = await processarComandoEmissao(conversa, casamento.valorDigitadoCentavos, {
     repositorio: deps.repositorio,
+    dadosProfissionais: deps.dadosProfissionais,
     enviarMensagemPaciente: deps.enviarMensagemPaciente,
     billingRepositorio: deps.billingRepositorio,
     consultaCpfProvider: deps.consultaCpfProvider,

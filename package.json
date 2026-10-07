@@ -16,7 +16,8 @@
     "migrate:preparacao": "node scripts/migrar-preparacao-fiscal.mjs",
     "migrate:comparacao": "node scripts/migrar-comparacao-fiscal.mjs",
     "migrate:treino": "node scripts/migrar-treino-onboarding.mjs",
-    "check:treino": "node scripts/verificar-treino-onboarding.mjs"
+    "check:treino": "node scripts/verificar-treino-onboarding.mjs",
+    "migrate:perfil": "node scripts/migrar-dados-profissionais.mjs"
   },
   "keywords": [
     "nfse",

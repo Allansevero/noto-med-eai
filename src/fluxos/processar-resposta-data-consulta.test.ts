@@ -126,4 +126,22 @@ describe('processarRespostaDataConsulta', () => {
     assert.equal(atualizada.fila, 'pendente_cadastro');
     assert.ok(atualizada.xdescServ.includes('NAS DATAS ONTEM'));
   });
+  it('data recebida verifica pendência profissional atual e solicita os dados sem prometer emissão', async () => {
+    const { repositorio } = criarRepoMock();
+    const acoes: string[] = [];
+    let texto = '';
+    await processarRespostaDataConsulta('5551993527271', '27/09/2026', {
+      repositorio,
+      dadosProfissionais: {
+        solicitar: async id => { acoes.push('pedir:'+id); },
+        retomar: async id => { acoes.push('retomar:'+id); return 0; },
+        processarResposta: async () => ({tratada:false, completo:false})
+      },
+      enviarMensagem: { enviarTexto: async params => {texto=params.texto; return {sucesso:true};} }
+    });
+    assert.deepEqual(acoes, ['pedir:medico-1', 'retomar:medico-1']);
+    assert.match(texto, /Data registrada/);
+    assert.doesNotMatch(texto, /está sendo emitida/);
+  });
+
 });

@@ -5,7 +5,9 @@
  */
 
 import { calcularValorEmissao } from '../emissao/calcular-valor-emissao.js';
-import { montarDescricaoServico } from '../emissao/montar-descricao-servico.js';
+import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
+import { dadosProfissionaisCompletos } from '../conta/validar-dados-emissao.js';
+import { formatarDatasConsultas, montarDescricaoServico } from '../emissao/montar-descricao-servico.js';
 import { MENSAGEM_PEDIDO_CPF } from '../whatsapp/whatsapp-config.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
@@ -22,6 +24,7 @@ import { extrairDatasConsulta } from '../emissao/regras/extrair-datas-consulta.j
 
 export interface ProcessarEmissaoDeps {
   repositorio: AtendimentoRepositorio;
+  dadosProfissionais?: DadosProfissionaisService;
   enviarMensagemPaciente: EnviarMensagemPaciente;
   billingRepositorio?: BillingRepositorio;
   consultaCpfProvider?: ConsultaCpfProvider;
@@ -41,6 +44,7 @@ export type ResultadoProcessarEmissao =
       fila: 'pronta' | 'pendente_cadastro' | null;
       aguardandoCpf: boolean;
       aguardandoData: boolean;
+      aguardandoDadosProfissionais?: boolean;
     }
   | {
       ok: false;
@@ -240,10 +244,12 @@ export async function processarComandoEmissao(
     }
   }
 
-  const fila = semDataConsulta ? null : (possuiCpf ? 'pronta' : 'pendente_cadastro');
+  const aguardandoDadosProfissionais = !dadosProfissionaisCompletos(medico);
+  const fila = semDataConsulta || aguardandoDadosProfissionais ? null : (possuiCpf ? 'pronta' : 'pendente_cadastro');
+  const medicoDescricao = { ...medico, nomeCompleto: medico.nomeCompleto || '' };
   const xdescServ = semDataConsulta
-    ? montarDescricaoServico(medico, 'DATA A CONFIRMAR')
-    : montarDescricaoServico(medico, consultas.map((c) => c.dataHora));
+    ? montarDescricaoServico(medicoDescricao, 'DATA A CONFIRMAR')
+    : montarDescricaoServico(medicoDescricao, consultas.map((c) => c.dataHora));
 
   const solicitacao = await deps.repositorio.criarSolicitacaoNota({
     medicoId,
@@ -253,8 +259,15 @@ export async function processarComandoEmissao(
     ctribNac: medico.ctribNacPadrao,
     fila,
     aguardandoDataConsulta: semDataConsulta,
+    aguardandoDadosProfissionais,
+    datasConsultaTexto: formatarDatasConsultas(semDataConsulta ? 'DATA A CONFIRMAR' : consultas.map(c => c.dataHora)),
     agendamentoIds: consultas.map((c) => c.id)
   });
+
+  if (aguardandoDadosProfissionais && deps.dadosProfissionais) {
+    await deps.dadosProfissionais.solicitar(medicoId);
+    await deps.dadosProfissionais.retomar(medicoId);
+  }
 
   if (semDataConsulta) {
     const nomePaciente = paciente?.nome?.trim() ? `paciente ${paciente.nome.trim()}` : 'do paciente';
@@ -281,6 +294,7 @@ export async function processarComandoEmissao(
     solicitacaoId: solicitacao.id,
     fila,
     aguardandoCpf: !possuiCpf,
-    aguardandoData: semDataConsulta
+    aguardandoData: semDataConsulta,
+    aguardandoDadosProfissionais
   };
 }

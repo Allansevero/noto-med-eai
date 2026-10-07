@@ -106,6 +106,8 @@ export interface AtendimentoRepositorio {
     ctribNac: string;
     fila: 'pronta' | 'pendente_cadastro' | null;
     aguardandoDataConsulta?: boolean;
+    aguardandoDadosProfissionais?: boolean;
+    datasConsultaTexto?: string;
     agendamentoIds: string[];
   }): Promise<{ id: string }>;
   buscarSolicitacaoAguardandoData(medicoId: string, pacienteId?: string): Promise<SolicitacaoAguardandoDataRegistro | null>;

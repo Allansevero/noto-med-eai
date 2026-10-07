@@ -1,5 +1,5 @@
 /**
- * Liga a conclusão do onboarding ao treino, sem bloquear a resposta da tela.
+ * Liga certificado válido e WhatsApp conectado ao treino, sem bloquear a tela.
  * Estado e exclusão entre processos ficam no banco, não na memória do servidor.
  */
 import type pg from 'pg';
@@ -21,7 +21,10 @@ export function criarDisparadorTreino(pool: pg.Pool, config: AppConfig) {
       repositorio,
       async consultarDestinatario(id) {
         const status = await consultarStatusOnboarding(pool, id, config.preparacaoFiscalAtiva);
-        return { liberado: status.liberadoParaEmitir, telefone: status.telefone };
+        return {
+          liberado: status.passos.passo3CertificadoValido && status.passos.passo4WhatsappConectado,
+          telefone: status.telefone
+        };
       },
       async enviar(telefone, mensagem) {
         const resultado = await enviarMensagemTreino({ baseUrl: config.evolutionApiUrl,

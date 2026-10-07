@@ -16,6 +16,8 @@ import type {
 } from '../../atendimento/atendimento-repositorio.js';
 import type { RespostaRapidaModelo } from '../../whatsapp/casar-resposta-rapida.js';
 import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
+import { montarDescricaoServico } from '../../emissao/montar-descricao-servico.js';
+import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 
 export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   constructor(
@@ -330,10 +332,10 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       join usuarios u on u.id = m.usuario_id
       left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true and msf.ativo = true
       where regexp_replace(u.telefone, '\\D', '', 'g') = any($1::text[])
-      limit 1
+      limit 2
     `;
     const { rows } = await this.pool.query(sql, [variantes]);
-    if (rows.length === 0) return null;
+    if (rows.length !== 1) return null;
     return {
       id: rows[0].id,
       nomeCompleto: rows[0].nome_completo,
@@ -353,6 +355,8 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     ctribNac: string;
     fila: 'pronta' | 'pendente_cadastro' | null;
     aguardandoDataConsulta?: boolean;
+    aguardandoDadosProfissionais?: boolean;
+    datasConsultaTexto?: string;
     agendamentoIds?: string[];
   }): Promise<{ id: string }> {
     const client = await this.pool.connect();
@@ -361,9 +365,9 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       const sqlSolicitacao = `
         insert into solicitacoes_nota (
           medico_id, paciente_id, xdesc_serv, valor_servico_centavos, ctrib_nac,
-          fila, status, origem, aguardando_data_consulta
+          fila, status, origem, aguardando_data_consulta, aguardando_dados_profissionais, datas_consulta_texto
         )
-        values ($1, $2, $3, $4, $5, $6, 'pendente', 'whatsapp_comando', $7)
+        values ($1, $2, $3, $4, $5, $6, 'pendente', 'whatsapp_comando', $7, $8, $9)
         returning id
       `;
       const { rows } = await client.query(sqlSolicitacao, [
@@ -373,7 +377,9 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         params.valorServicoCentavos,
         params.ctribNac,
         params.fila,
-        Boolean(params.aguardandoDataConsulta)
+        Boolean(params.aguardandoDataConsulta),
+        Boolean(params.aguardandoDadosProfissionais),
+        params.datasConsultaTexto ?? null
       ]);
       const solicitacaoId = rows[0].id;
       // Snapshot somente quando existe exatamente um serviço ativo compatível.
@@ -444,15 +450,36 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     xdescServ: string;
     fila: 'pronta' | 'pendente_cadastro';
   }): Promise<void> {
-    const sql = `
-      update solicitacoes_nota
-      set xdesc_serv = $2,
-          fila = $3,
-          aguardando_data_consulta = false,
-          atualizado_em = now()
-      where id = $1
-    `;
-    await this.pool.query(sql, [params.solicitacaoId, params.xdescServ, params.fila]);
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      // Mesma ordem de locks da coleta profissional: médico antes da solicitação.
+      const { rows } = await client.query(`select m.nome_completo, m.crm, m.rqe, m.especialidade
+        from medicos m join solicitacoes_nota s on s.medico_id=m.id
+        where s.id=$1 for update of m`, [params.solicitacaoId]);
+      const medico = rows[0];
+      const datas = params.xdescServ.match(/\bNAS DATAS\s+(.+)$/i)?.[1];
+      if (medico && datas) {
+        const descricao = montarDescricaoServico({nomeCompleto:medico.nome_completo ?? '',
+          crm:medico.crm, rqe:medico.rqe, especialidade:medico.especialidade}, datas);
+        await client.query(`update solicitacoes_nota s
+          set xdesc_serv=$2, datas_consulta_texto=$4,
+              aguardando_dados_profissionais=aguardando_dados_profissionais or $5,
+              fila=case when aguardando_dados_profissionais or $5 then null else $3::fila_solicitacao_nota end,
+              aguardando_data_consulta=false, atualizado_em=now()
+          where s.id=$1 and s.status='pendente' and s.tentativas=0
+            and s.bloqueada_em is null
+            and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)
+            and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=s.id)`,
+          [params.solicitacaoId, descricao, params.fila, datas, !dadosProfissionaisCompletos(medico)]);
+      }
+      await client.query('commit');
+    } catch (erro) {
+      await client.query('rollback');
+      throw erro;
+    } finally {
+      client.release();
+    }
   }
 
   async liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number> {
@@ -461,7 +488,14 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       set fila = 'pronta'
       where medico_id = $1
         and paciente_id = $2
-        and (fila = 'pendente_cadastro' or (fila is null and aguardando_data_consulta = false))
+        and status = 'pendente'
+        and tentativas = 0
+        and bloqueada_em is null
+        and not exists(select 1 from notas_fiscais n where n.solicitacao_id=solicitacoes_nota.id)
+        and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=solicitacoes_nota.id)
+        and not aguardando_dados_profissionais
+        and not aguardando_data_consulta
+        and (fila = 'pendente_cadastro' or fila is null)
     `;
     const res = await this.pool.query(sql, [medicoId, pacienteId]);
     return res.rowCount ?? 0;

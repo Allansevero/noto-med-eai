@@ -4,6 +4,7 @@
  * e notificações de falha ao médico ou desenvolvedor (seção 3.2, itens 5 a 8).
  */
 
+import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 import { investigarFalha, type AgenteFiscalDeps } from '../agente-fiscal/investigar-falha.js';
 import type { FalhaEmissao } from '../agente-fiscal/investigacao.js';
 import {
@@ -22,11 +23,12 @@ export interface ProcessarItemFilaDeps {
   notificadorAlertas: NotificadorAlertas;
   agora?: () => Date;
   agenteFiscal?: AgenteFiscalDeps;
+  dadosProfissionais?: DadosProfissionaisService;
 }
 
 export type ResultadoProcessarItem =
   | { ok: true; status: 'emitida'; chaveAcesso: string }
-  | { ok: false; status: 'reagendada' | 'erro_definitivo' | 'erro_inesperado' | 'necessita_intervencao'; motivo?: string };
+  | { ok: false; status: 'reagendada' | 'erro_definitivo' | 'erro_inesperado' | 'necessita_intervencao' | 'aguardando_dados_profissionais'; motivo?: string };
 
 export async function processarItemFila(
   item: ItemFilaComTentativas,
@@ -43,6 +45,7 @@ export async function processarItemFila(
       await tratarSucessoEmissao(item, emissao, deps);
       return { ok: true, status: 'emitida', chaveAcesso: emissao.chaveAcesso };
     }
+    if (emissao.dadosProfissionaisPendentes) return aguardarDadosProfissionais(item, deps);
     return tratarFalhaEmissao(item, tentativaAtual, emissao.erro, dataAtual, deps);
   } catch (erro: any) {
     return tratarExcecaoInesperada(item, tentativaAtual, erro, dataAtual, deps);
@@ -128,6 +131,7 @@ async function processarComAgente(item: ItemFilaComTentativas, deps: ProcessarIt
   } catch {
     emissao = { sucesso: false as const, erro: 'Falha inesperada; resultado da transmissão desconhecido.' };
   }
+  if (!emissao.sucesso && emissao.dadosProfissionaisPendentes) return aguardarDadosProfissionais(item, deps);
   if (!emissao.sucesso) return tratarComAgente(item, emissao, deps);
   try {
     await tratarSucessoEmissao(item, emissao, deps);
@@ -156,4 +160,12 @@ async function tratarComAgente(item: ItemFilaComTentativas, falha: FalhaEmissao,
   });
   return resultado ? { ok: true, status: 'emitida', chaveAcesso: resultado.chaveAcesso }
     : { ok: false, status: 'necessita_intervencao' };
+}
+
+async function aguardarDadosProfissionais(item: ItemFilaComTentativas, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
+  if (!deps.filaRepositorio.suspenderPorDadosProfissionais) throw new Error('Controle de dados profissionais indisponível.');
+  await deps.filaRepositorio.suspenderPorDadosProfissionais(item.id);
+  await deps.dadosProfissionais?.solicitar(item.medicoId);
+  await deps.dadosProfissionais?.retomar(item.medicoId);
+  return { ok: false, status: 'aguardando_dados_profissionais' };
 }

@@ -24,6 +24,7 @@ test('worker transmite a política não optante sem converter o regime para ME/E
   cert.sign(keys.privateKey, forge.md.sha256.create());
   const pfx = Buffer.from(forge.asn1.toDer(forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], 'teste')).getBytes(), 'binary');
   const pool = { async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
     if (sql.includes('from solicitacoes_nota s')) return { rows: [{ ...perfil, confirmado: true, referencia_fiscal: referencia,
       competencia: hoje, datas: [], servicos: [{ id: 'serv', ctribNac: '040101', ctribMun: null, cnbs: null, politica }] }] };
     if (sql.includes('from medico_perfil_fiscal pf')) return { rows: [{ documento_limpo: '11222333000181',
@@ -44,10 +45,11 @@ test('worker transmite a política não optante sem converter o regime para ME/E
   } } as any;
   const emissor = new PostgresEmissorDpsService(pool, 'teste', undefined, undefined, storage, sefin, true, true);
   const resultado = await emissor.emitir({ id: 'sol', medicoId: 'med', pacienteId: 'pac', valorServicoCentavos: 17005,
-    ctribNac: '040101', cnbs: '', xdescServ: 'Consulta' });
+    ctribNac: '040101', cnbs: '', xdescServ: 'REFERENTE A CONSULTAS MÉDICAS COM DR.(A) MÉDICO 9886 NAS DATAS 07/10/2026' });
   assert.equal(resultado.sucesso, false);
   assert.equal(enviados.length, 1);
   const dps = new XMLParser({ parseTagValue: false }).parse(enviados[0]).DPS.infDPS;
+  assert.equal(dps.serv.cServ.xDescServ, 'REFERENTE A CONSULTAS MÉDICA COM DR.(A) JOÃO DA SILVA VINCULADO CRM 12345/SP NAS DATAS 07/10/2026');
   assert.equal(dps.prest.regTrib.opSimpNac, '1');
   assert.equal(dps.prest.regTrib.regApTribSN, undefined);
   assert.deepEqual(dps.valores.trib, { tribMun: { tribISSQN: '1', tpRetISSQN: '1', pAliq: '2.00' },

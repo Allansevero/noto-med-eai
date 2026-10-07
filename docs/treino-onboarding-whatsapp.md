@@ -1,6 +1,7 @@
 # Treino de emissão pelo Noto Oficial
 
-Após completar o onboarding, o médico recebe cinco mensagens no telefone
+Após validar o certificado A1 e conectar o WhatsApp por pareamento ou QR Code,
+o médico recebe cinco mensagens no telefone
 cadastrado em `usuarios.telefone`, enviadas pela instância
 `EVOLUTION_OFFICIAL_INSTANCE_NAME` (padrão `notomed_oficial`).
 
@@ -16,10 +17,11 @@ o treino não cria nota fictícia nem faz uma transmissão à SEFIN.
 
 ## Gatilho e persistência
 
-Reutiliza `consultarStatusOnboarding.liberadoParaEmitir`: nome, perfil fiscal
-confirmado, certificado ativo e WhatsApp conectado. Se a preparação fiscal
-estiver ativa, exige também a política revisada existente. Esse status é o
-checklist do cadastro, não uma garantia de autorização de qualquer nota.
+O treino exige somente `consultarStatusOnboarding.passos.passo3CertificadoValido`
+e `passo4WhatsappConectado`: certificado ativo e WhatsApp conectado. Nome
+profissional, perfil fiscal confirmado e política fiscal revisada não bloqueiam
+as boas-vindas, mesmo com a preparação fiscal ativa. A liberação para emitir notas
+continua sujeita às validações fiscais existentes.
 
 O disparo é verificado após confirmação fiscal, conexão/polling do WhatsApp e
 consulta do status do onboarding. Também aceita `connection.update` autenticado
@@ -70,12 +72,12 @@ pendente, continuam seguindo o fluxo existente.
 3. Definir `TREINO_ONBOARDING_ATIVO=true` no `web` e reiniciar/implantar o serviço.
 4. Executar `npm run check:treino`; essa verificação não envia mensagens nem
    acessa a Evolution.
-5. Concluir o onboarding de uma conta de teste e conferir no telefone a ordem,
+5. Validar o A1 e conectar o WhatsApp de uma conta de teste e conferir no telefone a ordem,
    o botão e o modelo. Atualizar a página e reconectar não deve repetir o treino.
 
 Não é necessário ativar o agente fiscal para este roteiro. Nenhuma migração
 envia mensagens ou cadastra toda a base como destinatária. Contas existentes
-com onboarding completo também recebem o treino na próxima consulta de status
+com A1 válido e WhatsApp conectado também recebem o treino na próxima consulta de status
 ou reconexão, se ainda não houver um registro para elas. A inicialização do web
 retoma só os treinos já pendentes; não faz disparo para todos os usuários.
 

@@ -6,6 +6,8 @@ test('ausência de política fiscal vira resultado estruturado sem transmissão'
   const consultas: string[] = [];
   const pool: any = { async query(sql: string) {
     consultas.push(sql);
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
+
     if (sql.includes('from solicitacoes_nota s join medico_perfil_fiscal')) return { rows: [{
       ambiente: 'homologacao', confirmado: true, opcao: 'me_epp', regime: 'regime_1', especial: 0, municipio: '3550308', serie: '1', referencia: 'xml', competencia: null,
       datas: ['2026-01-01'], servicos: [{ id: 's', ctribNac: '040101', cnbs: null, ctribMun: null, politica: null }]
@@ -21,5 +23,5 @@ test('ausência de política fiscal vira resultado estruturado sem transmissão'
     assert.ok(resultado.pendenciasFiscais?.some(p => p.codigo === 'PARAMETROS_NAO_CONFIRMADOS'));
     assert.equal(resultado.contextoTecnico?.transmitida, false);
   }
-  assert.equal(consultas.length, 2);
+  assert.equal(consultas.length, 3);
 });

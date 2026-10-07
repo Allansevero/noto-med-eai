@@ -15,6 +15,7 @@ describe('consultarStatusOnboarding', () => {
             medico_id: 'med-1',
             usuario_id: 'usr-1',
             medico_nome: 'Dr. Allan Severo',
+            crm: '12345/RS',
             usuario_nome: 'Allan Severo',
             razao_social: 'Allan Severo ME',
             inscricao_municipal: '12345',
@@ -50,6 +51,7 @@ describe('consultarStatusOnboarding', () => {
             medico_id: 'med-1',
             usuario_id: 'usr-1',
             medico_nome: 'Dr. Allan Severo',
+            crm: '12345/RS',
             usuario_nome: 'Allan Severo',
             razao_social: 'Allan Severo ME',
             inscricao_municipal: '12345',
@@ -73,11 +75,12 @@ describe('consultarStatusOnboarding', () => {
   });
 });
 
-it('nome pode ser preenchido na Conta sem bloquear uma configuração fiscal já validada', async () => {
+it('nome provisório bloqueia emissão sem bloquear acesso após A1 e WhatsApp', async () => {
   const pool: any = { query: async () => ({ rows: [{ medico_id: 'med', usuario_id: 'user',
     medico_nome: 'Médico', usuario_nome: 'Médico', extraido_automaticamente: true,
     confirmado_pelo_medico: true, cert_ativos: 1, whats_conectados: 1 }] }) };
   const status = await consultarStatusOnboarding(pool, 'med');
   assert.equal(status.passos.passo1Nome, false);
-  assert.equal(status.liberadoParaEmitir, true);
+  assert.equal(status.liberadoParaEmitir, false);
+  assert.equal(status.passos.passo4WhatsappConectado, true);
 });

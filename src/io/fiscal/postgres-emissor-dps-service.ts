@@ -5,6 +5,8 @@
  */
 
 import type pg from 'pg';
+import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
+import { montarDescricaoServico } from '../../emissao/montar-descricao-servico.js';
 import { carregarEvidenciasEmissao } from './carregar-evidencias-emissao.js';
 import { prepararEmissao } from '../../fiscal/preparacao/preparar-emissao.js';
 import { inferirUfDeMunicipioIbge } from '../../onboarding/regras/inferir-uf-de-municipio-ibge.js';
@@ -65,6 +67,19 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
   }
 
   private async emitirPreparado(item: SolicitacaoEmissaoItem, correcao?: FalhaEmissao): Promise<ResultadoEmissaoDps> {
+    const { rows: profissionais } = await this.pool.query(
+      'select nome_completo, crm, rqe, especialidade from medicos where id = $1', [item.medicoId]);
+    if (!profissionais[0] || !dadosProfissionaisCompletos(profissionais[0])) {
+      return { sucesso: false, erro: 'Informe nome completo e CRM para emitir suas notas.',
+        dadosProfissionaisPendentes: true, contextoTecnico: { etapa: 'dados_profissionais', transmitida: false } };
+    }
+    // Um item já reservado pode conter a identidade anterior à resposta do médico.
+    const datas = item.xdescServ.match(/^REFERENTE A CONSULTAS .+ NAS DATAS (.+)$/i)?.[1];
+    if (datas) {
+      const medico = profissionais[0];
+      item = {...item, xdescServ: montarDescricaoServico({nomeCompleto:medico.nome_completo,
+        crm:medico.crm, rqe:medico.rqe, especialidade:medico.especialidade}, datas)};
+    }
     if ((this.modoAgenteConservador || this.preparacaoFiscalAtiva) && (!this.supabaseClient || !this.sefinClient)) {
       return { sucesso: false, erro: 'Emissão real indisponível: integração fiscal não configurada.' };
     }

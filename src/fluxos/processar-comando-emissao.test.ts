@@ -440,3 +440,22 @@ describe('processarComandoEmissao', () => {
   });
 });
 
+
+it('guarda a solicitação sem fila e pede dados profissionais ao médico, sem usar o contato do paciente', async () => {
+  for (const nome of [null, 'Médico 9886', 'Maria']) {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.medico = { id: 'med-1', nomeCompleto: nome, crm: null, rqe: null, especialidade: null, ctribNacPadrao: '080201', telefone: '5548999998888' } as any;
+    repo.pacientes.push({ id: 'pac-1', medicoId: 'med-1', telefone: '5511999990000', nome: 'Paciente Silva', cpfHash: 'hash' });
+    repo.consultas.push({ id: 'ag-1', dataHora: new Date(2026,9,7), valorConsultaCentavos: 15000 });
+    const pedidos: string[] = [];
+    const resultado = await processarComandoEmissao({ id: 'conversa', instanciaId: 'inst', medicoId: 'med-1', pacienteId: 'pac-1', contatoTelefone: '5511999990000', aguardandoCpfDesde: null }, 15000, {
+      repositorio: repo, enviarMensagemPaciente: new EnviarMensagemPacienteFake(), instanciaNome: 'medico_inst',
+      dadosProfissionais: { solicitar: async (id: string) => { pedidos.push(id); }, retomar: async () => 0 }
+    } as any);
+    assert.equal(resultado.ok, true);
+    assert.equal(repo.solicitacoesCriadas[0].fila, null);
+    assert.equal(repo.solicitacoesCriadas[0].aguardandoDadosProfissionais, true);
+    assert.equal(repo.solicitacoesCriadas[0].datasConsultaTexto, '07/10/2026');
+    assert.deepEqual(pedidos, ['med-1']);
+  }
+});

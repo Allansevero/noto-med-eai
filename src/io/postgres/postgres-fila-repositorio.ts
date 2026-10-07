@@ -21,6 +21,7 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         select id
         from solicitacoes_nota
         where fila = 'pronta'
+          and not aguardando_dados_profissionais
           and status not in ('simulada', 'emitida')
           ${this.modoAgente ? `and not exists (select 1 from investigacoes_emissao i where i.solicitacao_id = solicitacoes_nota.id)` : ''}
           and (proxima_tentativa_em is null or proxima_tentativa_em <= now())
@@ -53,6 +54,13 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
       cindOp: r.cind_op,
       tentativas: r.tentativas
     };
+  }
+
+  async suspenderPorDadosProfissionais(solicitacaoId: string): Promise<void> {
+    await this.pool.query(`update solicitacoes_nota set aguardando_dados_profissionais = true,
+      datas_consulta_texto = coalesce(datas_consulta_texto, substring(xdesc_serv from ' NAS DATAS (.*)$')),
+      fila = null, bloqueada_por_worker = null, bloqueada_em = null, atualizado_em = now()
+      where id = $1 and status not in ('simulada', 'emitida')`, [solicitacaoId]);
   }
 
   async buscarContextoEnvio(solicitacaoId: string): Promise<ContextoEnvioNota | null> {

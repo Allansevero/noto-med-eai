@@ -33,6 +33,7 @@ export interface ContextoEnvioNota {
 
 export interface FilaRepositorio {
   buscarETravarProximoItem(workerId: string): Promise<ItemFilaComTentativas | null>;
+  suspenderPorDadosProfissionais?(solicitacaoId: string): Promise<void>;
   buscarContextoEnvio(solicitacaoId: string): Promise<ContextoEnvioNota | null>;
   registrarSucesso(params: RegistrarSucessoEmissaoParams): Promise<void>;
   reagendarTentativa(params: {

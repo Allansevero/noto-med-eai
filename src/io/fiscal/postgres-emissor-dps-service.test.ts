@@ -24,6 +24,7 @@ describe('PostgresEmissorDpsService', () => {
   it('deve emitir em modo simulado quando supabaseClient e sefinClient não forem injetados', async () => {
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         if (sql.includes('medico_perfil_fiscal')) {
           return {
             rows: [
@@ -78,6 +79,7 @@ describe('PostgresEmissorDpsService', () => {
   it('deve retornar erro se médico não possuir certificado A1 ativo no modo SEFIN real', async () => {
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         if (sql.includes('medico_perfil_fiscal')) {
           return {
             rows: [
@@ -145,6 +147,7 @@ describe('PostgresEmissorDpsService', () => {
 
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         if (sql.includes('medico_perfil_fiscal')) {
           return {
             rows: [
@@ -259,6 +262,7 @@ describe('PostgresEmissorDpsService', () => {
     let queriesExecutadas: string[] = [];
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         queriesExecutadas.push(sql);
         if (sql.includes('medico_perfil_fiscal') && sql.includes('select')) {
           return {
@@ -395,6 +399,7 @@ describe('PostgresEmissorDpsService', () => {
     let queriesExecutadas: string[] = [];
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         queriesExecutadas.push(sql);
         if (sql.includes('medico_perfil_fiscal') && sql.includes('select')) {
           return {
@@ -559,6 +564,7 @@ describe('PostgresEmissorDpsService', () => {
     let queriesExecutadas: string[] = [];
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         queriesExecutadas.push(sql);
         if (sql.includes('medico_perfil_fiscal') && sql.includes('select')) {
           return {
@@ -679,6 +685,7 @@ describe('PostgresEmissorDpsService', () => {
   it('deve retornar erro impeditivo se o paciente não possuir nome civil válido e consulta externa falhar', async () => {
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         if (sql.includes('medico_perfil_fiscal')) {
           return {
             rows: [
@@ -728,6 +735,7 @@ describe('PostgresEmissorDpsService', () => {
   it('não deve consultar a API de CPF se o paciente já possuir nomeValidado = true', async () => {
     const fakePool: any = {
       async query(sql: string) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         if (sql.includes('medico_perfil_fiscal')) {
           return {
             rows: [
@@ -808,6 +816,7 @@ describe('PostgresEmissorDpsService', () => {
     let queriesExecutadas: string[] = [];
     const fakePool: any = {
       async query(sql: string, params?: any[]) {
+        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
         queriesExecutadas.push(sql);
         if (sql.includes('medico_perfil_fiscal')) {
           return {

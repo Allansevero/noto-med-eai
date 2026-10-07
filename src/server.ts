@@ -41,6 +41,7 @@ import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado
 import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medico.js';
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
+import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
 import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
 import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
@@ -74,6 +75,7 @@ export function criarAppExpress() {
     config.evolutionGlobalApiKey,
     config.evolutionOfficialInstanceName
   );
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
@@ -213,7 +215,7 @@ export function criarAppExpress() {
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
       const status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
-      if (status.liberadoParaEmitir) dispararTreino(medicoId);
+      dispararTreino(medicoId);
       if (status.passos.passo4WhatsappConectado) {
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
@@ -261,6 +263,7 @@ export function criarAppExpress() {
       const medicoIdFinal = await resolverMedicoId(pool, medicoIdRaw || usuarioId);
 
       const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe, email });
+      await dadosProfissionais.retomar(medicoIdFinal);
       return res.json({ ok: true, ...perfil });
     } catch (err: any) {
       if (err instanceof ZodError) return res.status(400).json({ ok: false, detalhe: err.issues[0]?.message });
@@ -554,6 +557,7 @@ export function criarAppExpress() {
 
     const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
       repositorio: atendimentoRepo,
+      dadosProfissionais,
       billingRepositorio: billingRepo,
       enviarMensagemPaciente: evolutionClient,
       iaService: groqClient,
