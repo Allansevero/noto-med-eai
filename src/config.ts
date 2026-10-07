@@ -28,6 +28,7 @@ export interface AppConfig {
   comparacaoFiscalAtiva?: boolean;
   desenvolvedorFiscalAtivo?: boolean;
   desenvolvedorFiscalToken?: string;
+  chromiumExecutablePath?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -67,6 +68,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     comparacaoFiscalAtiva: env['COMPARACAO_FISCAL_ATIVA'] === 'true',
     desenvolvedorFiscalAtivo: env['DESENVOLVEDOR_FISCAL_ATIVO'] === 'true',
     desenvolvedorFiscalToken: env['DESENVOLVEDOR_FISCAL_TOKEN'],
+    chromiumExecutablePath: env['CHROMIUM_EXECUTABLE_PATH'] || '/usr/bin/chromium-browser',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

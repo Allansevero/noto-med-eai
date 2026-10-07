@@ -45,6 +45,9 @@ import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-what
 import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
 import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
 import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
+import { criarRouterTribemdDesenvolvedor } from './desenvolvedor/tribemd-router.js';
+import { NavegadorTribemd } from './desenvolvedor/tribemd-navegador.js';
+import { GroqDecisorTribemd } from './desenvolvedor/tribemd-agente.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -117,7 +120,18 @@ export function criarAppExpress() {
     ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
     evolution: new EvolutionColetorClient(config.evolutionApiUrl, config.evolutionGlobalApiKey)
   }));
+  app.use('/api/desenvolvedor/tribemd', criarRouterTribemdDesenvolvedor({
+    ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
+    configurado: Boolean(config.groqApiKey), decisor: new GroqDecisorTribemd(config.groqApiKey, config.groqModel),
+    criarNavegador: signal => NavegadorTribemd.criar(config.chromiumExecutablePath || '/usr/bin/chromium-browser', signal)
+  }));
   if (config.desenvolvedorFiscalAtivo) {
+    app.get('/desenvolvedor/tribemd', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.sendFile(join(__dirname, 'ui', 'desenvolvedor-tribemd.html'));
+    });
     app.get('/desenvolvedor/whatsapp', (_req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Frame-Options', 'DENY');

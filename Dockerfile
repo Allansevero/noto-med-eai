@@ -2,6 +2,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Navegador do piloto TribemD, iniciado somente na área de desenvolvedor.
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+
 # Copia manifestos de dependência
 COPY package*.json ./
 
