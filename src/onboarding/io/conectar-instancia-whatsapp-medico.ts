@@ -10,6 +10,7 @@ import { configurarSincronizacaoHistorico } from './configurar-sincronizacao-his
 export type IniciarConexaoWhatsappInput = {
   medicoId: string;
   telefoneConsultorio?: string;
+  modoConexao?: 'codigo' | 'qrcode';
   evolutionUrl: string;
   evolutionApiKey: string;
   appWebhookUrl: string;
@@ -22,6 +23,12 @@ export type ResultadoConexaoWhatsapp = {
   status: string;
   qrcodeBase64?: string | null;
   pairingCode?: string | null;
+  detalhe?: string;
+  diagnostico?: {
+    etapa: 'instance/create' | 'instance/connect' | 'settings/set';
+    codigo: 'HTTP_ERRO' | 'CONEXAO_FALHOU' | 'CODIGO_NAO_GERADO';
+    statusHttp?: number;
+  };
 };
 
 function formatarTelefonePareamento(telefone?: string): string | undefined {
@@ -40,9 +47,17 @@ export async function conectarInstanciaWhatsappMedico(
   const { medicoId, evolutionUrl, evolutionApiKey, appWebhookUrl, webhookSecret } = input;
   const baseUrl = evolutionUrl.replace(/\/+$/, '');
   const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
-  let telefonePareamento = formatarTelefonePareamento(input.telefoneConsultorio);
+  const porQrCode = input.modoConexao === 'qrcode';
+  const falhar = (diagnostico: NonNullable<ResultadoConexaoWhatsapp['diagnostico']>): ResultadoConexaoWhatsapp => ({
+    ok: false, nomeInstancia, status: 'erro', diagnostico,
+    detalhe: porQrCode
+      ? 'Não foi possível gerar o QR Code. Tente novamente. Se continuar, contate o suporte.'
+      : 'Não foi possível gerar o código de conexão. Tente conectar por QR Code.'
+  });
+  let diagnostico: ResultadoConexaoWhatsapp['diagnostico'];
+  let telefonePareamento = porQrCode ? undefined : formatarTelefonePareamento(input.telefoneConsultorio);
 
-  if (!telefonePareamento) {
+  if (!porQrCode && !telefonePareamento) {
     const telefoneSalvo = await pool.query(
       `select u.telefone
        from medicos m
@@ -73,6 +88,7 @@ export async function conectarInstanciaWhatsappMedico(
 
     const resCreate = await fetch(`${baseUrl}/instance/create`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       headers: {
         'Content-Type': 'application/json',
         apikey: evolutionApiKey
@@ -82,13 +98,15 @@ export async function conectarInstanciaWhatsappMedico(
 
     const dataCreate = await resCreate.json().catch(() => ({}));
     instanciaCriadaComHistorico = resCreate.ok;
-    if (dataCreate.qrcode?.base64) {
+    if (!resCreate.ok) diagnostico = { etapa: 'instance/create', codigo: 'HTTP_ERRO', statusHttp: resCreate.status };
+    if (resCreate.ok && dataCreate.qrcode?.base64) {
       qrcodeBase64 = dataCreate.qrcode.base64;
     }
-    if (dataCreate.pairingCode) {
+    if (resCreate.ok && !porQrCode && dataCreate.pairingCode) {
       pairingCode = dataCreate.pairingCode;
     }
   } catch (err) {
+    diagnostico = { etapa: 'instance/create', codigo: 'CONEXAO_FALHOU' };
     // Continua para tentar /instance/connect caso já exista
   }
 
@@ -104,7 +122,9 @@ export async function conectarInstanciaWhatsappMedico(
     historicoConfigurado = false;
   }
   if (!instanciaCriadaComHistorico && !historicoConfigurado) {
-    throw new Error(`Não foi possível ativar a sincronização de histórico da instância ${nomeInstancia}`);
+    return falhar(diagnostico?.statusHttp === 409
+      ? { etapa: 'settings/set', codigo: 'CONEXAO_FALHOU' }
+      : diagnostico || { etapa: 'settings/set', codigo: 'CONEXAO_FALHOU' });
   }
 
   // 2. Com telefone cadastrado, solicita explicitamente o codigo de pareamento.
@@ -117,16 +137,20 @@ export async function conectarInstanciaWhatsappMedico(
 
       const resConnect = await fetch(urlConnect, {
         method: 'GET',
+        signal: AbortSignal.timeout(15_000),
         headers: { apikey: evolutionApiKey }
       });
       const dataConnect = await resConnect.json().catch(() => ({}));
-      pairingCode = dataConnect.pairingCode || null;
-      qrcodeBase64 = pairingCode ? null : (dataConnect.base64 || dataConnect.qrcode?.base64 || qrcodeBase64);
-      if (dataConnect.instance?.state === 'open') {
-        status = 'open';
+      if (!resConnect.ok) {
+        diagnostico = { etapa: 'instance/connect', codigo: 'HTTP_ERRO', statusHttp: resConnect.status };
+      } else {
+        diagnostico = undefined;
+        pairingCode = porQrCode ? null : (dataConnect.pairingCode || null);
+        qrcodeBase64 = pairingCode ? null : (dataConnect.base64 || dataConnect.qrcode?.base64 || qrcodeBase64);
+        if (dataConnect.instance?.state === 'open') status = 'open';
       }
     } catch (err) {
-      // Ignora falha de rede da Evolution se indisponível momentaneamente
+      diagnostico = { etapa: 'instance/connect', codigo: 'CONEXAO_FALHOU' };
     }
   }
 
@@ -139,10 +163,11 @@ export async function conectarInstanciaWhatsappMedico(
   if (!qrcodeBase64 && !pairingCode && status !== 'open') {
     try {
       const resState = await fetch(`${baseUrl}/instance/connectionState/${nomeInstancia}`, {
-        headers: { apikey: evolutionApiKey }
+        headers: { apikey: evolutionApiKey },
+        signal: AbortSignal.timeout(15_000)
       });
       const dataState = await resState.json().catch(() => ({}));
-      if (dataState.instance?.state === 'open') {
+      if (resState.ok && dataState.instance?.state === 'open') {
         status = 'open';
       }
     } catch {
@@ -155,6 +180,7 @@ export async function conectarInstanciaWhatsappMedico(
   try {
     const resWebhook = await fetch(`${baseUrl}/webhook/set/${nomeInstancia}`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       headers: {
         'Content-Type': 'application/json',
         apikey: evolutionApiKey
@@ -202,6 +228,10 @@ export async function conectarInstanciaWhatsappMedico(
   `;
   await pool.query(sql, [medicoId, nomeInstancia, statusDb, conectadoEm, webhookConfigurado]);
 
+
+  if (!qrcodeBase64 && !pairingCode && status !== 'open') {
+    return falhar(diagnostico || { etapa: 'instance/connect', codigo: 'CODIGO_NAO_GERADO' });
+  }
 
   return {
     ok: true,

@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conectarInstanciaWhatsappMedico } from './conectar-instancia-whatsapp-medico.js';
 
@@ -79,4 +79,67 @@ describe('conectarInstanciaWhatsappMedico', () => {
       globalThis.fetch = fetchOriginal;
     }
   });
+});
+
+
+async function simularEvolution(
+  respostaConectar: { status: number; data: unknown },
+  modoConexao: 'codigo' | 'qrcode' = 'codigo',
+  conectado = false
+) {
+  const original = globalThis.fetch;
+  const chamadas: Array<{ url: string; body?: any }> = [];
+  let consultasTelefone = 0;
+  const pool = { query: async (sql: string) => {
+    if (sql.includes('select u.telefone')) { consultasTelefone++; return { rows: [{ telefone: '48912345678' }] }; }
+    return { rows: [{ id: 'instancia' }] };
+  } } as any;
+  globalThis.fetch = async (url, init) => {
+    chamadas.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (String(url).includes('/instance/create')) return Response.json({ error: 'Instance already exists' }, { status: 409 });
+    if (String(url).includes('/instance/connect/')) return Response.json(respostaConectar.data, { status: respostaConectar.status });
+    if (String(url).includes('/instance/connectionState/')) return Response.json({ instance: { state: conectado ? 'open' : 'close' } });
+    return Response.json({});
+  };
+  try {
+    const resultado = await conectarInstanciaWhatsappMedico(pool, {
+      medicoId: 'medico-teste', modoConexao,
+      evolutionUrl: 'http://evolution.test', evolutionApiKey: 'chave-secreta',
+      appWebhookUrl: 'http://noto.test', webhookSecret: 'segredo-webhook'
+    } as any);
+    return { resultado: resultado as any, chamadas, consultasTelefone };
+  } finally { globalThis.fetch = original; }
+}
+
+test('QR explícito não consulta nem envia telefone e reutiliza a instância existente', async () => {
+  const t = await simularEvolution({ status: 200, data: { base64: 'imagem-qr', pairingCode: 'codigo-antigo' } }, 'qrcode');
+  assert.equal(t.consultasTelefone, 0);
+  assert.equal(t.chamadas.find(c => c.url.includes('/instance/create'))?.body.number, undefined);
+  assert.equal(t.chamadas.find(c => c.url.includes('/instance/create'))?.body.qrcode, true);
+  assert.equal(t.chamadas.find(c => c.url.includes('/instance/connect/'))?.url, 'http://evolution.test/instance/connect/medico_medicoteste');
+  assert.equal(t.resultado.ok, true);
+  assert.equal(t.resultado.qrcodeBase64, 'data:image/png;base64,imagem-qr');
+  assert.equal(t.resultado.pairingCode, null);
+  assert.equal(t.chamadas.some(c => /logout|delete/.test(c.url)), false);
+});
+
+test('rejeição HTTP no pareamento deixa diagnóstico estruturado e não retorna sucesso', async () => {
+  const t = await simularEvolution({ status: 400, data: { response: { message: ['Número incorreto', 'chave-secreta', '48912345678'] } } });
+  assert.equal(t.resultado.ok, false);
+  assert.equal(t.resultado.status, 'erro');
+  assert.deepEqual(t.resultado.diagnostico, { etapa: 'instance/connect', codigo: 'HTTP_ERRO', statusHttp: 400 });
+  assert.match(t.resultado.detalhe, /QR Code/);
+  assert.equal(/chave-secreta|48912345678/.test(JSON.stringify(t.resultado)), false);
+});
+
+test('resposta vazia não é anunciada como conexão pronta', async () => {
+  const t = await simularEvolution({ status: 200, data: {} });
+  assert.equal(t.resultado.ok, false);
+  assert.equal(t.resultado.diagnostico.codigo, 'CODIGO_NAO_GERADO');
+});
+
+test('instância já conectada é reconhecida mesmo sem um novo código', async () => {
+  const t = await simularEvolution({ status: 200, data: {} }, 'qrcode', true);
+  assert.equal(t.resultado.ok, true);
+  assert.equal(t.resultado.status, 'open');
 });

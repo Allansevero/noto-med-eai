@@ -477,7 +477,10 @@ export function criarAppExpress() {
   // Passo 4: Conectar WhatsApp do Consultório (Evolution API)
   app.post('/api/onboarding/whatsapp/iniciar', async (req: Request, res: Response) => {
     try {
-      const { medicoId: medicoIdRaw, telefoneConsultorio } = req.body || {};
+      const { medicoId: medicoIdRaw, telefoneConsultorio, modoConexao } = req.body || {};
+      if (modoConexao !== undefined && modoConexao !== 'codigo' && modoConexao !== 'qrcode') {
+        return res.status(400).json({ ok: false, detalhe: 'Modo de conexão inválido.' });
+      }
       if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
@@ -489,12 +492,18 @@ export function criarAppExpress() {
       const resultado = await conectarInstanciaWhatsappMedico(pool, {
         medicoId,
         telefoneConsultorio,
+        modoConexao,
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey,
         appWebhookUrl: appUrl,
         webhookSecret: config.evolutionWebhookSecret
       });
       if (resultado.ok) dispararTreino(medicoId);
+      if (resultado.diagnostico) {
+        console.warn('[WhatsApp] Conexão pendente:', {
+          medicoId, modoConexao: modoConexao || 'codigo', diagnostico: resultado.diagnostico
+        });
+      }
       return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       console.error('Erro ao iniciar conexão WhatsApp:', err);

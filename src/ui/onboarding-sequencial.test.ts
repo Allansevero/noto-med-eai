@@ -13,7 +13,7 @@ function tela() {
         children: [] as any[], replaceChildren() { this.children = []; }, append(...els: any[]) { this.children.push(...els); },
         classList: { add(...c: string[]) { c.forEach(v => valores.add(v)); }, remove(...c: string[]) { c.forEach(v => valores.delete(v)); },
           contains(c: string) { return valores.has(c); }, toggle(c: string, ativo = !valores.has(c)) { ativo ? valores.add(c) : valores.delete(c); } },
-        addEventListener(e: string, h: any) { this.handlers[e] = h; }, setAttribute() {}, checkValidity() { return true; }, focus() {}, querySelector() { return null; } });
+        addEventListener(e: string, h: any) { this.handlers[e] = h; }, setAttribute() {}, removeAttribute() {}, checkValidity() { return true; }, focus() {}, querySelector() { return null; } });
     }
     return nodes.get(id);
   }
@@ -26,19 +26,20 @@ function tela() {
     readAsArrayBuffer() { leitor = this; }
   }
   const pedidos: any[] = [];
+  const intervalos: Array<() => Promise<void>> = [];
   const status: any = { passos: { passo1Nome: false, passo3CertificadoValido: false }, liberadoParaEmitir: false };
   const contexto = vm.createContext({ document: { getElementById: node, createElement() { return node('created' + nodes.size); }, body: node('body', 'onboarding-active'),
     querySelectorAll(s: string) { return s === '.otp-digit' ? otp : tabs; } },
     localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} }, window: { location: { search: '' }, history: {} },
     URLSearchParams, FileReader, Uint8Array, btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
-    setTimeout() {}, clearInterval() {}, setInterval() {}, console,
+    setTimeout() {}, clearInterval() {}, setInterval(fn: any) { intervalos.push(fn); return intervalos.length; }, console,
     async fetch(url: string, opcoes?: any) {
       pedidos.push({ url, body: opcoes?.body ? JSON.parse(opcoes.body) : undefined });
       return { ok: true, async json() { return url.includes('/verificar') ? { ok: true, sessao: { usuario: { usuarioId: 'user', medicoId: 'med' } } }
         : url.includes('/status?') ? { ok: true, status } : { ok: true, medicoId: 'med' }; } };
     } });
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)![1], contexto);
-  return { node, pedidos, otp, contexto, status, carregarArquivo() { leitor.onload({ target: { result: new Uint8Array([1, 2, 3]).buffer } }); } };
+  return { node, pedidos, otp, contexto, status, intervalos, carregarArquivo() { leitor.onload({ target: { result: new Uint8Array([1, 2, 3]).buffer } }); } };
 }
 test('abas ficam ocultas até concluir o onboarding e voltam ao entrar no painel', () => {
   const t = tela();
@@ -190,4 +191,66 @@ test('rejeição fiscal mantém o rascunho e não duplica um salvamento em andam
   assert.equal(vm.runInContext('camposFiscaisEdicao.get("aliquotaIss").input.value', t.contexto), '3');
   assert.equal(t.node('statusEdicaoFiscal').textContent, 'Classificação incompatível com a referência.');
   assert.equal(t.node('btnSalvarFiscal').disabled, false);
+});
+
+
+test('alternativa por QR envia modo explícito e mantém esse modo na renovação', async () => {
+  const t = tela();
+  vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }; mostrarPasso(4)', t.contexto);
+  t.contexto.fetch = async (url: string, options?: any) => {
+    t.pedidos.push({ url, body: options?.body ? JSON.parse(options.body) : undefined });
+    return { ok: true, json: async () => ({ ok: true, qrcodeBase64: 'data:image/png;base64,qr' }) };
+  };
+  assert.equal(typeof t.node('btnConectarQr').handlers.click, 'function');
+  await t.node('btnConectarQr').handlers.click();
+  assert.equal(t.pedidos.at(-1).body.modoConexao, 'qrcode');
+  assert.equal(t.node('boxQrCode').classList.contains('hidden'), false);
+  assert.equal(t.node('boxPairingCode').classList.contains('hidden'), true);
+  await vm.runInContext('atualizarCodigoConexao("med")', t.contexto);
+  assert.equal(t.pedidos.at(-1).body.modoConexao, 'qrcode');
+});
+
+test('falha na renovação interrompe tentativas e oferece mensagem em vez de código antigo', async () => {
+  const t = tela();
+  t.node('boxPairingCode').classList.remove('hidden');
+  t.contexto.fetch = async () => ({ ok: true, json: async () => ({ ok: false, detalhe: 'Tente conectar por QR Code.' }) });
+  await vm.runInContext('atualizarCodigoConexao("med")', t.contexto);
+  assert.equal(t.node('boxPairingCode').classList.contains('hidden'), true);
+  assert.equal(t.node('alertOnboarding').classList.contains('hidden'), false);
+});
+
+
+test('código de pareamento não é substituído automaticamente enquanto o usuário o digita', async () => {
+  const t = tela();
+  vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }', t.contexto);
+  t.contexto.fetch = async (url: string, options?: any) => {
+    t.pedidos.push({ url, body: options?.body ? JSON.parse(options.body) : undefined });
+    return { ok: true, json: async () => url.includes('/iniciar')
+      ? { ok: true, pairingCode: 'ABCD-EFGH' } : { ok: true, conectado: false } };
+  };
+  await t.node('btnIniciarWhatsapp').handlers.click();
+  for (let i = 0; i < 12; i++) await t.intervalos.at(-1)!();
+  assert.equal(t.pedidos.filter(p => p.url.includes('/iniciar')).length, 1);
+});
+
+
+test('falha ao renovar QR suspende renovação mas continua verificando a conexão', async () => {
+  const t = tela();
+  vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }', t.contexto);
+  let falha = false; let conectado = false;
+  t.contexto.fetch = async (url: string, options?: any) => {
+    t.pedidos.push({ url, body: options?.body ? JSON.parse(options.body) : undefined });
+    return { ok: true, json: async () => url.includes('/iniciar')
+      ? falha ? { ok: false, detalhe: 'Falha transitória' } : { ok: true, qrcodeBase64: 'data:image/png;base64,qr' }
+      : { ok: true, conectado } };
+  };
+  await t.node('btnConectarQr').handlers.click();
+  falha = true;
+  await vm.runInContext('atualizarCodigoConexao("med")', t.contexto);
+  assert.notEqual(vm.runInContext('pollingConexaoId', t.contexto), null);
+  for (let i = 0; i < 12; i++) await t.intervalos.at(-1)!();
+  assert.equal(t.pedidos.filter(p => p.url.includes('/iniciar')).length, 2);
+  conectado = true;
+  await t.intervalos.at(-1)!();
+  assert.equal(vm.runInContext('pollingConexaoId', t.contexto), null);
 });

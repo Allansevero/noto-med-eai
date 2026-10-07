@@ -973,6 +973,7 @@
         <button type="button" class="btn-action" id="btnIniciarWhatsapp">
           <span id="btnIniciarWhatsappTxt">Gerar Conexão WhatsApp</span>
         </button>
+        <button type="button" class="btn-link" id="btnConectarQr">Conectar por QR Code</button>
       </div>
 
       <!-- ETAPA 5: LIBERADO / PAINEL FINAL -->
@@ -1795,6 +1796,9 @@
 
     // --- PASSO 4: CONEXÃO WHATSAPP ---
     let pollingConexaoId = null;
+    let modoConexaoWhatsapp = 'codigo';
+    let renovarQrAutomaticamente = false;
+    let conexaoWhatsappEmAndamento = false;
 
     function pararPollingConexao() {
       if (pollingConexaoId) {
@@ -1823,22 +1827,65 @@
 
     let segundosDesdeUltimaConexao = 0;
 
+    function exibirConexaoWhatsapp(data) {
+      document.getElementById('boxQrCode').classList.add('hidden');
+      document.getElementById('boxPairingCode').classList.add('hidden');
+      if (!data.ok) {
+        renovarQrAutomaticamente = false;
+        document.getElementById('txtPairingCode').textContent = '----';
+        document.getElementById('imgQrCode').removeAttribute('src');
+        showAlert(data.detalhe || 'Não foi possível conectar. Tente conectar por QR Code.', true, alertOnboarding);
+        return false;
+      }
+      if (modoConexaoWhatsapp === 'qrcode' && data.qrcodeBase64) {
+        renovarQrAutomaticamente = true;
+        document.getElementById('imgQrCode').src = data.qrcodeBase64;
+        document.getElementById('boxQrCode').classList.remove('hidden');
+        document.getElementById('btnIniciarWhatsappTxt').textContent = 'Recarregar QR Code';
+        return true;
+      }
+      if (data.pairingCode) {
+        document.getElementById('txtPairingCode').textContent = data.pairingCode;
+        document.getElementById('boxPairingCode').classList.remove('hidden');
+        document.getElementById('btnIniciarWhatsappTxt').textContent = 'Recarregar Código';
+        return true;
+      }
+      if (data.qrcodeBase64) {
+        document.getElementById('imgQrCode').src = data.qrcodeBase64;
+        document.getElementById('boxQrCode').classList.remove('hidden');
+        document.getElementById('btnIniciarWhatsappTxt').textContent = 'Recarregar QR Code';
+        return true;
+      }
+      renovarQrAutomaticamente = false;
+      showAlert('Não foi possível gerar a conexão. Tente novamente ou conecte por QR Code.', true, alertOnboarding);
+      return false;
+    }
+
     async function atualizarCodigoConexao(medicoId) {
+      if (conexaoWhatsappEmAndamento) return;
+      conexaoWhatsappEmAndamento = true;
+      document.getElementById('btnIniciarWhatsapp').disabled = true;
+      document.getElementById('btnConectarQr').disabled = true;
       try {
         const res = await fetch('/api/onboarding/whatsapp/iniciar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId })
+          body: JSON.stringify({ medicoId, modoConexao: modoConexaoWhatsapp })
         });
         const data = await res.json();
-        if (data.ok && data.pairingCode) {
-          document.getElementById('txtPairingCode').textContent = data.pairingCode;
-          document.getElementById('boxPairingCode').classList.remove('hidden');
-          document.getElementById('boxQrCode').classList.add('hidden');
-        } else if (data.ok && data.qrcodeBase64) {
-          document.getElementById('imgQrCode').src = data.qrcodeBase64;
+        if (res.ok && data.ok && data.status === 'open') {
+          pararPollingConexao();
+          await carregarFluxoOnboarding();
+          return;
         }
-      } catch {}
+        exibirConexaoWhatsapp({ ...data, ok: res.ok && data.ok });
+      } catch {
+        exibirConexaoWhatsapp({ ok: false, detalhe: 'Não foi possível atualizar a conexão. Tente novamente.' });
+      } finally {
+        conexaoWhatsappEmAndamento = false;
+        document.getElementById('btnIniciarWhatsapp').disabled = false;
+        document.getElementById('btnConectarQr').disabled = false;
+      }
     }
 
     function iniciarPollingConexao(medicoId) {
@@ -1847,75 +1894,40 @@
       pollingConexaoId = setInterval(async () => {
         await verificarStatusWhatsapp(medicoId);
         segundosDesdeUltimaConexao += 2.5;
-        if (segundosDesdeUltimaConexao >= 25) {
+        if (renovarQrAutomaticamente && modoConexaoWhatsapp === 'qrcode' && pollingConexaoId && segundosDesdeUltimaConexao >= 25) {
           segundosDesdeUltimaConexao = 0;
           await atualizarCodigoConexao(medicoId);
         }
       }, 2500);
     }
 
-    document.getElementById('btnIniciarWhatsapp').addEventListener('click', async () => {
+    async function iniciarConexaoWhatsapp(modo = modoConexaoWhatsapp) {
+      if (conexaoWhatsappEmAndamento) return;
       hideAlert(alertOnboarding);
       const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
       if (!medicoId) {
         showAlert('Sessão expirada. Faça login novamente.', true, alertOnboarding);
         return;
       }
-
-      const btn = document.getElementById('btnIniciarWhatsapp');
-      const btnTxt = document.getElementById('btnIniciarWhatsappTxt');
-      btn.disabled = true;
+      pararPollingConexao();
+      modoConexaoWhatsapp = modo;
+      renovarQrAutomaticamente = false;
       document.getElementById('loadingQr').classList.remove('hidden');
       document.getElementById('boxQrCode').classList.add('hidden');
       document.getElementById('boxPairingCode').classList.add('hidden');
-
       try {
-        const res = await fetch('/api/onboarding/whatsapp/iniciar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId })
-        });
-        const data = await res.json();
-        document.getElementById('loadingQr').classList.add('hidden');
-        btn.disabled = false;
-
-        if (!res.ok || !data.ok) {
-          showAlert(data.detalhe || 'Erro na conexão WhatsApp.', true, alertOnboarding);
-          return;
-        }
-
-        if (data.status === 'open') {
-          showAlert('WhatsApp já está conectado!', false, alertOnboarding);
-          await carregarFluxoOnboarding();
-          return;
-        }
-
-        if (data.pairingCode) {
-          document.getElementById('txtPairingCode').textContent = data.pairingCode;
-          document.getElementById('boxPairingCode').classList.remove('hidden');
-          if (btnTxt) btnTxt.textContent = 'Recarregar Código';
-          showAlert('Digite o código de pareamento no WhatsApp!', false, alertOnboarding);
+        await atualizarCodigoConexao(medicoId);
+        if (!document.getElementById('boxQrCode').classList.contains('hidden') ||
+            !document.getElementById('boxPairingCode').classList.contains('hidden')) {
           iniciarPollingConexao(medicoId);
-          return;
         }
-
-        if (data.qrcodeBase64) {
-          document.getElementById('imgQrCode').src = data.qrcodeBase64;
-          document.getElementById('boxQrCode').classList.remove('hidden');
-          if (btnTxt) btnTxt.textContent = 'Recarregar QR Code';
-          showAlert('Aponte a câmera do WhatsApp para o QR Code!', false, alertOnboarding);
-          iniciarPollingConexao(medicoId);
-          return;
-        }
-
-        showAlert('Instância pronta na Evolution. Clique para gerar um novo código.', false, alertOnboarding);
-        if (btnTxt) btnTxt.textContent = 'Gerar novo código';
-      } catch (err) {
+      } finally {
         document.getElementById('loadingQr').classList.add('hidden');
-        btn.disabled = false;
-        showAlert('Erro de conexão ao iniciar WhatsApp.', true, alertOnboarding);
       }
-    });
+    }
+
+    document.getElementById('btnIniciarWhatsapp').addEventListener('click', () => iniciarConexaoWhatsapp());
+    document.getElementById('btnConectarQr').addEventListener('click', () => iniciarConexaoWhatsapp('qrcode'));
 
     // --- FATURAMENTO / STRIPE BILLING ---
     // Notificações de retorno do Checkout Stripe
