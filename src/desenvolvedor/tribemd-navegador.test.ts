@@ -77,3 +77,11 @@ test('falha de DNS na abertura tem código de conexão e não expõe erro bruto'
   assert.equal(e.codigo,'LOGIN_CONEXAO_FALHOU');assert.equal(e.diagnostico.tipoFalha,'dns');assert.equal(e.diagnostico.etapa,'abrindo_login');assert.ok(!e.message.includes('net::'));return true;
  });
 });
+
+test('tela virtual exporta PNG e visão inclui apenas controles de navegação',async t=>{
+ const p=await portal(t);await p.n.entrar('teste@example.com','correta',new AbortController().signal);
+ const imagem=await p.n.capturarTela();assert.equal(imagem!.subarray(1,4).toString(),'PNG');
+ const l=await p.n.ler();assert.equal(l.visao!.length,2);assert.ok(l.visao!.every(v=>l.opcoes.some(o=>o.id===v.ferramentaId)));
+ await p.n.executar(l.opcoes.find(o=>o.acao==='abrir_pacientes')!.id);const lista=await p.n.ler();
+ assert.ok(!lista.visao!.some(v=>lista.opcoes.find(o=>o.id===v.ferramentaId)?.acao==='ler_cadastro'));
+});

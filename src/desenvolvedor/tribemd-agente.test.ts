@@ -32,3 +32,13 @@ test('Groq recebe somente metadados e sua resposta passa por validação',async 
  t.mock.method(globalThis,'fetch',async(_url:any,init:any)=>{const b=JSON.parse(init.body);assert.deepEqual(JSON.parse(b.messages[1].content).ferramentas,[{id:'agenda',acao:'abrir_agenda'}]);return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({ferramentaId:'agenda'})}}]}));});
  const c=new GroqDecisorTribemd('chave','modelo');assert.equal(await c.decidir({ferramentas:leitura.opcoes,passo:1,pacientes:0,agendamentos:0}),'agenda');
 });
+
+test('decisor visual envia recortes dos controles ao modelo de visão e valida a ação',async t=>{
+ let corpo:any;
+ t.mock.method(globalThis,'fetch',async(_u:any,init:any)=>{corpo=JSON.parse(init.body);return new Response(JSON.stringify({choices:[{message:{content:'{"ferramentaId":"agenda"}'}}]}));});
+ const d=new GroqDecisorTribemd('chave','texto','visao');
+ assert.equal(await d.decidir({ferramentas:leitura.opcoes,passo:1,pacientes:0,agendamentos:0,visao:[{ferramentaId:'agenda',imagemBase64:'iVBORw0KGgo='}]}),'agenda');
+ assert.equal(corpo.model,'visao');assert.equal(corpo.messages[1].content[2].type,'image_url');
+ assert.equal(corpo.messages[1].content[2].image_url.url,'data:image/png;base64,iVBORw0KGgo=');
+ assert.ok(!corpo.messages[1].content[0].text.includes('imagemBase64'));
+});

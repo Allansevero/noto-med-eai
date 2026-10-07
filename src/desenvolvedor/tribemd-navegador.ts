@@ -1,4 +1,5 @@
 import { chromium, type BrowserContext, type Page } from 'playwright-core';
+import { TelaVirtualTribemd } from './tribemd-display.js';
 import { createHash } from 'node:crypto';
 import { campoTribemd, type TelaTribemd } from './tribemd-dados.js';
 const origem='https://app.tribemd.com';
@@ -9,20 +10,48 @@ export interface DiagnosticoLoginTribemd {
 }
 export class ErroTribemd extends Error { constructor(public codigo:string,message:string,public diagnostico?:DiagnosticoLoginTribemd){super(message);} }
 export interface OpcaoTribemd { id:string;acao:'abrir_pacientes'|'abrir_agenda'|'ler_cadastro'|'proxima_pagina' }
-export interface LeituraTribemd { tela:TelaTribemd;opcoes:OpcaoTribemd[];diagnostico:{caminho:string;tabelas:number;linhas:number;campos:string[];limitada:boolean} }
-export interface NavegadorColetaTribemd { entrar(email:string,senha:string,signal:AbortSignal):Promise<void>;ler():Promise<LeituraTribemd>;executar(id:string):Promise<void>;encerrar():Promise<void> }
+export interface VisaoTribemd { ferramentaId:string;imagemBase64:string }
+export interface LeituraTribemd { visao?:VisaoTribemd[]; tela:TelaTribemd;opcoes:OpcaoTribemd[];diagnostico:{caminho:string;tabelas:number;linhas:number;campos:string[];limitada:boolean} }
+export interface NavegadorColetaTribemd { entrar(email:string,senha:string,signal:AbortSignal):Promise<void>;ler():Promise<LeituraTribemd>;executar(id:string):Promise<void>;encerrar():Promise<void>;capturarTela?():Promise<Buffer|null> }
 export class NavegadorTribemd implements NavegadorColetaTribemd {
  private page?:Page;private autenticado=false;private fechado=false;
  private acoes=new Map<string,{opcao:OpcaoTribemd;url:string;botao?:string}>();private visitadas=new Set<string>();
  constructor(private context:BrowserContext,private fechar:()=>Promise<void>=()=>context.close()){}
  static async criar(executavel:string,signal:AbortSignal):Promise<NavegadorTribemd>{
-  signal.throwIfAborted();let browser;
-  try{browser=await chromium.launch({executablePath:executavel,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],timeout:20000});}
-  catch{throw new ErroTribemd('NAVEGADOR_INDISPONIVEL','O Chromium não pôde iniciar. Confira a imagem implantada e o caminho do navegador.');}
-  if(signal.aborted){await browser.close();signal.throwIfAborted();}
+  signal.throwIfAborted();let display:TelaVirtualTribemd;
+  try{display=await TelaVirtualTribemd.iniciar(signal);}
+  catch{throw new ErroTribemd('TELA_VIRTUAL_INDISPONIVEL','A tela virtual não iniciou. Implante a imagem com Xvfb antes de repetir o teste.');}
+  let browser;
+  try{browser=await chromium.launch({executablePath:executavel,headless:false,env:{...process.env,DISPLAY:display.display},args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu'],timeout:20000});}
+  catch{await display.encerrar();throw new ErroTribemd('NAVEGADOR_INDISPONIVEL','O Chromium não pôde iniciar na tela virtual. Confira a imagem e o caminho do navegador.');}
+  if(signal.aborted){await browser.close();await display.encerrar();signal.throwIfAborted();}
   try{const context=await browser.newContext({viewport:{width:1280,height:900},acceptDownloads:false,serviceWorkers:'block'});
-   return new NavegadorTribemd(context,()=>browser.close());
-  }catch(erro){await browser.close();throw erro;}
+   return new NavegadorTribemd(context,async()=>{try{await browser.close();}finally{await display.encerrar();}});
+  }catch(erro){await browser.close();await display.encerrar();throw erro;}
+ }
+ async capturarTela():Promise<Buffer|null>{
+  if(!this.page||this.page.isClosed()||this.fechado)return null;
+  // A tela completa fica só na sessão autenticada. Campos de entrada nunca aparecem.
+  try{return await this.page.screenshot({type:'png',timeout:3000,mask:[this.page.locator('input,textarea,[contenteditable=true]')]});}catch{return null;}
+ }
+ private async observarControles():Promise<VisaoTribemd[]>{
+  const page=this.obterPagina(),visao:VisaoTribemd[]=[];
+  for(const a of this.acoes.values()){
+   if(!['abrir_pacientes','abrir_agenda'].includes(a.opcao.acao))continue;
+   const nome=a.opcao.acao==='abrir_pacientes'?/^(pacientes|meus pacientes|clientes)$/i:/^(agenda|agendamentos)$/i;
+   const controles=page.locator('a,nav button,aside button,[role=navigation] button,[role=tab]').filter({hasText:nome});
+   for(let i=0;i<await controles.count();i++){
+    const controle=controles.nth(i);if(!await controle.isVisible())continue;
+    const destino=await controle.getAttribute('href');
+    if(!a.botao&&(!destino||new URL(destino,page.url()).href!==a.url))continue;
+    if(a.botao&&destino)continue;
+    const caixa=await controle.boundingBox();if(!caixa||caixa.width>700||caixa.height>160)continue;
+    try{const png=await controle.screenshot({type:'png',timeout:2000});visao.push({ferramentaId:a.opcao.id,imagemBase64:png.toString('base64')});}catch{}
+    break;
+   }
+   if(visao.length>=2)break;
+  }
+  return visao;
  }
  async entrar(email:string,senha:string,signal:AbortSignal){
   signal.throwIfAborted();if(this.fechado)throw new ErroTribemd('SESSAO_ENCERRADA','Sessão encerrada.');
@@ -130,7 +159,7 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
   for(const botao of raw.botoes){const acao:OpcaoTribemd['acao']=/^(pacientes|meus pacientes|clientes)$/i.test(botao)?'abrir_pacientes':'abrir_agenda';
    const id=createHash('sha256').update(acao+'|botao').digest('hex').slice(0,20);if(!this.visitadas.has(id))this.acoes.set(id,{opcao:{id,acao},url:page.url(),botao});}
   const u=new URL(page.url());u.search='';u.hash='';
-  return {tela:{url:u.href,campos:raw.campos,tabelas:raw.tabelas},opcoes:[...this.acoes.values()].map(a=>a.opcao),
+  return {visao:await this.observarControles(),tela:{url:u.href,campos:raw.campos,tabelas:raw.tabelas},opcoes:[...this.acoes.values()].map(a=>a.opcao),
    diagnostico:{caminho:u.pathname,tabelas:raw.tabelas.length,linhas:raw.linhas,campos:[...new Set(raw.campos.map(c=>campoTribemd(c.rotulo)).filter((s):s is string=>!!s))],limitada:raw.limitada}};
  }
  async executar(id:string){

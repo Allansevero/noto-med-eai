@@ -122,7 +122,7 @@ export function criarAppExpress() {
   }));
   app.use('/api/desenvolvedor/tribemd', criarRouterTribemdDesenvolvedor({
     ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
-    configurado: Boolean(config.groqApiKey), decisor: new GroqDecisorTribemd(config.groqApiKey, config.groqModel),
+    configurado: Boolean(config.groqApiKey), decisor: new GroqDecisorTribemd(config.groqApiKey, config.groqModel, process.env['TRIBEMD_VISION_MODEL'] || 'meta-llama/llama-4-scout-17b-16e-instruct'),
     criarNavegador: signal => NavegadorTribemd.criar(config.chromiumExecutablePath || '/usr/bin/chromium-browser', signal)
   }));
   if (config.desenvolvedorFiscalAtivo) {
