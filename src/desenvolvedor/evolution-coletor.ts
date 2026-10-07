@@ -40,14 +40,19 @@ export class EvolutionColetorClient implements EvolutionColetor {
   }
   async criar(nome: string) {
     this.caminho(nome);
+    // A Evolution exige URL ao receber uma configuração de webhook, inclusive
+    // desativada. O endereço local é apenas estrutural: enabled=false e events=[]
+    // impedem envio. Nunca aponta para o webhook de emissão do Noto.
+    const webhook = { enabled: false, url: 'http://127.0.0.1/noto-dev-coletor-desativado',
+      events: [], byEvents: false, base64: false };
     await this.api('/instance/create', 'POST', { instanceName: nome, integration: 'WHATSAPP-BAILEYS', qrcode: false,
-      syncFullHistory: true, webhook: { enabled: false }, readMessages: false, readStatus: false, groupsIgnore: true, alwaysOnline: false });
+      syncFullHistory: true, webhook, readMessages: false, readStatus: false, groupsIgnore: true, alwaysOnline: false });
     // A instância é nova e exclusiva do teste: configura todos os campos exigidos,
     // com o mesmo limite de tempo das outras operações da integração.
     await this.api('/settings/set/' + this.caminho(nome),'POST',{rejectCall:false,msgCall:'',groupsIgnore:true,
       alwaysOnline:false,readMessages:false,readStatus:false,syncFullHistory:true});
     // Desativa explicitamente o webhook local antes de permitir o pareamento.
-    await this.api('/webhook/set/' + this.caminho(nome), 'POST', { webhook: { enabled: false, url: '', events: [] } });
+    await this.api('/webhook/set/' + this.caminho(nome), 'POST', { webhook });
   }
   async estado(nome: string) { const d = await this.api('/instance/connectionState/' + this.caminho(nome)); return d?.instance?.state || 'unknown'; }
   async qrcode(nome: string) {
