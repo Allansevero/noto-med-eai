@@ -77,7 +77,7 @@ export class PostgresInvestigacaoRepositorio implements InvestigacaoRepositorio 
           and i.problema->>'httpStatus' = '422'
           and i.problema->>'xmlDpsOriginal' is not null))
         and exists (select 1 from solicitacoes_nota s where s.id = i.solicitacao_id
-          and s.medico_id = i.medico_id and s.status = 'pendente' and s.fila is null and s.tentativas < 3)
+          and s.medico_id = i.medico_id and not s.aguardando_confirmacao_medico and s.status = 'pendente' and s.fila is null and s.tentativas < 3)
         and not exists (select 1 from notas_fiscais n where n.solicitacao_id = i.solicitacao_id)
       returning solicitacao_id)
       update solicitacoes_nota s set tentativas = tentativas + 1

@@ -1,3 +1,4 @@
+import { iniciarAvisosPendenciasProfissionais } from './worker/avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 /**
  * Processo de background (daemon) que executa o Worker da fila de emissão de NFS-e.
@@ -64,6 +65,8 @@ const notificadorAlertas: NotificadorAlertas = {
   }
 };
 
+const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName);
+const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
 let executando = true;
 
 async function cicloWorker() {
@@ -76,7 +79,7 @@ async function cicloWorker() {
         console.log(`[Worker ${workerId}] Processando solicitação ${item.id} (tentativa ${item.tentativas + 1})...`);
         const res = await processarItemFila(item, {
           filaRepositorio: filaRepo,
-          dadosProfissionais: new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName),
+          dadosProfissionais,
           emissorDps,
           enviarPdfDanfse: evolutionClient,
           notificadorAlertas,
@@ -100,11 +103,13 @@ async function cicloWorker() {
 process.on('SIGINT', () => {
   console.log(`[Worker ${workerId}] Encerrando graciosamente...`);
   executando = false;
+  avisosProfissionais.parar();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   executando = false;
+  avisosProfissionais.parar();
   process.exit(0);
 });
 

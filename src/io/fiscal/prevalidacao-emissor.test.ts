@@ -6,7 +6,7 @@ test('ausência de política fiscal vira resultado estruturado sem transmissão'
   const consultas: string[] = [];
   const pool: any = { async query(sql: string) {
     consultas.push(sql);
-        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
+        if (sql.startsWith('select m.nome_completo, m.crm, m.rqe, m.especialidade, s.aguardando_confirmacao_medico from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
 
     if (sql.includes('from solicitacoes_nota s join medico_perfil_fiscal')) return { rows: [{
       ambiente: 'homologacao', confirmado: true, opcao: 'me_epp', regime: 'regime_1', especial: 0, municipio: '3550308', serie: '1', referencia: 'xml', competencia: null,

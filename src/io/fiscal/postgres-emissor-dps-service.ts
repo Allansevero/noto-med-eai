@@ -68,9 +68,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
   private async emitirPreparado(item: SolicitacaoEmissaoItem, correcao?: FalhaEmissao): Promise<ResultadoEmissaoDps> {
     const { rows: profissionais } = await this.pool.query(
-      'select nome_completo, crm, rqe, especialidade from medicos where id = $1', [item.medicoId]);
-    if (!profissionais[0] || !dadosProfissionaisCompletos(profissionais[0])) {
-      return { sucesso: false, erro: 'Informe nome completo e CRM para emitir suas notas.',
+      'select m.nome_completo, m.crm, m.rqe, m.especialidade, s.aguardando_confirmacao_medico from medicos m join solicitacoes_nota s on s.medico_id=m.id where m.id=$1 and s.id=$2', [item.medicoId,item.id]);
+    if (!profissionais[0] || profissionais[0].aguardando_confirmacao_medico || !dadosProfissionaisCompletos(profissionais[0])) {
+      return { sucesso: false, erro: profissionais[0]?.aguardando_confirmacao_medico ? 'Converse com o Noto para confirmar a retomada das notas pendentes.' : 'Informe nome completo e CRM para emitir suas notas.',
         dadosProfissionaisPendentes: true, contextoTecnico: { etapa: 'dados_profissionais', transmitida: false } };
     }
     // Um item já reservado pode conter a identidade anterior à resposta do médico.

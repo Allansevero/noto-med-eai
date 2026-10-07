@@ -465,7 +465,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         await client.query(`update solicitacoes_nota s
           set xdesc_serv=$2, datas_consulta_texto=$4,
               aguardando_dados_profissionais=aguardando_dados_profissionais or $5,
-              fila=case when aguardando_dados_profissionais or $5 then null else $3::fila_solicitacao_nota end,
+              fila=case when aguardando_dados_profissionais or aguardando_confirmacao_medico or $5 then null else $3::fila_solicitacao_nota end,
               aguardando_data_consulta=false, atualizado_em=now()
           where s.id=$1 and s.status='pendente' and s.tentativas=0
             and s.bloqueada_em is null
@@ -494,6 +494,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         and not exists(select 1 from notas_fiscais n where n.solicitacao_id=solicitacoes_nota.id)
         and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=solicitacoes_nota.id)
         and not aguardando_dados_profissionais
+        and not aguardando_confirmacao_medico
         and not aguardando_data_consulta
         and (fila = 'pendente_cadastro' or fila is null)
     `;

@@ -1,3 +1,4 @@
+import { iniciarAvisosPendenciasProfissionais } from './avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados-profissionais-service.js';
 /**
  * Ciclo de execução embutido do worker de emissão de NFS-e.
@@ -65,6 +66,8 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     }
   };
 
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName);
+  const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
   let ativo = true;
 
   const loop = async () => {
@@ -79,7 +82,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
         console.log(`[WorkerEmbutido] Processando solicitação ${item.id} (tentativa ${item.tentativas + 1})...`);
         const res = await processarItemFila(item, {
           filaRepositorio: filaRepo,
-          dadosProfissionais: new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName),
+          dadosProfissionais,
           emissorDps,
           enviarPdfDanfse: evolutionClient,
           notificadorAlertas,
@@ -101,6 +104,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
   return {
     parar: () => {
       ativo = false;
+      avisosProfissionais.parar();
     }
   };
 }

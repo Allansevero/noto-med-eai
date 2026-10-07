@@ -279,8 +279,7 @@ create table medico_servicos_fiscais (
   ctrib_nac             text not null,           -- item da lista LC 116/2003 (6 dígitos)
   cnbs                  text,                    -- Nomenclatura Brasileira de Serviços (9 dígitos)
   xdesc_serv            text not null,
-  aguardando_dados_profissionais boolean not null default false,
-  datas_consulta_texto   text,           -- descrição do serviço impressa na nota
+  -- descrição do serviço impressa na nota
   valor_padrao_centavos integer,
   padrao                boolean not null default false, -- serviço usado quando a solicitação não especifica
   ativo                 boolean not null default true,
@@ -495,6 +494,7 @@ create table solicitacoes_nota (
   -- depender de um `join` mudar depois de a nota já ter sido emitida)
   xdesc_serv            text not null,
   aguardando_dados_profissionais boolean not null default false,
+  aguardando_confirmacao_medico boolean not null default false,
   datas_consulta_texto   text,
   valor_servico_centavos integer not null,
   ctrib_nac             text not null,

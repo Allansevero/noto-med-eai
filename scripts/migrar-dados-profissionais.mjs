@@ -8,8 +8,9 @@ const client = await pool.connect();
 try {
   await client.query('begin');
   await client.query(await readFile(new URL('./migrations/20261007-dados-profissionais.sql', import.meta.url), 'utf8'));
+  await client.query(await readFile(new URL('./migrations/20261007-confirmacao-pendentes.sql', import.meta.url), 'utf8'));
   await client.query('commit');
-  console.log('Migração de dados profissionais aplicada.');
+  console.log('Migração aplicada: dados profissionais e retenção das notas anteriores até confirmação no Noto.');
 } catch (erro) {
   await client.query('rollback');
   throw erro;

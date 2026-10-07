@@ -103,7 +103,9 @@ export async function processarMensagemWebhook(
   if (!payload.data.key.fromMe && medico && deps.dadosProfissionais && deps.segredoConfigurado &&
       (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
     const resposta = await deps.dadosProfissionais.processarResposta({
-      medicoId: medico.id, texto, mensagemId: payload.data.key.id
+      medicoId: medico.id, texto, mensagemId: payload.data.key.id,
+      mensagemEm: payload.data.messageTimestamp === undefined ? undefined
+        : new Date(Number(payload.data.messageTimestamp) * (Number(payload.data.messageTimestamp) < 1e12 ? 1000 : 1))
     });
     if (resposta.tratada) return { ok: true, acao: 'resposta_perfil_medico', detalhe: resposta };
   }

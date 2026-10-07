@@ -3,11 +3,13 @@ import type { DadosProfissionaisService } from '../../conta/dados-profissionais-
 import { dadosProfissionaisCompletos, interpretarRespostaProfissional, nomeProfissionalValido, normalizarCrm } from '../../conta/validar-dados-emissao.js';
 import { perfilProfissionalSchema } from '../../conta/validar-perfil-profissional.js';
 import { montarDescricaoServico } from '../../emissao/montar-descricao-servico.js';
+import { pedirNomeCompleto, pedirCrm, confirmarNotasPendentes, confirmarDadosSalvos, confirmarRetomadaNotas, orientarConfirmacaoNotas, interpretarConfirmacaoNotas } from '../../conta/mensagens-dados-profissionais.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
 
 type Medico = {id:string;usuario_id:string;nome_completo:string;crm:string|null;rqe:string|null;especialidade:string|null;telefone:string|null};
 /** SQL fixo; destinatário é sempre o usuário do médico, nunca um paciente. */
 export class PostgresDadosProfissionaisService implements DadosProfissionaisService {
+  private ultimoMedicoNotificado:string|null=null;
   constructor(private readonly pool:pg.Pool, private readonly enviador:EnviarMensagemPaciente, private readonly instanciaOficialNome:string) {}
   private async transacao<T>(acao:(client:pg.PoolClient)=>Promise<T>):Promise<T> {
     const client = await this.pool.connect();
@@ -20,31 +22,53 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
     return r.rows[0];
   }
   async solicitar(medicoId:string):Promise<void> {
-    const telefone=await this.transacao(async client=>{
+    const pedido=await this.transacao(async client=>{
       const medico=await this.medico(client,medicoId);
       if(!medico || dadosProfissionaisCompletos(medico) || !medico.telefone || !this.instanciaOficialNome) return null;
       const reserva=await client.query(`insert into dados_profissionais_pendencias (medico_id, estado)
         values ($1,'reservado') on conflict (medico_id) do update set estado='reservado', atualizado_em=now()
         where dados_profissionais_pendencias.estado='concluido' returning medico_id`,[medicoId]);
-      return reserva.rows.length ? medico.telefone : null;
+      return reserva.rows.length ? {telefone:medico.telefone,texto:!nomeProfissionalValido(medico.nome_completo)?pedirNomeCompleto():pedirCrm()} : null;
     });
-    if(!telefone)return;
+    if(!pedido){await this.solicitarConfirmacao(medicoId);return;}
     // Commit precede a rede: timeout ou queda após envio nunca gera segundo prompt.
     let estado='incerto';
     try {
-      const r=await this.enviador.enviarTexto({instanciaNome:this.instanciaOficialNome,contatoTelefone:telefone,
-        texto:'Para emitir sua nota preciso do seu nome completo e CRM. Responda nesta conversa:\nNome completo: seu nome\nCRM: número/UF\nRQE: número (opcional)\nVocê também pode enviar primeiro o nome completo e depois o CRM.'});
+      const r=await this.enviador.enviarTexto({instanciaNome:this.instanciaOficialNome,contatoTelefone:pedido.telefone, texto:pedido.texto});
       if(r.sucesso)estado='enviado';
     } catch { /* Resultado de transporte incerto: preservar reserva. */ }
     await this.pool.query(`update dados_profissionais_pendencias set estado=$2, atualizado_em=now()
       where medico_id=$1 and estado='reservado'`,[medicoId,estado]);
   }
-  async processarResposta(entrada:{medicoId:string;texto:string;mensagemId:string}):Promise<{tratada:boolean;completo:boolean}> {
+  async processarResposta(entrada:{medicoId:string;texto:string;mensagemId:string;mensagemEm?:Date}):Promise<{tratada:boolean;completo:boolean}> {
     let resposta: {telefone:string;texto:string}|undefined;
     const resultado=await this.transacao(async client=>{
       const medico=await this.medico(client,entrada.medicoId);
       if(!medico)return {tratada:false,completo:false};
       const completo=dadosProfissionaisCompletos(medico);
+      const revisao=await client.query('select estado, capturada_em from emissoes_pendentes_confirmacoes where medico_id=$1 for update',[medico.id]);
+      if(completo && revisao.rows[0] && revisao.rows[0].estado!=='confirmado'){
+        if(!entrada.mensagemId)return {tratada:true,completo};
+        const gravada=await client.query(`insert into dados_profissionais_mensagens (medico_id,mensagem_id)
+          values ($1,$2) on conflict do nothing returning mensagem_id`,[medico.id,entrada.mensagemId]);
+        if(!gravada.rows.length)return {tratada:true,completo};
+        const em=entrada.mensagemEm?.getTime();
+        const recente=em!==undefined && Number.isFinite(em) && em>=new Date(revisao.rows[0].capturada_em).getTime()
+          && em<=Date.now()+300000;
+        if(recente && interpretarConfirmacaoNotas(entrada.texto)){
+          await client.query(`update emissoes_pendentes_confirmacoes set estado='confirmado', confirmado_em=now(),
+            mensagem_confirmacao_id=$2, atualizado_em=now() where medico_id=$1`,[medico.id,entrada.mensagemId]);
+          // A autorização não determina que uma tentativa anterior é segura para repetir.
+          await client.query(`update solicitacoes_nota set aguardando_confirmacao_medico=false, atualizado_em=now()
+            where medico_id=$1 and aguardando_confirmacao_medico and status='pendente' and tentativas=0
+              and bloqueada_em is null and bloqueada_por_worker is null
+              and not exists(select 1 from notas_fiscais n where n.solicitacao_id=solicitacoes_nota.id)
+              and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=solicitacoes_nota.id)`,[medico.id]);
+          await this.liberar(client,medico);
+          if(medico.telefone)resposta={telefone:medico.telefone,texto:confirmarRetomadaNotas()};
+        } else if(medico.telefone)resposta={telefone:medico.telefone,texto:orientarConfirmacaoNotas()};
+        return {tratada:true,completo};
+      }
       const pendencia=await client.query('select estado from dados_profissionais_pendencias where medico_id=$1 for update',[medico.id]);
       if(!pendencia.rows.length || pendencia.rows[0].estado==='concluido')return {tratada:false,completo};
       if(!entrada.mensagemId)return {tratada:true,completo};
@@ -67,12 +91,8 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
       const final=dadosProfissionaisCompletos(medico);
       if(final)await this.liberar(client,medico);
       if(medico.telefone && this.instanciaOficialNome){
-        const faltantes=[];
-        if(!nomeProfissionalValido(medico.nome_completo))faltantes.push('Nome completo: seu nome completo real');
-        if(!normalizarCrm(medico.crm))faltantes.push('CRM: número/UF');
-        resposta={telefone:medico.telefone,texto:final
-          ? 'Dados profissionais salvos. As solicitações prontas poderão continuar; a emissão ainda depende dos dados do paciente, da data da consulta e da validação fiscal.'
-          : 'Ainda preciso dos seguintes dados para liberar o perfil profissional. Responda nesta conversa:\n'+faltantes.join('\n')};
+        resposta={telefone:medico.telefone,texto:final?confirmarDadosSalvos()
+          : !nomeProfissionalValido(medico.nome_completo)?pedirNomeCompleto():pedirCrm()};
       }
       return {tratada:true,completo:final};
     });
@@ -81,10 +101,44 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
       try{await this.enviador.enviarTexto({instanciaNome:this.instanciaOficialNome,contatoTelefone:resposta.telefone,texto:resposta.texto});}
       catch{/* Falha de transporte não desfaz o perfil salvo nem repete esta resposta. */}
     }
+    if(resultado.tratada && resultado.completo)await this.solicitarConfirmacao(entrada.medicoId);
     return resultado;
   }
   async retomar(medicoId:string):Promise<number> {
-    return this.transacao(async client=>{const medico=await this.medico(client,medicoId);return medico&&dadosProfissionaisCompletos(medico)?this.liberar(client,medico):0;});
+    const total=await this.transacao(async client=>{const medico=await this.medico(client,medicoId);return medico&&dadosProfissionaisCompletos(medico)?this.liberar(client,medico):0;});
+    await this.solicitarConfirmacao(medicoId);
+    return total;
+  }
+  private async solicitarConfirmacao(medicoId:string):Promise<void> {
+    const telefone=await this.transacao(async client=>{
+      const medico=await this.medico(client,medicoId);
+      if(!medico || !dadosProfissionaisCompletos(medico) || !medico.telefone || !this.instanciaOficialNome)return null;
+      const reserva=await client.query(`update emissoes_pendentes_confirmacoes set estado='reservado', atualizado_em=now()
+        where medico_id=$1 and estado='pendente' returning medico_id`,[medicoId]);
+      return reserva.rows.length?medico.telefone:null;
+    });
+    if(!telefone)return;
+    let estado='incerto';
+    try{
+      const envio=await this.enviador.enviarTexto({instanciaNome:this.instanciaOficialNome,
+        contatoTelefone:telefone,texto:confirmarNotasPendentes()});
+      if(envio.sucesso)estado='enviado';
+    }catch{/* Não repetir um envio cujo resultado pode ter sido aceito. */}
+    await this.pool.query(`update emissoes_pendentes_confirmacoes set estado=$2, atualizado_em=now()
+      where medico_id=$1 and estado='reservado'`,[medicoId,estado]);
+  }
+  async notificarPendentes():Promise<void> {
+    const {rows}=await this.pool.query(`select distinct s.medico_id from solicitacoes_nota s
+      join medicos m on m.id=s.medico_id join usuarios u on u.id=m.usuario_id
+      where ($1::uuid is null or s.medico_id>$1::uuid)
+        and u.telefone is not null and trim(u.telefone)<>'' and s.status='pendente' and (s.aguardando_dados_profissionais or s.aguardando_confirmacao_medico)
+        and not exists(select 1 from dados_profissionais_pendencias p where p.medico_id=s.medico_id and p.estado<>'concluido')
+        and not exists(select 1 from emissoes_pendentes_confirmacoes c where c.medico_id=s.medico_id and c.estado<>'pendente')
+      order by s.medico_id limit 20`,[this.ultimoMedicoNotificado]);
+    this.ultimoMedicoNotificado=rows.length===20?rows[rows.length-1].medico_id:null;
+    for(const row of rows){
+      try{await this.solicitar(row.medico_id);await this.retomar(row.medico_id);}catch{console.warn('[DadosProfissionais] Aviso pendente:',{medicoId:row.medico_id});}
+    }
   }
   private async liberar(client:pg.PoolClient,medico:Medico):Promise<number> {
     const resultado=await client.query(`select s.id, s.xdesc_serv, s.datas_consulta_texto,
@@ -92,7 +146,8 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
        from solicitacao_nota_agendamentos sa join agendamentos a on a.id=sa.agendamento_id
        where sa.solicitacao_id=s.id and a.medico_id=s.medico_id and a.paciente_id=s.paciente_id) as datas_agendamentos
       from solicitacoes_nota s where s.medico_id=$1 and s.aguardando_dados_profissionais
-      and s.status='pendente' and s.tentativas=0
+      and not s.aguardando_confirmacao_medico and s.status='pendente' and s.tentativas=0
+      and s.bloqueada_em is null and s.bloqueada_por_worker is null
       and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)
       and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=s.id)
       for update of s`,[medico.id]);

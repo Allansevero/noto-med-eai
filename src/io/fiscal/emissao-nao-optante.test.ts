@@ -24,7 +24,7 @@ test('worker transmite a política não optante sem converter o regime para ME/E
   cert.sign(keys.privateKey, forge.md.sha256.create());
   const pfx = Buffer.from(forge.asn1.toDer(forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], 'teste')).getBytes(), 'binary');
   const pool = { async query(sql: string) {
-        if (sql.startsWith('select nome_completo, crm, rqe, especialidade from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
+        if (sql.startsWith('select m.nome_completo, m.crm, m.rqe, m.especialidade, s.aguardando_confirmacao_medico from medicos')) return { rows: [{ nome_completo: 'João da Silva', crm: '12345/SP' }] };
     if (sql.includes('from solicitacoes_nota s')) return { rows: [{ ...perfil, confirmado: true, referencia_fiscal: referencia,
       competencia: hoje, datas: [], servicos: [{ id: 'serv', ctribNac: '040101', ctribMun: null, cnbs: null, politica }] }] };
     if (sql.includes('from medico_perfil_fiscal pf')) return { rows: [{ documento_limpo: '11222333000181',

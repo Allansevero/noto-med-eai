@@ -22,6 +22,7 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         from solicitacoes_nota
         where fila = 'pronta'
           and not aguardando_dados_profissionais
+          and not aguardando_confirmacao_medico
           and status not in ('simulada', 'emitida')
           ${this.modoAgente ? `and not exists (select 1 from investigacoes_emissao i where i.solicitacao_id = solicitacoes_nota.id)` : ''}
           and (proxima_tentativa_em is null or proxima_tentativa_em <= now())
