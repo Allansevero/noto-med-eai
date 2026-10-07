@@ -104,7 +104,10 @@ export class EvolutionApiClient
         },
         body: JSON.stringify({
           number: this.normalizarTelefone(telefone),
+          // Enviar vazio evita que versões da Evolution exibam campos ausentes como "undefined".
+          title: '',
           description: textoFallback,
+          footer: '',
           buttons: [{
             type: 'copy',
             displayText: 'Copiar código',
