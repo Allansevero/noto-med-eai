@@ -100,7 +100,7 @@ export async function sincronizarHistoricoEvolution(
   };
 }
 
-function extrairPaginaMensagens(valor: unknown): {
+export function extrairPaginaMensagens(valor: unknown): {
   mensagens: DadosMensagemEvolution[];
   totalPaginas: number;
 } {

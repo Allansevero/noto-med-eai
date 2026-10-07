@@ -42,6 +42,8 @@ import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medi
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
+import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
+import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
 import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 
@@ -111,7 +113,17 @@ export function criarAppExpress() {
   app.use('/api/desenvolvedor/fiscal', criarRouterFiscalDesenvolvedor({
     ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken
   }));
+  app.use('/api/desenvolvedor/whatsapp', criarRouterWhatsappDesenvolvedor({
+    ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
+    evolution: new EvolutionColetorClient(config.evolutionApiUrl, config.evolutionGlobalApiKey)
+  }));
   if (config.desenvolvedorFiscalAtivo) {
+    app.get('/desenvolvedor/whatsapp', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.sendFile(join(__dirname, 'ui', 'desenvolvedor-whatsapp.html'));
+    });
     app.get('/desenvolvedor', (_req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Frame-Options', 'DENY');

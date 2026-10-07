@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Noto · Coletor WhatsApp</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f4f5;color:#121c22;font:15px system-ui,sans-serif}main{max-width:960px;margin:32px auto;padding:0 24px 40px}header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px}h1{font-size:32px;font-weight:500}h2{font-size:22px;font-weight:500}p{line-height:1.6}a{color:inherit}section{background:white;border-radius:16px;padding:24px;margin:24px 0}label{display:block;margin-bottom:8px}input,button{font:inherit}input{width:100%;padding:12px;border:1px solid #aaa;border-radius:8px}button{background:black;color:white;border:0;border-radius:8px;padding:12px 16px;font-weight:500;cursor:pointer}button:disabled{opacity:.45;cursor:default}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}.secondary{background:#ddd;color:#121c22}pre{background:#eee;border-radius:8px;padding:16px;max-height:500px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px monospace}#qr{display:block;width:240px;max-width:100%;height:auto;margin:16px auto}#mensagem{background:#ddd;padding:16px;border-radius:10px}#conexao{font-weight:500}[hidden]{display:none!important}@media(max-width:600px){body{font-size:13px}main{padding:0 16px}section{padding:18px}h1{font-size:28px}}
+</style>
+</head><body><main>
+<header><h1>Coletor WhatsApp</h1><a href="/desenvolvedor">Voltar ao desenvolvedor</a></header>
+<p>Conecte um WhatsApp de teste para coletar CPF, e-mail e número das conversas. O resultado fica nesta sessão por até 30 minutos; não cadastra pacientes nem emite notas. A varredura usa o histórico disponível na Evolution.</p>
+<p id="mensagem" role="status" aria-live="polite">Informe a chave de desenvolvedor.</p>
+<section id="acesso"><h2>Acesso de desenvolvedor</h2><form id="formAcesso"><label for="chave">Chave configurada no servidor</label><input type="password" id="chave" autocomplete="off" required><div class="actions"><button id="btnAcesso">Entrar</button></div></form></section>
+<div id="painel" hidden>
+<section><h2>1. Conectar WhatsApp</h2><p id="conexao">Nenhuma sessão conectada.</p><p id="expiracao"></p><img id="qr" alt="QR Code para conectar o WhatsApp de teste" hidden>
+<p id="instrucoes">No WhatsApp de teste, abra Dispositivos conectados e escaneie o QR Code. Após a conexão, a primeira varredura começa automaticamente. Se o histórico ainda estiver sincronizando, aguarde e faça outra varredura.</p>
+<div class="actions"><button id="btnConectar">Conectar WhatsApp de teste</button><button id="btnQr" class="secondary" disabled>Atualizar QR Code</button><button id="btnEncerrar" class="secondary" disabled>Encerrar sessão e desconectar</button></div></section>
+<section><h2>2. Varrer histórico</h2><p>CPF válido significa dígitos verificadores válidos; o coletor não confirma o titular. E-mails têm verificação de formato. Dados encontrados na mesma conversa não são associados automaticamente à mesma pessoa.</p><p id="progresso" role="status" aria-live="polite">Nenhuma varredura realizada.</p><div class="actions"><button id="btnVarrer" disabled>Varrer novamente</button><button id="btnBaixar" class="secondary" disabled>Baixar JSON</button></div><pre id="resultado">O JSON aparecerá aqui.</pre></section>
+</div>
+<script>
+const el=id=>document.getElementById(id);
+let chaveAtual='',sessaoId=null,ocupado=false,conectado=false,varrendo=false,automatico=false,expirado=false,resultadoAtual=null,timer=null,geracao=0;
+function lembrar(id){try{id?sessionStorage.setItem('noto_dev_coletor_sessao',id):sessionStorage.removeItem('noto_dev_coletor_sessao');}catch{}}
+function botoes(){el('btnAcesso').disabled=ocupado;el('btnConectar').disabled=ocupado||Boolean(sessaoId);el('btnQr').disabled=ocupado||varrendo||!sessaoId||conectado||expirado;el('btnEncerrar').disabled=ocupado||varrendo||!sessaoId;el('btnVarrer').disabled=ocupado||varrendo||!conectado||expirado;el('btnBaixar').disabled=!resultadoAtual;}
+async function api(path,method='GET'){
+ const res=await fetch('/api/desenvolvedor/whatsapp'+path,{method,headers:{Authorization:'Bearer '+chaveAtual}});const d=await res.json();
+ if(!res.ok||d.ok===false){if(d.sessaoId){sessaoId=d.sessaoId;lembrar(sessaoId);}const e=new Error(d.detalhe||'Não foi possível concluir a operação.');e.status=res.status;throw e;}return d;
+}
+async function executar(acao){if(ocupado)return;ocupado=true;botoes();try{await acao();}catch(e){el('mensagem').textContent=e.message;}finally{ocupado=false;botoes();}}
+function exibir(d){
+ varrendo=d.estado==='varrendo';el('expiracao').textContent='Sessão expira em '+new Date(d.expiraEm).toLocaleString('pt-BR');
+ const c=d.cobertura||{};
+ el('progresso').textContent=`Estado: ${d.estado}. ${c.paginasConsultadas||0} páginas, ${d.mensagensAnalisadas||0} mensagens e ${(d.contatos||[]).length} conversas analisadas.`;
+ if(['concluida','parcial','falha','varrendo'].includes(d.estado)){resultadoAtual=d;el('resultado').textContent=JSON.stringify(d,null,2);}
+ if(d.estado==='concluida'&&!d.mensagensAnalisadas)el('mensagem').textContent='Nenhuma mensagem disponível. A sincronização pode estar em andamento; aguarde e varra novamente.';
+ else if(d.estado==='parcial')el('mensagem').textContent='A varredura foi parcial. Confira os motivos no JSON; não significa que todo o histórico foi lido.';
+ else if(d.estado==='falha')el('mensagem').textContent=d.detalhe||'A sessão não pôde ser preparada. Encerre para tentar novamente.';
+ else if(d.estado==='concluida')el('mensagem').textContent='Varredura concluída no histórico disponível. O JSON está pronto para revisão.';
+ botoes();
+}
+async function iniciarVarredura(){const d=await api('/sessoes/'+sessaoId+'/varrer','POST');exibir(d);el('mensagem').textContent='Lendo as mensagens disponíveis na Evolution…';}
+function parar(){geracao++;if(timer)clearTimeout(timer);timer=null;}
+function acompanhar(){parar();const versao=geracao;const id=sessaoId;
+ async function tick(){try{
+  const d=await api('/sessoes/'+id);if(versao!==geracao)return;exibir(d);
+  if(!conectado&&d.estado==='conectando'){
+   const c=await api('/sessoes/'+id+'/conexao');if(versao!==geracao)return;
+   if(c.estado==='open'){conectado=true;el('qr').hidden=true;el('qr').removeAttribute('src');el('conexao').textContent='WhatsApp conectado.';botoes();
+    if(!automatico){automatico=true;await iniciarVarredura();}}
+   else el('conexao').textContent='Aguardando conexão pelo QR Code.';
+  }
+  if(versao===geracao)timer=setTimeout(tick,3000);
+ }catch(e){if(versao!==geracao)return;el('mensagem').textContent=e.message;if(e.status===410){expirado=true;varrendo=false;botoes();}else timer=setTimeout(tick,5000);}}
+ void tick();
+}
+function mostrarQr(d){if(d.qrcodeBase64&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(d.qrcodeBase64)){el('qr').src=d.qrcodeBase64;el('qr').hidden=false;}else{el('qr').hidden=true;el('mensagem').textContent='QR Code ainda indisponível. Clique em Atualizar QR Code.';}}
+el('formAcesso').addEventListener('submit',async e=>{e.preventDefault();await executar(async()=>{
+ chaveAtual=el('chave').value;await api('/acesso');el('chave').value='';el('acesso').hidden=true;el('painel').hidden=false;el('mensagem').textContent='Conecte o WhatsApp de teste para começar.';
+ try{sessaoId=sessionStorage.getItem('noto_dev_coletor_sessao');}catch{}
+ if(sessaoId){try{const d=await api('/sessoes/'+sessaoId);automatico=d.estado!=='conectando';conectado=d.estado!=='conectando'&&d.estado!=='falha';exibir(d);acompanhar();}catch(e){el('mensagem').textContent=e.message;if(e.status===410){expirado=true;botoes();}}}
+ });});
+el('btnConectar').addEventListener('click',()=>executar(async()=>{const d=await api('/sessoes','POST');sessaoId=d.sessaoId;lembrar(sessaoId);automatico=false;conectado=false;expirado=false;exibir(d);mostrarQr(d);acompanhar();}));
+el('btnQr').addEventListener('click',()=>executar(async()=>mostrarQr(await api('/sessoes/'+sessaoId+'/qrcode','POST'))));
+el('btnVarrer').addEventListener('click',()=>executar(async()=>{automatico=true;await iniciarVarredura();}));
+el('btnEncerrar').addEventListener('click',()=>executar(async()=>{try{await api('/sessoes/'+sessaoId,'DELETE');}catch(e){if(e.status!==410)throw e;}parar();sessaoId=null;lembrar(null);conectado=false;automatico=false;expirado=false;varrendo=false;resultadoAtual=null;el('qr').hidden=true;el('qr').removeAttribute('src');el('resultado').textContent='Sessão encerrada. Dados removidos.';el('conexao').textContent='Nenhuma sessão conectada.';el('expiracao').textContent='';el('progresso').textContent='Nenhuma varredura realizada.';el('mensagem').textContent='WhatsApp de teste desconectado e instância removida.';}));
+el('btnBaixar').addEventListener('click',()=>{if(!resultadoAtual)return;const url=URL.createObjectURL(new Blob([JSON.stringify(resultadoAtual,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='noto-coleta-whatsapp.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+window.addEventListener('pagehide',parar);
+botoes();
+</script></main></body></html>
