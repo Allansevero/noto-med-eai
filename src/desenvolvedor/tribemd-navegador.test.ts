@@ -92,3 +92,17 @@ test('pedidos simultâneos de fechamento aguardam a mesma limpeza do navegador',
  const primeiro=n.encerrar(),segundo=n.encerrar().then(()=>{segundoTerminou=true;});
  await new Promise<void>(r=>setImmediate(r));assert.equal(segundoTerminou,false);assert.equal(chamadas,1);liberar();await Promise.all([primeiro,segundo]);assert.equal(segundoTerminou,true);
 });
+test('login não confirmado inclui a recusa da API, separada do status da página',async t=>{
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});t.after(()=>browser.close());
+ const context=await browser.newContext();
+ await context.route('**/*',route=>new URL(route.request().url()).pathname==='/login'
+  ?route.fulfill({contentType:'text/html',body:'<input name=email type=email><input type=password><button onclick="fetch(\'/api/auth/login?token=privado\',{method:\'POST\'})">Entrar</button>'})
+  :route.fulfill({status:403,body:'recusado'}));
+ const n=new NavegadorTribemd(context);
+ await assert.rejects(()=>n.entrar('medico@example.com','senha-privada',new AbortController().signal),(erro:any)=>{
+  assert.equal(erro.codigo,'LOGIN_NAO_CONFIRMADO');assert.equal(erro.diagnostico.statusHttp,200);
+  const chamada=erro.diagnostico.rede.chamadas.find((c:any)=>c.statusHttp===403);
+  assert.equal(chamada.rota,'/api/auth/login');assert.equal(chamada.fase,'envio_login');
+  assert.ok(!JSON.stringify(erro.diagnostico).includes('privado'));return true;
+ });
+});

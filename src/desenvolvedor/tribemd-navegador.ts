@@ -1,5 +1,6 @@
 import { chromium, type BrowserContext, type Page } from 'playwright-core';
 import { TelaVirtualTribemd } from './tribemd-display.js';
+import { ObservadorRedeLoginTribemd, type DiagnosticoRedeLoginTribemd } from './tribemd-rede.js';
 import { createHash } from 'node:crypto';
 import { campoTribemd, type TelaTribemd } from './tribemd-dados.js';
 const origem='https://app.tribemd.com';
@@ -7,6 +8,7 @@ export interface DiagnosticoLoginTribemd {
  etapa:string;pagina?:'login'|'inicio'|'outra';statusHttp?:number;
  campos?:{senha:number;email:number;texto:number;outros:number};botoesLogin?:number;desafio?:boolean;
  tipoFalha?:'tempo_esgotado'|'dns'|'tls'|'conexao'|'outro';
+ rede?:DiagnosticoRedeLoginTribemd;
 }
 export class ErroTribemd extends Error { constructor(public codigo:string,message:string,public diagnostico?:DiagnosticoLoginTribemd){super(message);} }
 export interface OpcaoTribemd { id:string;acao:'abrir_pacientes'|'abrir_agenda'|'ler_cadastro'|'proxima_pagina' }
@@ -62,6 +64,7 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
    await route.fallback();
   });
   const abort=()=>{void this.encerrar().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
+  const rede=new ObservadorRedeLoginTribemd(this.page);
   let etapa='abrindo_login',statusHttp:number|undefined;
   try{
    const resposta=await this.page.goto(origem+'/login?continue=/inicio',{waitUntil:'domcontentloaded',timeout:25000});statusHttp=resposta?.status();
@@ -74,7 +77,7 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
    const botao=this.page.getByRole('button',{name:/^(entrar|acessar|login|iniciar sess[aã]o|fazer login)$/i});
    if(await botao.count()!==1)throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','O botão de login não foi reconhecido com segurança.');
    etapa='preenchendo_email';await emailInput.fill(email);etapa='preenchendo_senha';await senhaInput.fill(senha);signal.throwIfAborted();
-   etapa='enviando_login';await botao.click();etapa='confirmando_login';
+   etapa='enviando_login';rede.marcarEnvioLogin();await botao.click();etapa='confirmando_login';
    try{await this.page.waitForURL(u=>u.origin===origem&&!/^\/login(?:\/|$)/.test(u.pathname),{timeout:15000});}
    catch{throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','O login não foi confirmado. Confira as credenciais; também pode haver uma validação adicional. Não repetimos o envio automaticamente.');}
    etapa='verificando_pos_login';await this.page.waitForLoadState('domcontentloaded');
@@ -89,13 +92,14 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
   }catch(erro){
    if(signal.aborted)throw erro;
    const diagnostico=await this.diagnosticarLogin(etapa,statusHttp);
+   diagnostico.rede=await rede.concluir();
    if(erro instanceof ErroTribemd)throw new ErroTribemd(erro.codigo,erro.message,diagnostico);
    const mensagem=erro instanceof Error?erro.message:'';
    diagnostico.tipoFalha=erro instanceof Error&&erro.name==='TimeoutError'?'tempo_esgotado':/ERR_NAME_NOT_RESOLVED/.test(mensagem)?'dns':/ERR_CERT_|ERR_SSL_/.test(mensagem)?'tls':/net::ERR_/.test(mensagem)?'conexao':'outro';
    if(etapa==='abrindo_login')throw new ErroTribemd(diagnostico.tipoFalha==='tempo_esgotado'?'LOGIN_CARREGAMENTO_TIMEOUT':'LOGIN_CONEXAO_FALHOU','O navegador não conseguiu carregar o login do TribemD. Confira a etapa e o tipo de falha no diagnóstico.',diagnostico);
    if(etapa==='aguardando_formulario')throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','O formulário de senha não ficou disponível no prazo. Confira as contagens de campos e o status HTTP no diagnóstico para ajustar o acesso ao portal.',diagnostico);
    throw new ErroTribemd('LOGIN_INTERACAO_FALHOU','Não foi possível concluir uma etapa do formulário de login. Confira o diagnóstico; o envio não será repetido automaticamente.',diagnostico);
-  }finally{email='';senha='';signal.removeEventListener('abort',abort);}
+  }finally{email='';senha='';signal.removeEventListener('abort',abort);await rede.concluir();}
  }
  private async diagnosticarLogin(etapa:string,statusHttp?:number):Promise<DiagnosticoLoginTribemd>{
   const diagnostico:DiagnosticoLoginTribemd={etapa,statusHttp};
