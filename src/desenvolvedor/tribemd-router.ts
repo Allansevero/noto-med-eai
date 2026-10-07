@@ -35,7 +35,7 @@ export function criarRouterTribemdDesenvolvedor(deps:{ativo:boolean;token?:strin
   try{d=entrada.parse(req.body);}catch{res.status(400).json({ok:false,detalhe:'Informe e-mail, senha e datas válidas, com intervalo de até 31 dias.'});return;}
   finally{const r=req as any;if(Buffer.isBuffer(r.rawBody))r.rawBody.fill(0);delete r.rawBody;req.body={};}
   if(!deps.configurado){d.senha='';res.status(503).json({ok:false,detalhe:'Configure GROQ_API_KEY no serviço web para executar o agente.'});return;}
-  if(sessoes.size){d.senha='';res.status(429).json({ok:false,detalhe:'Encerre a sessão anterior e aguarde a limpeza antes de iniciar outro teste.'});return;}
+  if(sessoes.size){d.senha='';res.status(429).json({ok:false,sessaoId:[...sessoes.keys()][0],detalhe:'Encerre a sessão anterior e aguarde a limpeza antes de iniciar outro teste.'});return;}
   const s:Sessao={id:randomUUID(),expira:Date.now()+20*60000,estado:'preparando',controller:new AbortController(),eventos:[],encerrando:false};sessoes.set(s.id,s);
   s.timer=setTimeout(()=>{void limpar(s).catch(()=>{});},20*60000);s.timer.unref();
   res.status(202).json(resposta(s));
@@ -55,6 +55,9 @@ export function criarRouterTribemdDesenvolvedor(deps:{ativo:boolean;token?:strin
    finally{d.email='';d.senha='';await capturar(s);try{await s.navegador?.encerrar();}catch{registrar(s,{etapa:'limpeza_pendente',codigo:'FALHA_FECHAMENTO'});}}
   })();
  }));
+ router.get('/sessoes/atual',(_req,res)=>{const s=[...sessoes.values()][0];
+  res.json({ok:true,sessaoAtual:s?{sessaoId:s.id,estado:s.estado,expiraEm:new Date(s.expira).toISOString()}:null});
+ });
  router.get('/sessoes/:id/tela',rota(async(req,res)=>{const s=obter(String(req.params.id));if(!s){res.status(410).json({ok:false,detalhe:'Sessão encerrada ou expirada.'});return;}
   await capturar(s);if(!obter(s.id)){res.status(410).json({ok:false,detalhe:'Sessão encerrada ou expirada.'});return;}
   res.json({ok:true,tipo:'image/png',imagemBase64:s.tela?.toString('base64')||null});

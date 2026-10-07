@@ -85,3 +85,10 @@ test('tela virtual exporta PNG e visão inclui apenas controles de navegação',
  await p.n.executar(l.opcoes.find(o=>o.acao==='abrir_pacientes')!.id);const lista=await p.n.ler();
  assert.ok(!lista.visao!.some(v=>lista.opcoes.find(o=>o.id===v.ferramentaId)?.acao==='ler_cadastro'));
 });
+
+test('pedidos simultâneos de fechamento aguardam a mesma limpeza do navegador',async()=>{
+ let liberar!:()=>void;const gate=new Promise<void>(r=>{liberar=r;});let chamadas=0,segundoTerminou=false;
+ const n=new NavegadorTribemd({} as any,async()=>{chamadas++;await gate;});
+ const primeiro=n.encerrar(),segundo=n.encerrar().then(()=>{segundoTerminou=true;});
+ await new Promise<void>(r=>setImmediate(r));assert.equal(segundoTerminou,false);assert.equal(chamadas,1);liberar();await Promise.all([primeiro,segundo]);assert.equal(segundoTerminou,true);
+});

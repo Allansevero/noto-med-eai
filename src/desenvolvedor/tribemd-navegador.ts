@@ -14,7 +14,7 @@ export interface VisaoTribemd { ferramentaId:string;imagemBase64:string }
 export interface LeituraTribemd { visao?:VisaoTribemd[]; tela:TelaTribemd;opcoes:OpcaoTribemd[];diagnostico:{caminho:string;tabelas:number;linhas:number;campos:string[];limitada:boolean} }
 export interface NavegadorColetaTribemd { entrar(email:string,senha:string,signal:AbortSignal):Promise<void>;ler():Promise<LeituraTribemd>;executar(id:string):Promise<void>;encerrar():Promise<void>;capturarTela?():Promise<Buffer|null> }
 export class NavegadorTribemd implements NavegadorColetaTribemd {
- private page?:Page;private autenticado=false;private fechado=false;
+ private page?:Page;private autenticado=false;private fechado=false;private fechamento?:Promise<void>;
  private acoes=new Map<string,{opcao:OpcaoTribemd;url:string;botao?:string}>();private visitadas=new Set<string>();
  constructor(private context:BrowserContext,private fechar:()=>Promise<void>=()=>context.close()){}
  static async criar(executavel:string,signal:AbortSignal):Promise<NavegadorTribemd>{
@@ -183,5 +183,5 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
    })()`.replace('DETALHE_PERMITIDO',a.opcao.acao==='ler_cadastro'?'true':'false'),{},{timeout:12000});
   }catch{throw new ErroTribemd('TELA_SEM_ESTRUTURA_RECONHECIDA','O menu foi aberto, mas não foi possível confirmar os dados carregados ou uma lista vazia. O layout real precisa ser adaptado; os dados já lidos foram preservados.');}
  }
- async encerrar(){if(this.fechado)return;this.fechado=true;this.autenticado=false;this.acoes.clear();await this.fechar();}
+ async encerrar(){if(!this.fechamento){this.fechado=true;this.autenticado=false;this.acoes.clear();this.fechamento=Promise.resolve().then(()=>this.fechar());}await this.fechamento;}
 }
