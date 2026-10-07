@@ -2,7 +2,12 @@ import { chromium, type BrowserContext, type Page } from 'playwright-core';
 import { createHash } from 'node:crypto';
 import { campoTribemd, type TelaTribemd } from './tribemd-dados.js';
 const origem='https://app.tribemd.com';
-export class ErroTribemd extends Error { constructor(public codigo:string,message:string){super(message);} }
+export interface DiagnosticoLoginTribemd {
+ etapa:string;pagina?:'login'|'inicio'|'outra';statusHttp?:number;
+ campos?:{senha:number;email:number;texto:number;outros:number};botoesLogin?:number;desafio?:boolean;
+ tipoFalha?:'tempo_esgotado'|'dns'|'tls'|'conexao'|'outro';
+}
+export class ErroTribemd extends Error { constructor(public codigo:string,message:string,public diagnostico?:DiagnosticoLoginTribemd){super(message);} }
 export interface OpcaoTribemd { id:string;acao:'abrir_pacientes'|'abrir_agenda'|'ler_cadastro'|'proxima_pagina' }
 export interface LeituraTribemd { tela:TelaTribemd;opcoes:OpcaoTribemd[];diagnostico:{caminho:string;tabelas:number;linhas:number;campos:string[];limitada:boolean} }
 export interface NavegadorColetaTribemd { entrar(email:string,senha:string,signal:AbortSignal):Promise<void>;ler():Promise<LeituraTribemd>;executar(id:string):Promise<void>;encerrar():Promise<void> }
@@ -28,19 +33,22 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
    await route.fallback();
   });
   const abort=()=>{void this.encerrar().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
+  let etapa='abrindo_login',statusHttp:number|undefined;
   try{
-   await this.page.goto(origem+'/login?continue=/inicio',{waitUntil:'domcontentloaded',timeout:25000});
+   const resposta=await this.page.goto(origem+'/login?continue=/inicio',{waitUntil:'domcontentloaded',timeout:25000});statusHttp=resposta?.status();
+   if(statusHttp&&statusHttp>=400)throw new ErroTribemd('LOGIN_HTTP_ERRO','O TribemD retornou uma resposta de erro ao abrir o login. Confira o status HTTP no diagnóstico.');
+   etapa='aguardando_formulario';
    const senhaInput=this.page.locator('input[type=password]:visible');
    const emailInput=this.page.locator('input[type=email]:visible, input[autocomplete=username]:visible, input[name=email]:visible, input[name=username]:visible, input[id*=email i]:visible, input[placeholder*=email i]:visible, input[placeholder*="e-mail" i]:visible');
    await senhaInput.first().waitFor({state:'visible'});
    if(await senhaInput.count()!==1||await emailInput.count()!==1)throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','Os campos de login não são únicos ou não foram reconhecidos. O adaptador precisa ser ajustado ao layout real.');
    const botao=this.page.getByRole('button',{name:/^(entrar|acessar|login|iniciar sess[aã]o|fazer login)$/i});
    if(await botao.count()!==1)throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','O botão de login não foi reconhecido com segurança.');
-   await emailInput.fill(email);await senhaInput.fill(senha);signal.throwIfAborted();
-   await botao.click();
+   etapa='preenchendo_email';await emailInput.fill(email);etapa='preenchendo_senha';await senhaInput.fill(senha);signal.throwIfAborted();
+   etapa='enviando_login';await botao.click();etapa='confirmando_login';
    try{await this.page.waitForURL(u=>u.origin===origem&&!/^\/login(?:\/|$)/.test(u.pathname),{timeout:15000});}
    catch{throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','O login não foi confirmado. Confira as credenciais; também pode haver uma validação adicional. Não repetimos o envio automaticamente.');}
-   await this.page.waitForLoadState('domcontentloaded');
+   etapa='verificando_pos_login';await this.page.waitForLoadState('domcontentloaded');
    const desafio=await this.page.getByText(/autentica[cç][aã]o de dois fatores|c[oó]digo de verifica[cç][aã]o|captcha/i).count();
    if(desafio)throw new ErroTribemd('VALIDACAO_ADICIONAL','O TribemD pediu uma validação adicional. Este piloto não contorna CAPTCHA ou autenticação em duas etapas.');
    if(await this.page.locator('input[type=password]:visible').count())throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','O portal ainda apresenta um formulário de autenticação.');
@@ -49,7 +57,32 @@ export class NavegadorTribemd implements NavegadorColetaTribemd {
    try{await menu.first().waitFor({state:'visible',timeout:12000});}
    catch{throw new ErroTribemd('POS_LOGIN_LAYOUT_NAO_RECONHECIDO','O portal saiu do login, mas os menus de pacientes e agenda não foram reconhecidos. Precisamos ajustar a navegação ao layout real.');}
    this.autenticado=true;
+  }catch(erro){
+   if(signal.aborted)throw erro;
+   const diagnostico=await this.diagnosticarLogin(etapa,statusHttp);
+   if(erro instanceof ErroTribemd)throw new ErroTribemd(erro.codigo,erro.message,diagnostico);
+   const mensagem=erro instanceof Error?erro.message:'';
+   diagnostico.tipoFalha=erro instanceof Error&&erro.name==='TimeoutError'?'tempo_esgotado':/ERR_NAME_NOT_RESOLVED/.test(mensagem)?'dns':/ERR_CERT_|ERR_SSL_/.test(mensagem)?'tls':/net::ERR_/.test(mensagem)?'conexao':'outro';
+   if(etapa==='abrindo_login')throw new ErroTribemd(diagnostico.tipoFalha==='tempo_esgotado'?'LOGIN_CARREGAMENTO_TIMEOUT':'LOGIN_CONEXAO_FALHOU','O navegador não conseguiu carregar o login do TribemD. Confira a etapa e o tipo de falha no diagnóstico.',diagnostico);
+   if(etapa==='aguardando_formulario')throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO','O formulário de senha não ficou disponível no prazo. Confira as contagens de campos e o status HTTP no diagnóstico para ajustar o acesso ao portal.',diagnostico);
+   throw new ErroTribemd('LOGIN_INTERACAO_FALHOU','Não foi possível concluir uma etapa do formulário de login. Confira o diagnóstico; o envio não será repetido automaticamente.',diagnostico);
   }finally{email='';senha='';signal.removeEventListener('abort',abort);}
+ }
+ private async diagnosticarLogin(etapa:string,statusHttp?:number):Promise<DiagnosticoLoginTribemd>{
+  const diagnostico:DiagnosticoLoginTribemd={etapa,statusHttp};
+  const page=this.page;if(!page||page.isClosed())return diagnostico;
+  // Somente tipos, contagens e categorias; nunca texto/valores de formulário ou URLs com parâmetros.
+  try{const caminho=new URL(page.url()).pathname;diagnostico.pagina=caminho==='/login'?'login':caminho==='/inicio'?'inicio':'outra';
+   const estrutura=await page.evaluate<{campos:{senha:number;email:number;texto:number;outros:number};botoesLogin:number;desafio:boolean}>(String.raw`(() => {
+    const visivel=e=>e.getClientRects().length>0;
+    const inputs=Array.from(document.querySelectorAll('input')).filter(visivel);
+    const senha=inputs.filter(e=>e.type==='password').length,email=inputs.filter(e=>e.type==='email').length,texto=inputs.filter(e=>e.type==='text').length;
+    const botoesLogin=Array.from(document.querySelectorAll('button,[role=button],input[type=submit]')).filter(visivel).filter(e=>/^(entrar|acessar|login|iniciar sess[aã]o|fazer login)$/i.test((e.tagName==='INPUT'?e.value:e.textContent||'').trim())).length;
+    const desafio=Array.from(document.querySelectorAll('p,label,[role=alert]')).filter(visivel).some(e=>/autentica[cç][aã]o de dois fatores|c[oó]digo de verifica[cç][aã]o|captcha/i.test(e.textContent||''));
+    return {campos:{senha,email,texto,outros:inputs.length-senha-email-texto},botoesLogin,desafio};
+   })()`);Object.assign(diagnostico,estrutura);
+  }catch{ /* A página pode fechar durante o cancelamento; a etapa conhecida continua disponível. */ }
+  return diagnostico;
  }
  private obterPagina(){if(!this.autenticado||!this.page||this.fechado)throw new ErroTribemd('SESSAO_NAO_AUTENTICADA','O login precisa estar confirmado para ler dados.');return this.page;}
  async ler():Promise<LeituraTribemd>{

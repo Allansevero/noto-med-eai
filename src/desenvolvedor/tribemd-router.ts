@@ -2,8 +2,8 @@ import { Router, type RequestHandler } from 'express';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { investigarTribemd, type DecisorTribemd, type EventoTribemd, type ResultadoTribemd } from './tribemd-agente.js';
-import { ErroTribemd, type NavegadorColetaTribemd } from './tribemd-navegador.js';
-interface Sessao { id:string;expira:number;estado:string;controller:AbortController;navegador?:NavegadorColetaTribemd;trabalho?:Promise<void>;timer?:NodeJS.Timeout;eventos:(EventoTribemd&{em:string})[];resultado?:ResultadoTribemd;diagnostico?:{codigo:string};detalhe?:string;encerrando:boolean }
+import { ErroTribemd, type NavegadorColetaTribemd, type DiagnosticoLoginTribemd } from './tribemd-navegador.js';
+interface Sessao { id:string;expira:number;estado:string;controller:AbortController;navegador?:NavegadorColetaTribemd;trabalho?:Promise<void>;timer?:NodeJS.Timeout;eventos:(EventoTribemd&{em:string})[];resultado?:ResultadoTribemd;diagnostico?:{codigo:string}&Partial<DiagnosticoLoginTribemd>;detalhe?:string;encerrando:boolean }
 const dia=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const d=new Date(v+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v;});
 const entrada=z.object({email:z.string().trim().email().max(254),senha:z.string().min(1).max(256),inicio:dia,fim:dia}).strict().refine(v=>v.fim>=v.inicio&&(Date.parse(v.fim)-Date.parse(v.inicio))/86400000<=31);
 export function criarRouterTribemdDesenvolvedor(deps:{ativo:boolean;token?:string;configurado:boolean;decisor:DecisorTribemd;criarNavegador:(s:AbortSignal)=>Promise<NavegadorColetaTribemd>;registrar?:(e:Record<string,unknown>)=>void}){
@@ -43,9 +43,9 @@ export function criarRouterTribemdDesenvolvedor(deps:{ativo:boolean;token?:strin
     s.estado=s.resultado.pacientes.length||s.resultado.agendamentos.length?'parcial':'necessita_intervencao';
     if(s.estado==='necessita_intervencao'){s.diagnostico={codigo:'DADOS_NAO_RECONHECIDOS'};s.detalhe='O login foi confirmado, mas não reconhecemos dados cadastrais ou de agenda nas telas acessadas. Confira o diagnóstico da navegação para ajustar o adaptador.';}
     registrar(s,{etapa:'coleta_finalizada'});
-   }catch(erro){if(!s.encerrando){s.estado='necessita_intervencao';s.diagnostico={codigo:erro instanceof ErroTribemd?erro.codigo:'FALHA_NAVEGACAO'};
+   }catch(erro){if(!s.encerrando){s.estado='necessita_intervencao';s.diagnostico={...(erro instanceof ErroTribemd?erro.diagnostico:{}),codigo:erro instanceof ErroTribemd?erro.codigo:'FALHA_NAVEGACAO'};
      s.detalhe=erro instanceof ErroTribemd?erro.message:'A navegação foi interrompida. Consulte a última etapa registrada; o layout ou a conexão podem exigir ajuste.';
-     registrar(s,{etapa:'intervencao_necessaria',codigo:s.diagnostico.codigo});}}
+     registrar(s,{etapa:'intervencao_necessaria',codigo:s.diagnostico.codigo,diagnostico:s.diagnostico});}}
    finally{d.email='';d.senha='';try{await s.navegador?.encerrar();}catch{registrar(s,{etapa:'limpeza_pendente',codigo:'FALHA_FECHAMENTO'});}}
   })();
  }));

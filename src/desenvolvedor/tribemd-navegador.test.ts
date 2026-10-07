@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
 import { NavegadorTribemd } from './tribemd-navegador.js';
 import { investigarTribemd } from './tribemd-agente.js';
-async function portal(t:any,desafio=false,botoes=false,atraso=false,skeleton=false){
+async function portal(t:any,desafio=false,botoes=false,atraso=false,skeleton=false,login?:{html?:string;status?:number;erroRede?:boolean}){
  const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
  t.after(()=>browser.close());const context=await browser.newContext();
  let mensagens=0;
@@ -16,7 +16,9 @@ async function portal(t:any,desafio=false,botoes=false,atraso=false,skeleton=fal
   else {mensagens++;html='<p>Não deveria acessar</p>';}
   if(atraso&&u.pathname==='/pacientes'){const tabela=html;html='<a href=/inicio>Início</a><script>setTimeout(()=>document.body.insertAdjacentHTML("beforeend",'+JSON.stringify(tabela)+'),500)</script>';}
   if(skeleton&&u.pathname==='/pacientes')html='<table><thead><tr><th>Nome</th></tr></thead><tbody></tbody></table><script>setTimeout(()=>document.querySelector("tbody").innerHTML="<tr><td>Ana</td></tr>",500)</script>';
-  await route.fulfill({contentType:'text/html; charset=utf-8',body:html});
+  if(u.pathname==='/login'&&login?.erroRede){await route.abort('namenotresolved');return;}
+  if(u.pathname==='/login'&&login?.html!==undefined)html=login.html;
+  await route.fulfill({status:u.pathname==='/login'?login?.status||200:200,contentType:'text/html; charset=utf-8',body:html});
  });
  return {n:new NavegadorTribemd(context),mensagens:()=>mensagens};
 }
@@ -53,4 +55,25 @@ test('não confunde desafio após login com sessão autenticada',async t=>{
 test('espera linhas de tabela skeleton sem indicador de carregamento',async t=>{
  const p=await portal(t,false,false,false,true);await p.n.entrar('teste@example.com','correta',new AbortController().signal);const l=await p.n.ler();
  await p.n.executar(l.opcoes.find(o=>o.acao==='abrir_pacientes')!.id);const r=await p.n.ler();assert.equal(r.tela.tabelas[0].linhas.length,1);
+});
+
+test('formulário de senha ausente retorna diagnóstico de estrutura sem credenciais',async t=>{
+ const p=await portal(t,false,false,false,false,{html:'<label>E-mail<input type=email value="oculto@example.com"></label><p>Carregando</p>'});
+ await assert.rejects(()=>p.n.entrar('teste@example.com','segredo-privado',new AbortController().signal),(e:any)=>{
+  assert.equal(e.codigo,'LOGIN_LAYOUT_NAO_RECONHECIDO');assert.equal(e.diagnostico.etapa,'aguardando_formulario');
+  assert.equal(e.diagnostico.statusHttp,200);assert.equal(e.diagnostico.campos.senha,0);assert.equal(e.diagnostico.campos.email,1);
+  assert.equal(e.diagnostico.tipoFalha,'tempo_esgotado');assert.ok(!JSON.stringify(e.diagnostico).includes('oculto@example.com'));assert.ok(!JSON.stringify(e.diagnostico).includes('segredo-privado'));return true;
+ });
+});
+test('resposta HTTP de erro no login não é confundida com formulário desconhecido',async t=>{
+ const p=await portal(t,false,false,false,false,{html:'<p>Acesso bloqueado</p>',status:403});
+ await assert.rejects(()=>p.n.entrar('teste@example.com','segredo',new AbortController().signal),(e:any)=>{
+  assert.equal(e.codigo,'LOGIN_HTTP_ERRO');assert.equal(e.diagnostico.statusHttp,403);assert.equal(e.diagnostico.etapa,'abrindo_login');return true;
+ });
+});
+test('falha de DNS na abertura tem código de conexão e não expõe erro bruto',async t=>{
+ const p=await portal(t,false,false,false,false,{erroRede:true});
+ await assert.rejects(()=>p.n.entrar('teste@example.com','segredo',new AbortController().signal),(e:any)=>{
+  assert.equal(e.codigo,'LOGIN_CONEXAO_FALHOU');assert.equal(e.diagnostico.tipoFalha,'dns');assert.equal(e.diagnostico.etapa,'abrindo_login');assert.ok(!e.message.includes('net::'));return true;
+ });
 });

@@ -7,7 +7,7 @@ const token='chave-desenvolvedor-de-teste-1234567890';
 async function ambiente(t:any,opcoes:{ativo?:boolean;falhaLogin?:boolean;espera?:Promise<void>}={}){
  let criados=0,fechados=0,logins=0;const logs:any[]=[];
  const app=express();app.use(express.json());app.use('/api',criarRouterTribemdDesenvolvedor({ativo:opcoes.ativo??true,token,configurado:true,
-  registrar:e=>logs.push(e),decisor:{async decidir(){return null;}},async criarNavegador(){criados++;return {async entrar(){logins++;if(opcoes.espera)await opcoes.espera;if(opcoes.falhaLogin)throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','Login não confirmado.');},async executar(){},async encerrar(){fechados++;},async ler(){return {tela:{url:'https://app.tribemd.com/pacientes',campos:[{rotulo:'Nome completo',valor:'Ana'},{rotulo:'CPF',valor:'52998224725'}],tabelas:[]},opcoes:[],diagnostico:{caminho:'/pacientes',tabelas:0,linhas:0,campos:['nome','cpf'],limitada:false}};}};}}));
+  registrar:e=>logs.push(e),decisor:{async decidir(){return null;}},async criarNavegador(){criados++;return {async entrar(){logins++;if(opcoes.espera)await opcoes.espera;if(opcoes.falhaLogin)throw new ErroTribemd('LOGIN_NAO_CONFIRMADO','Login não confirmado.',{etapa:'confirmando_login',pagina:'login',statusHttp:200});},async executar(){},async encerrar(){fechados++;},async ler(){return {tela:{url:'https://app.tribemd.com/pacientes',campos:[{rotulo:'Nome completo',valor:'Ana'},{rotulo:'CPF',valor:'52998224725'}],tabelas:[]},opcoes:[],diagnostico:{caminho:'/pacientes',tabelas:0,linhas:0,campos:['nome','cpf'],limitada:false}};}};}}));
  const server=await new Promise<any>(r=>{const s=app.listen(0,'127.0.0.1',()=>r(s));});
  t.after(()=>new Promise<void>(r=>{server.closeAllConnections();server.close(()=>r());}));
  const pedir=async(path:string,method='GET',body?:unknown,chave=token)=>{const res=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method,headers:{Authorization:'Bearer '+chave,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:res.status,data:await res.json()};};
@@ -26,7 +26,7 @@ test('sessão extrai JSON, fecha navegador e não expõe credenciais em resultad
 });
 test('falha de login fica clara e não é repetida automaticamente',async t=>{
  const a=await ambiente(t,{falhaLogin:true}),s=await a.pedir('/sessoes','POST',a.corpo),r=await a.aguardar(s.data.sessaoId);
- assert.equal(r.data.estado,'necessita_intervencao');assert.equal(r.data.diagnostico.codigo,'LOGIN_NAO_CONFIRMADO');assert.equal(a.logins(),1);assert.equal(a.fechados(),1);
+ assert.equal(r.data.estado,'necessita_intervencao');assert.equal(r.data.diagnostico.codigo,'LOGIN_NAO_CONFIRMADO');assert.equal(r.data.diagnostico.etapa,'confirmando_login');assert.equal(r.data.diagnostico.statusHttp,200);assert.equal(a.logins(),1);assert.equal(a.fechados(),1);
  await a.pedir('/sessoes/'+s.data.sessaoId,'DELETE');
 });
 test('reserva impede sessões concorrentes e intervalo inválido não faz login',async t=>{
