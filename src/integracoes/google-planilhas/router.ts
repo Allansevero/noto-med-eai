@@ -1,4 +1,4 @@
-import {Router,type RequestHandler} from 'express';
+import {Router,type RequestHandler,type Response} from 'express';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import type pg from 'pg';
 import type {GooglePlanilhas,MapeadorColunasPlanilha,ResultadoExtracaoPlanilha} from './types.js';
@@ -20,12 +20,26 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  router.use((_q,r,n)=>{r.setHeader('Cache-Control','no-store');n();});
  const proteger=(h:RequestHandler):RequestHandler=>async(q,r,n)=>{
   const inicio=Date.now();
+  r.locals.planilhaEtapa='processar_requisicao';
   try{await h(q,r,n);}catch(e){
-   const status=e instanceof ErroPublico?e.status:502;
-   const diagnostico=e instanceof ErroGooglePlanilhas?{etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:undefined;
+   const mensagem=e instanceof Error?e.message:'';
+   const semCabecalho=mensagem==='Não foi possível identificar um cabeçalho confiável nas primeiras dez linhas.';
+   const groq=mensagem.match(/^Não foi possível mapear colunas \(Groq HTTP (\d{3})\)\.$/);
+   const codigoBruto=(e as {code?:unknown}|null)?.code;
+   // Only known SQLSTATE identifiers; never log SQL, provider bodies, headers or error.message.
+   const codigoBanco=typeof codigoBruto==='string'&&['42P01','42703','42883','42501','42P08','42804','22P02','22023','23502','23503','23505','40001','40P01','53300','57014','08006','XX000'].includes(codigoBruto)?codigoBruto:undefined;
+   const status=e instanceof ErroPublico?e.status:semCabecalho?422:502;
+   const rota=['/status','/conectar','/picker-token','/abas','/previa','/importar','/conexao'].includes(q.path)?q.path:'outra';
+   const diagnostico={rota,etapa:r.locals.planilhaEtapa as string,
+    codigo:semCabecalho?'CABECALHO_NAO_IDENTIFICADO':groq?'IA_HTTP_ERRO':codigoBanco?'BANCO_ERRO':'ERRO_INTERNO',
+    ...(codigoBanco?{codigoBanco}:{}),...(groq?{statusHttp:Number(groq[1])}:{}),
+    ...(e instanceof ErroGooglePlanilhas?{etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:{})};
    console.warn('[Google Planilhas]',{resultado:'falha',status,duracaoMs:Date.now()-inicio,...diagnostico});
-   r.status(status).json({ok:false,detalhe:e instanceof ErroPublico||e instanceof ErroGooglePlanilhas?e.message:
-    'Não foi possível concluir a operação. Confira a conexão e tente novamente.',...(diagnostico?{diagnostico}:{})});
+   const detalhe=e instanceof ErroPublico||e instanceof ErroGooglePlanilhas?e.message:
+    semCabecalho?'Não encontramos os títulos das colunas nesta aba. Use títulos como Nome, CPF, E-mail e Telefone nas primeiras dez linhas, ou escolha outra aba.':
+    groq?'A leitura das colunas pela IA está indisponível. A equipe precisa verificar a configuração do serviço.':
+    'Não foi possível concluir a operação. Confira a conexão e tente novamente.';
+   r.status(status).json({ok:false,detalhe,diagnostico});
   }
  };
  const limparCookie=(r:any)=>r.clearCookie(cookieNome,{path:base+'/callback',httpOnly:true,sameSite:'lax',secure:deps.redirectUri.startsWith('https://')});
@@ -51,12 +65,15 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  });
  router.use(proteger(async(q,r,n)=>{
   const h=q.header('Authorization')??'';const token=h.startsWith('Bearer ')?h.slice(7):'';
+  r.locals.planilhaEtapa='autenticar_sessao';
   const user=token?await deps.autenticar(token):null;if(!user){r.status(401).json({ok:false,detalhe:'Entre novamente no Noto para conectar sua planilha.'});return;}
+  r.locals.planilhaEtapa='resolver_medico';
   const m=(await deps.pool.query('select m.id from medicos m join usuarios u on u.id=m.usuario_id where u.auth_user_id=$1',[user])).rows[0];
   if(!m){r.status(403).json({ok:false,detalhe:'Conta médica não encontrada.'});return;}r.locals.medicoId=m.id;n();
  }));
  router.get('/status',proteger(async(_q,r)=>{
   if(!deps.google){r.json({ok:true,configurado:false,conectado:false});return;}
+  r.locals.planilhaEtapa='consultar_conexao';
   const row=(await deps.pool.query('select access_token is not null as conectado from google_planilhas_conexoes where medico_id=$1',[r.locals.medicoId])).rows[0];
   r.json({ok:true,configurado:true,iaConfigurada:Boolean(deps.mapeador),conectado:Boolean(row?.conectado),pickerConfigurado:Boolean(deps.googleApiKey)});
  }));
@@ -77,13 +94,16 @@ export function criarRouterGooglePlanilhas(deps:Deps){
   r.cookie(cookieNome,estado,{httpOnly:true,sameSite:'lax',secure:deps.redirectUri.startsWith('https://'),path:base+'/callback',maxAge:600000});
   r.json({ok:true,url:deps.google!.urlAutorizacao(estado,createHash('sha256').update(verificador).digest('base64url'))});
  }));
- async function credencial(medicoId:string){
+ async function credencial(medicoId:string,r:Response){
+  r.locals.planilhaEtapa='ler_credenciais';
   const c=(await deps.pool.query(`select versao,pgp_sym_decrypt(access_token,$2) as access_token,
    pgp_sym_decrypt(refresh_token,$2) as refresh_token,expira_em from google_planilhas_conexoes where medico_id=$1 and access_token is not null`,[medicoId,deps.encryptionKey])).rows[0];
   if(!c)throw new ErroPublico(409,'Conecte sua conta Google primeiro.');
   if(new Date(c.expira_em).getTime()<Date.now()+60000){
    if(!c.refresh_token)throw new ErroPublico(409,'Conecte sua conta Google novamente.');
+   r.locals.planilhaEtapa='renovar_token';
    const novo=await deps.google!.renovar(c.refresh_token);
+   r.locals.planilhaEtapa='salvar_token_renovado';
    const result=await deps.pool.query(`update google_planilhas_conexoes set access_token=pgp_sym_encrypt($3,$5),
     refresh_token=pgp_sym_encrypt($4,$5),expira_em=$6,atualizado_em=now() where medico_id=$1 and versao=$2 and access_token is not null returning medico_id`,[medicoId,c.versao,novo.accessToken,novo.refreshToken??c.refresh_token,deps.encryptionKey,new Date(novo.expiraEm)]);
    if(!result.rows.length)throw new ErroPublico(409,'A conexão foi encerrada. Conecte novamente.');c.access_token=novo.accessToken;
@@ -91,18 +111,23 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  }
  router.get('/picker-token',proteger(async(_q,r)=>{
   if(!deps.googleApiKey || !/^[1-9]\d*$/.test(deps.googleAppId??'')) throw new ErroPublico(503,'A equipe precisa configurar GOOGLE_API_KEY e GOOGLE_APP_ID com o número do projeto Google Cloud, não o nome do projeto.');
-  const c=await credencial(r.locals.medicoId);
+  const c=await credencial(r.locals.medicoId,r);
   r.json({ok:true,accessToken:c.access_token,apiKey:deps.googleApiKey??'',appId:deps.googleAppId??''});
  }));
- router.post('/abas',proteger(async(q,r)=>{const id=identificarPlanilha(q.body?.planilha);const c=await credencial(r.locals.medicoId);const dados=await deps.google!.abas(c.access_token,id);r.json({ok:true,planilhaId:id,...dados});}));
+ router.post('/abas',proteger(async(q,r)=>{const id=identificarPlanilha(q.body?.planilha);const c=await credencial(r.locals.medicoId,r);r.locals.planilhaEtapa='consultar_abas';const dados=await deps.google!.abas(c.access_token,id);r.json({ok:true,planilhaId:id,...dados});}));
  router.post('/previa',proteger(async(q,r)=>{
   if(!deps.mapeador)throw new ErroPublico(503,'A leitura por IA ainda precisa ser configurada pela equipe.');
   const id=identificarPlanilha(q.body?.planilha);const abaId=q.body?.abaId;if(!Number.isSafeInteger(abaId))throw new ErroPublico(400,'Escolha uma aba da planilha.');
-  const med=r.locals.medicoId,c=await credencial(med),meta=await deps.google!.abas(c.access_token,id),aba=meta.abas.find(x=>x.id===abaId);
+  const med=r.locals.medicoId,c=await credencial(med,r);
+  r.locals.planilhaEtapa='consultar_abas';
+  const meta=await deps.google!.abas(c.access_token,id),aba=meta.abas.find(x=>x.id===abaId);
   if(!aba)throw new ErroPublico(400,'A aba escolhida não existe na planilha.');
+  r.locals.planilhaEtapa='ler_celulas';
   const dados=await deps.google!.ler(c.access_token,id,aba.titulo);
+  r.locals.planilhaEtapa='extrair_pacientes';
   const extracao=await extrairPacientesPlanilha(dados.valores,deps.mapeador,dados.limitado||aba.colunas>52||aba.linhas>1001);
   const previa={planilhaId:id,titulo:meta.titulo,aba:aba.titulo,...extracao};
+  r.locals.planilhaEtapa='salvar_previa';
   const client=await deps.pool.connect();
   try{
    await client.query('begin');
@@ -146,3 +171,4 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  }));
  return router;
 }
+

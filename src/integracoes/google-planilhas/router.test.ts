@@ -46,3 +46,33 @@ test('Picker recusa nome do projeto antes de obter token',async()=>{
  assert.equal(f.chamadas.some(c=>c.sql.includes('pgp_sym_decrypt')),false);
  }finally{await f.close();}
 });
+
+for (const cenario of ['cabecalho', 'groq', 'banco'] as const) {
+ test(`prévia identifica falha de ${cenario} sem expor dados`, async()=>{
+  const logs:unknown[]=[];const warn=console.warn;console.warn=(...args:unknown[])=>{logs.push(args);};
+  const pool={query:async(sql:string)=>{
+   if(sql.includes('from medicos'))return {rows:[{id:'medico-real'}]};
+   if(sql.includes('pgp_sym_decrypt(access_token'))return {rows:[{versao:1,access_token:'token-secreto',expira_em:new Date(Date.now()+3600000)}]};
+   if(sql.includes('for update'))return {rows:[{versao:1,conectado:true}]};
+   if(sql.startsWith('insert into google_planilhas_previas'))throw Object.assign(new Error('segredo: conteúdo do banco'),{code:'42P01'});
+   return {rows:[]};
+  },connect:async()=>({query:pool.query,release(){}})} as any;
+  const google={abas:async()=>({titulo:'privado',abas:[{id:12,titulo:'privado',linhas:10,colunas:2}]}),ler:async()=>({valores:cenario==='cabecalho'?[['Agenda']]:[['Nome','Telefone'],['Paciente privado','51999999999']],limitado:false})} as any;
+  const app=express();app.use(express.json());app.use('/planilhas',criarRouterGooglePlanilhas({pool,google,encryptionKey:'chave-secreta',pepper:'segredo',redirectUri:'https://example.test/callback',autenticar:async()=> 'usuario',mapeador:{mapear:async()=>{
+   if(cenario==='groq')throw Error('Não foi possível mapear colunas (Groq HTTP 400).');
+   return {nome:0,telefone:1,cpf:null,email:null};
+  }}}));
+  const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+  try{
+   const response=await fetch(`http://127.0.0.1:${(server.address() as any).port}/planilhas/previa`,{method:'POST',headers:{Authorization:'Bearer segredo','Content-Type':'application/json'},body:JSON.stringify({planilha:'planilha_12345',abaId:12})});
+   const data:any=await response.json();
+   assert.equal(response.status,cenario==='cabecalho'?422:502);
+   assert.equal(data.diagnostico.rota,'/previa');
+   assert.equal(data.diagnostico.etapa,cenario==='banco'?'salvar_previa':'extrair_pacientes');
+   if(cenario==='cabecalho')assert.equal(data.diagnostico.codigo,'CABECALHO_NAO_IDENTIFICADO');
+   if(cenario==='groq')assert.equal(data.diagnostico.statusHttp,400);
+   if(cenario==='banco')assert.equal(data.diagnostico.codigoBanco,'42P01');
+   assert.doesNotMatch(JSON.stringify([data,logs]),/segredo|secreto|privado|chave-secreta/);
+  }finally{console.warn=warn;await new Promise<void>(r=>server.close(()=>r()));}
+ });
+}
