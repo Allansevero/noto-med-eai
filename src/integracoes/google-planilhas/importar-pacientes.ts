@@ -70,7 +70,8 @@ export async function importarPacientesPlanilha(
     if (!Array.isArray(paciente.pendencias) || paciente.pendencias.length > 0) {
       const motivos: Record<string, string> = {
         nome_invalido: 'Nome inválido.',
-        cpf_invalido: 'CPF inválido.',
+        cpf_invalido: 'CPF inválido. Confira o documento e formate a coluna como texto.',
+        cpf_possivel_zero_inicial: 'O CPF pode ter perdido zeros iniciais na formatação numérica. Confira os 11 dígitos com o documento e salve a coluna como texto.',
         email_invalido: 'E-mail inválido.',
         telefone_invalido: 'Telefone inválido. Informe um número brasileiro com DDD.',
         telefone_ausente: 'Telefone ausente. Informe o WhatsApp do paciente com DDD.',

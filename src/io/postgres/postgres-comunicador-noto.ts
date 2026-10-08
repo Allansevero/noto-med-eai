@@ -66,7 +66,7 @@ export class PostgresComunicadorNoto implements ComunicadorNoto {
    }
    if(typeof telefone!=='string' || !telefone.trim() || !instancia)return naoEnviado;
    const limiteSemCaso=entrada.evento==='limite_emissao' && !entrada.solicitacaoId;
-   const caso=limiteSemCaso?undefined:(await this.pool.query(`select s.id, p.nome, p.telefone, s.valor_servico_centavos, s.datas_consulta_texto, s.status,
+   const caso=limiteSemCaso || entrada.evento==='importacao_planilha'?undefined:(await this.pool.query(`select s.id, p.nome, p.telefone, s.valor_servico_centavos, s.datas_consulta_texto, s.status,
     s.aguardando_dados_profissionais, s.aguardando_confirmacao_medico
     from solicitacoes_nota s join pacientes p on p.id=s.paciente_id and p.medico_id=s.medico_id
     where s.medico_id=$1 ${entrada.solicitacaoId?'and s.id=$2':"and s.status='pendente' and (s.aguardando_dados_profissionais or s.aguardando_confirmacao_medico)"}

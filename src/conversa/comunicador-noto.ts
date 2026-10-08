@@ -1,7 +1,7 @@
 /** A IA escreve mensagens. Esta porta não concede ações fiscais ou SQL. */
 export type EventoComunicacaoNoto = 'pedir_nome' | 'pedir_crm' | 'pedir_confirmacao' | 'orientar_confirmacao'
   | 'dados_salvos' | 'retomada_autorizada' | 'pedir_data' | 'data_salva' | 'limite_emissao'
-  | 'falha_emissao' | 'conversa' | 'pedir_cpf';
+  | 'importacao_planilha' | 'falha_emissao' | 'conversa' | 'pedir_cpf';
 export interface EntradaComunicacaoNoto {
   medicoId:string;
   chave:string;

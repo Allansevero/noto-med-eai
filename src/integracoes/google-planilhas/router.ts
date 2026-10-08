@@ -1,12 +1,13 @@
+import type {ComunicadorNoto} from '../../conversa/comunicador-noto.js';
 import {Router,type RequestHandler,type Response} from 'express';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import type pg from 'pg';
-import type {GooglePlanilhas,MapeadorColunasPlanilha,ResultadoExtracaoPlanilha} from './types.js';
+import type {GooglePlanilhas,MapeadorColunasPlanilha,ResultadoExtracaoPlanilha,ResultadoImportacaoPlanilha} from './types.js';
 import {ErroNvidiaPlanilhas} from './nvidia-mapeador-colunas.js';
 import {ErroGooglePlanilhas} from './google-client.js';
 import {extrairPacientesPlanilha} from './extrair-pacientes.js';
 import {importarPacientesPlanilha} from './importar-pacientes.js';
-interface Deps {pool:pg.Pool;google?:GooglePlanilhas;mapeador?:MapeadorColunasPlanilha;autenticar:(token:string)=>Promise<string|null>;encryptionKey:string;pepper:string;redirectUri:string;googleApiKey?:string;googleAppId?:string;}
+interface Deps {comunicador?:ComunicadorNoto;pool:pg.Pool;google?:GooglePlanilhas;mapeador?:MapeadorColunasPlanilha;autenticar:(token:string)=>Promise<string|null>;encryptionKey:string;pepper:string;redirectUri:string;googleApiKey?:string;googleAppId?:string;}
 class ErroPublico extends Error{constructor(public readonly status:number,mensagem:string){super(mensagem);}}
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const cookieNome='noto_google_estado';
@@ -144,6 +145,8 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  router.post('/importar',proteger(async(q,r)=>{
   const id=q.body?.previaId;if(typeof id!=='string'||!/^[-\da-f]{36}$/i.test(id))throw new ErroPublico(400,'Leia a planilha antes de importar.');
   const med=r.locals.medicoId,client=await deps.pool.connect();
+  let dados:ResultadoExtracaoPlanilha;
+  let resultado:ResultadoImportacaoPlanilha;
   try{
    await client.query('begin');
    const c=(await client.query('select versao,access_token is not null as conectado from google_planilhas_conexoes where medico_id=$1 for update',[med])).rows[0];
@@ -151,16 +154,39 @@ export function criarRouterGooglePlanilhas(deps:Deps){
    const p=(await client.query(`select estado,resultado,versao,pgp_sym_decrypt(dados,$3) as dados from google_planilhas_previas
     where medico_id=$1 and id=$2 and expira_em>now() for update`,[med,id,deps.encryptionKey])).rows[0];
    if(!p||!c?.conectado||p.versao!==c.versao)throw new ErroPublico(409,'A prévia expirou ou a conexão mudou. Leia novamente.');
-   if(p.estado==='importada'){await client.query('commit');r.json({ok:true,...p.resultado});return;}
-   const dados=JSON.parse(p.dados) as ResultadoExtracaoPlanilha;
-   const resultado=await importarPacientesPlanilha(client,med,dados.pacientes,deps.encryptionKey,deps.pepper);
-   await client.query("update google_planilhas_previas set estado='importada',resultado=$3::jsonb where medico_id=$1 and id=$2",[med,id,JSON.stringify(resultado)]);
+   dados=JSON.parse(p.dados) as ResultadoExtracaoPlanilha;
+   if(p.estado==='importada') resultado=p.resultado as ResultadoImportacaoPlanilha;
+   else {
+    resultado=await importarPacientesPlanilha(client,med,dados.pacientes,deps.encryptionKey,deps.pepper);
+    await client.query("update google_planilhas_previas set estado='importada',resultado=$3::jsonb where medico_id=$1 and id=$2",[med,id,JSON.stringify(resultado)]);
+   }
    await client.query('commit');
    console.info('[Google Planilhas]', {etapa:'importar_pacientes', resultado:'concluido',
     criados:resultado.criados, completados:resultado.completados,
     semAlteracao:resultado.semAlteracao, ignorados:resultado.ignorados.length});
-   r.json({ok:true,...resultado});
   }catch(e){await client.query('rollback');throw e;}finally{client.release();}
+  // O envio acontece depois do commit e de liberar a conexão. Uma falha no WhatsApp
+  // não desfaz a importação. A chave persistida do comunicador evita envios duplicados.
+  let orientacao:'enviada'|'indisponivel'|'nao_necessaria'='nao_necessaria';
+  if(resultado.ignorados.length){
+   orientacao='indisponivel';
+   if(deps.comunicador)try{
+    const exemplos:Record<string,unknown>={};
+    for(const [indice,item] of resultado.ignorados.slice(0,5).entries()){
+     const paciente=dados.pacientes.find(p=>p.linha===item.linha);
+     exemplos['item'+indice]={linha:item.linha,nome:paciente?.nome??'Nome não identificado',motivo:item.motivo};
+    }
+    const envio=await deps.comunicador.enviar({medicoId:med,chave:'planilha:'+id+':orientacao',evento:'importacao_planilha',dados:{
+     colunasReconhecidas:(dados.cabecalhosReconhecidos??Object.entries(dados.colunas).filter(([,v])=>v!==null).map(([k])=>k)).join(', '),
+     encontrados:dados.pacientes.length,criados:resultado.criados,completados:resultado.completados,
+     jaCadastrados:resultado.semAlteracao,naoImportados:resultado.ignorados.length,
+     leituraLimitada:dados.limitado,exemplosParciais:resultado.ignorados.length>5,exemplos,
+    }});
+    if(envio.sucesso)orientacao='enviada';
+   }catch{/* O resultado da importação permanece disponível mesmo sem comunicação. */}
+   console.info('[Google Planilhas]',{etapa:'orientar_importacao',resultado:orientacao});
+  }
+  r.json({ok:true,...resultado,orientacao});
  }));
  router.delete('/conexao',proteger(async(_q,r)=>{
   const med=r.locals.medicoId;

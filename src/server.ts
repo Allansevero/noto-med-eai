@@ -163,7 +163,8 @@ export function criarAppExpress() {
     autenticar: async token => { const {data,error}=await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
     encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??'',
     googleApiKey: config.googleApiKey,
-    googleAppId: config.googleAppId
+    googleAppId: config.googleAppId,
+    comunicador: comunicadorNoto
   }));
 
   // UI Web de Entrada e Assets Estáticos

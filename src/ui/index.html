@@ -2437,7 +2437,7 @@
       const tbody = googleEl('previaPlanilhaGoogle');
       for (const p of data.pacientes) {
         const tr = document.createElement('tr');
-        for (const valor of [String(p.linha), p.nome || '—', p.cpf || '—', p.email || '—', p.telefone || '—', p.pendencias.length ? p.pendencias.map(codigo => ({nome_invalido:'Nome inválido',cpf_invalido:'CPF inválido',email_invalido:'E-mail inválido',telefone_invalido:'Telefone inválido',telefone_ausente:'Telefone ausente',telefone_cpf_conflitante:'Um telefone aparece com CPFs diferentes',cpf_telefones_conflitantes:'Um CPF aparece com telefones diferentes'}[codigo] || 'Revisar dados desta linha')).join(', ') : 'Pronto para conferir']) {
+        for (const valor of [String(p.linha), p.nome || '—', p.cpf || '—', p.email || '—', p.telefone || '—', p.pendencias.length ? p.pendencias.map(codigo => ({nome_invalido:'Nome inválido',cpf_invalido:'CPF inválido',cpf_possivel_zero_inicial:'CPF pode ter perdido zeros iniciais; confira o documento',email_invalido:'E-mail inválido',telefone_invalido:'Telefone inválido',telefone_ausente:'Telefone ausente',telefone_cpf_conflitante:'Um telefone aparece com CPFs diferentes',cpf_telefones_conflitantes:'Um CPF aparece com telefones diferentes'}[codigo] || 'Revisar dados desta linha')).join(', ') : 'Pronto para conferir']) {
           const td = document.createElement('td'); td.textContent = valor; tr.appendChild(td);
         }
         tbody.appendChild(tr);
@@ -2556,10 +2556,11 @@
         const ignorados = Array.isArray(resultado.ignorados) ? resultado.ignorados : [];
         const salvos = resultado.criados + resultado.completados;
         const resumo = partes.join(', ');
+        const avisoConversa = resultado.orientacao === 'enviada' ? ' O Noto enviou orientações no seu WhatsApp.' : resultado.orientacao === 'indisponivel' ? ' Não foi possível confirmar o envio das orientações pelo WhatsApp; confira os motivos aqui.' : '';
         if (ignorados.length) {
           const motivos = ignorados.map(item => `Linha ${item.linha}: ${item.motivo}`).join(' ');
           const situacao = salvos > 0 ? `Importação parcial: ${resumo}.` : `Nenhum paciente novo foi salvo ou atualizado.${resumo ? ' ' + resumo + '.' : ''}`;
-          setStatus(`${situacao} ${ignorados.length} linha(s) não importada(s). ${motivos} Corrija as linhas indicadas e selecione a planilha novamente.`, salvos > 0 ? 'info' : 'error');
+          setStatus(`${situacao} ${ignorados.length} linha(s) não importada(s). ${motivos} Corrija as linhas indicadas e selecione a planilha novamente.${avisoConversa}`, salvos > 0 ? 'info' : 'error');
         } else if (salvos > 0 || resultado.semAlteracao > 0) {
           setStatus(`Importação concluída: ${resumo}.`, 'success');
         } else {

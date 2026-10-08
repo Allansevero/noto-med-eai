@@ -1,6 +1,6 @@
 export interface PacientePlanilha {linha:number;nome:string|null;cpf:string|null;email:string|null;telefone:string|null;pendencias:string[];}
 export interface MapaColunasPlanilha {nome:number|null;cpf:number|null;email:number|null;telefone:number|null;}
-export interface ResultadoExtracaoPlanilha {pacientes:PacientePlanilha[];cabecalhoLinha:number;colunas:MapaColunasPlanilha;linhasLidas:number;limitado:boolean;}
+export interface ResultadoExtracaoPlanilha {cabecalhosReconhecidos?:string[];pacientes:PacientePlanilha[];cabecalhoLinha:number;colunas:MapaColunasPlanilha;linhasLidas:number;limitado:boolean;}
 export interface MapeadorColunasPlanilha {mapear(cabecalho:string[]):Promise<MapaColunasPlanilha>;}
 export interface GooglePlanilhas {urlAutorizacao(estado:string,desafio:string):string;trocarCodigo(codigo:string,verificador:string):Promise<{accessToken:string;refreshToken?:string;expiraEm:number}>;renovar(refreshToken:string):Promise<{accessToken:string;refreshToken?:string;expiraEm:number}>;revogar(token:string):Promise<void>;abas(token:string,id:string):Promise<{titulo:string;abas:Array<{id:number;titulo:string;linhas:number;colunas:number}>}>;ler(token:string,id:string,aba:string):Promise<{valores:string[][];limitado:boolean}>;}
 export interface ResultadoImportacaoPlanilha {criados:number;completados:number;semAlteracao:number;ignorados:Array<{linha:number;motivo:string}>;}

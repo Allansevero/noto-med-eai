@@ -12,7 +12,7 @@ export function campoCabecalhoPlanilha(valor: string): Campo | null {
     nome: /^(?:nome(?: completo| do paciente| do cliente)?|paciente|cliente|name|full name|patient name)$/,
     cpf: /^(?:cpf(?: do paciente| do cliente)?|cadastro de pessoa fisica)$/,
     email: /^(?:e-?mail(?: do paciente| do cliente)?|endereco de e-?mail)$/,
-    telefone: /^(?:telefone(?: celular| do paciente| do cliente| de contato)?|celular|whatsapp|whats app|fone|phone|mobile)$/,
+    telefone: /^(?:telefone(?: celular| do paciente| do cliente| de contato)?|contatos?|celular|whatsapp|whats app|fone|phone|mobile)$/,
   };
   return CAMPOS.find(campo => rotulos[campo].test(rotulo)) ?? null;
 }
@@ -59,7 +59,12 @@ export async function extrairPacientesPlanilha(valores: string[][], mapeador: Ma
     let nome = celula('nome'), cpf = celula('cpf'), email = celula('email'), telefone = celula('telefone');
     if (nome && nome.length > 200) { nome = null; pendencias.push('nome_invalido'); }
     if (cpf) {
-      if (cpf.length > 14 || !/^[\d.\-\s]+$/.test(cpf) || !validarCpf(cpf)) { cpf = null; pendencias.push('cpf_invalido'); }
+      if (cpf.length > 14 || !/^[\d.\-\s]+$/.test(cpf) || !validarCpf(cpf)) {
+        // A planilha pode ter removido zeros ao tratar o documento como número.
+        // Checksum válido é apenas uma hipótese; não comprova a identidade do paciente.
+        const possivelZero = /^\d{1,10}$/.test(cpf) && validarCpf(cpf.padStart(11, '0'));
+        cpf = null; pendencias.push(possivelZero ? 'cpf_possivel_zero_inicial' : 'cpf_invalido');
+      }
       else cpf = cpf.replace(/\D/g, '');
     }
     if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) { email = null; pendencias.push('email_invalido'); }
@@ -90,5 +95,5 @@ export async function extrairPacientesPlanilha(valores: string[][], mapeador: Ma
       for (const paciente of grupo) paciente.pendencias.push('cpf_telefones_conflitantes');
     }
   }
-  return { pacientes, cabecalhoLinha: indiceCabecalho + 1, colunas, linhasLidas: valores.length - indiceCabecalho - 1, limitado };
+  return { pacientes, cabecalhosReconhecidos: cabecalho.filter(Boolean), cabecalhoLinha: indiceCabecalho + 1, colunas, linhasLidas: valores.length - indiceCabecalho - 1, limitado };
 }
