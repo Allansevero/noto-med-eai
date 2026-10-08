@@ -1,12 +1,13 @@
 # Google Planilhas na Conta
 
-Conta → Google Planilhas → Conectar Google → informar link → Buscar abas →
+Conta → Google Planilhas → Conectar Google → selecionar planilha no Google Picker → Buscar abas →
 Ler pacientes → conferir prévia → Confirmar importação.
 
 A conexão é pessoal por médico e usa sessão Supabase validada. O usuário não
 informa senha Google ao Noto. OAuth com PKCE, cookie HttpOnly e estado de uso único;
-Google concede `spreadsheets.readonly`, que permite ler planilhas acessíveis à conta.
-Não solicitamos acesso ao Drive. O Noto lê apenas a planilha/aba escolhida pelo link.
+Google concede `drive.file`, que permite acesso apenas aos arquivos autorizados
+para este aplicativo. O Noto usa somente operações de leitura na planilha escolhida
+no Picker. Informar o link manualmente não concede acesso a um arquivo novo.
 
 A IA mapeia cabeçalhos reconhecíveis (nome, CPF, e-mail, telefone e seus aliases),
 sem receber valores de pacientes. Colunas sem rótulos claros ou cabeçalho fora das
@@ -29,18 +30,23 @@ nome_validado. RLS/permissões públicas bloqueiam acesso direto às novas tabel
 Prévias expiram após 24 horas; limpeza de expiradas ocorre na próxima extração.
 Desconectar elimina tokens/estados/prévias, tenta revogar acesso Google e mantém
 pacientes importados. A interface informa se a revogação externa falhou.
-Nenhum segredo OAuth ou token Google é entregue ao navegador.
+O segredo OAuth e o refresh token não são entregues ao navegador. O Picker
+recebe o access token temporário pela rota autenticada `/picker-token` (sem cache).
+Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
 
 ## Ativação
 
-1. No Google Cloud, selecionar projeto, habilitar Google Sheets API e configurar
+1. No Google Cloud, selecionar projeto, habilitar Google Sheets API e Google Picker API e configurar
    a tela de consentimento OAuth. Em modo de teste, cadastrar os e-mails de teste;
    para uso público, cumprir a verificação exigida pelo Google para esse escopo.
 2. Criar credencial OAuth **Aplicativo Web** e cadastrar exatamente o redirect:
    `https://notomed-web.6t32my.easypanel.host/api/integracoes/google-planilhas/callback`.
 3. No Easypanel `notomed` → `web`, configurar `GOOGLE_CLIENT_ID`,
    `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (o endereço acima), além de
-   `GROQ_API_KEY` e `GROQ_MODEL` já usados pelo Noto. Não usar URL HTTP em produção.
+   `GOOGLE_API_KEY` para o Picker, `GOOGLE_APP_ID` com o **número numérico do
+   projeto**, e `GROQ_API_KEY` e `GROQ_MODEL` já usados pelo Noto. OAuth, chave e
+   número devem pertencer ao mesmo projeto. O nome/ID textual do projeto, como
+   `noto-integrations`, não serve como `GOOGLE_APP_ID`. Não usar URL HTTP em produção.
 4. Implantar código, executar `npm run migrate:planilhas` e reiniciar `web`.
 5. Sair e entrar novamente pelo código WhatsApp: sessões antigas usavam um hash de
    link mágico; agora o login troca esse hash por JWT Supabase válido em cliente
@@ -50,3 +56,19 @@ Nenhum segredo OAuth ou token Google é entregue ao navegador.
 Sem credenciais Google completas, a Conta mostra integração indisponível e os
 outros fluxos seguem funcionando. Testes simulam Google/Groq e usam PostgreSQL
 local isolado; não demonstram consentimento, permissões ou importação em produção.
+
+## Diagnóstico de seleção da planilha
+
+O Picker usa o número do projeto em `setAppId`, e a origem atual da página em
+`setOrigin`. Ajuste `GOOGLE_APP_ID` no Easypanel e implante novamente antes
+de selecionar a planilha outra vez. Não é necessário ampliar os escopos para
+ler todas as planilhas da conta.
+
+Falhas da API registram `[Google Planilhas]` com etapa, código, status HTTP do
+Google e duração. Nenhum corpo de erro, token, CPF ou conteúdo da planilha é
+registrado. `API_DESATIVADA` exige habilitar a API no projeto; `RECONECTAR`
+exige nova autorização; `ACESSO_RECUSADO` exige conferir a conta e a seleção
+do arquivo. Esses diagnósticos são distintos de um `502` HTML retornado pelo
+proxy: nesse caso, confira os logs do serviço e sua disponibilidade.
+
+Referência: https://developers.google.com/workspace/drive/picker/guides/web-picker

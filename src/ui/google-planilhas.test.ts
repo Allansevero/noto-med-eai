@@ -12,3 +12,10 @@ function tela(){
 test('Google Planilhas lê com sessão e só importa após confirmação separada',async()=>{const f=tela();f.node('inputPlanilhaGoogle').value='https://docs.google.com/spreadsheets/d/planilha-valida';f.node('selectAbaGoogle').value='0';await f.node('btnLerPlanilhaGoogle').handlers.click();assert.equal(f.pedidos.length,1);assert.equal(f.pedidos[0].options.headers.Authorization,'Bearer jwt-real');assert.equal(JSON.parse(f.pedidos[0].options.body).medicoId,undefined);assert.equal(f.node('btnImportarPlanilhaGoogle').disabled,false);await f.node('btnImportarPlanilhaGoogle').handlers.click();assert.equal(f.pedidos.length,2);assert.equal(JSON.parse(f.pedidos[1].options.body).previaId,'prev-1');assert.match(f.node('statusPlanilhaGoogle').textContent,/1/);});
 test('células da planilha são texto, nunca HTML executável',async()=>{const f=tela();f.node('selectAbaGoogle').value='0';await f.node('btnLerPlanilhaGoogle').handlers.click();const tbody=f.node('previaPlanilhaGoogle');assert.equal(tbody.children[0].children[1].textContent,'<img onerror=alert(1)>');assert.equal(tbody.children[0].children[1].innerHTML,undefined);});
 test('novo link invalida prévia e impede confirmar outra planilha por engano',async()=>{const f=tela();f.node('selectAbaGoogle').value='0';await f.node('btnLerPlanilhaGoogle').handlers.click();f.node('inputPlanilhaGoogle').handlers.input();assert.equal(f.node('btnImportarPlanilhaGoogle').disabled,true);await f.node('btnImportarPlanilhaGoogle').handlers.click();assert.equal(f.pedidos.length,1);});
+
+test('resposta HTML do proxy explica indisponibilidade sem expor conteúdo',async()=>{
+ const f=tela();f.c.fetch=async()=>({ok:false,status:502,json:async()=>{throw Error('<html>segredo</html>');}});
+ await f.node('btnBuscarAbasGoogle').handlers.click();
+ assert.match(f.node('statusPlanilhaGoogle').textContent,/servidor.*502/i);
+ assert.doesNotMatch(f.node('statusPlanilhaGoogle').textContent,/segredo/);
+});

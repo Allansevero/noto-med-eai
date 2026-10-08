@@ -2322,7 +2322,7 @@
         method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
-      const data = await res.json().catch(() => { throw Error('Não foi possível conectar. Tente novamente.'); });
+      const data = await res.json().catch(() => { throw Error('O servidor não respondeu corretamente (HTTP ' + res.status + '). Tente novamente em instantes.'); });
       if (!res.ok || !data.ok) throw Error(data.detalhe || 'Não foi possível concluir a operação.');
       return data;
     }
@@ -2360,6 +2360,7 @@
       let builder = new google.picker.PickerBuilder()
         .setOAuthToken(cfg.accessToken)
         .setDeveloperKey(cfg.apiKey)
+        .setOrigin(window.location.origin)
         .addView(view)
         .setLocale('pt-BR')
         .setCallback(async (res) => {
@@ -2470,6 +2471,7 @@
         let builder = new google.picker.PickerBuilder()
           .setOAuthToken(cfg.accessToken)
           .setDeveloperKey(cfg.apiKey)
+        .setOrigin(window.location.origin)
           .addView(view)
           .setLocale('pt-BR')
           .setCallback(async (res) => {

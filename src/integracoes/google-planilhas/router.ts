@@ -2,6 +2,7 @@ import {Router,type RequestHandler} from 'express';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import type pg from 'pg';
 import type {GooglePlanilhas,MapeadorColunasPlanilha,ResultadoExtracaoPlanilha} from './types.js';
+import {ErroGooglePlanilhas} from './google-client.js';
 import {extrairPacientesPlanilha} from './extrair-pacientes.js';
 import {importarPacientesPlanilha} from './importar-pacientes.js';
 interface Deps {pool:pg.Pool;google?:GooglePlanilhas;mapeador?:MapeadorColunasPlanilha;autenticar:(token:string)=>Promise<string|null>;encryptionKey:string;pepper:string;redirectUri:string;googleApiKey?:string;googleAppId?:string;}
@@ -17,7 +18,16 @@ export function identificarPlanilha(valor:unknown):string {
 export function criarRouterGooglePlanilhas(deps:Deps){
  const router=Router();const base='/api/integracoes/google-planilhas';
  router.use((_q,r,n)=>{r.setHeader('Cache-Control','no-store');n();});
- const proteger=(h:RequestHandler):RequestHandler=>async(q,r,n)=>{try{await h(q,r,n);}catch(e){console.warn('[Google Planilhas]',{resultado:'falha',status:e instanceof ErroPublico?e.status:502});r.status(e instanceof ErroPublico?e.status:502).json({ok:false,detalhe:e instanceof ErroPublico?e.message:'Não foi possível concluir a operação. Confira a conexão e tente novamente.'});}};
+ const proteger=(h:RequestHandler):RequestHandler=>async(q,r,n)=>{
+  const inicio=Date.now();
+  try{await h(q,r,n);}catch(e){
+   const status=e instanceof ErroPublico?e.status:502;
+   const diagnostico=e instanceof ErroGooglePlanilhas?{etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:undefined;
+   console.warn('[Google Planilhas]',{resultado:'falha',status,duracaoMs:Date.now()-inicio,...diagnostico});
+   r.status(status).json({ok:false,detalhe:e instanceof ErroPublico||e instanceof ErroGooglePlanilhas?e.message:
+    'Não foi possível concluir a operação. Confira a conexão e tente novamente.',...(diagnostico?{diagnostico}:{})});
+  }
+ };
  const limparCookie=(r:any)=>r.clearCookie(cookieNome,{path:base+'/callback',httpOnly:true,sameSite:'lax',secure:deps.redirectUri.startsWith('https://')});
  // Callback público, ligado à sessão que iniciou OAuth por cookie+estado consumível.
  router.get('/callback',async(q,r)=>{
@@ -80,6 +90,7 @@ export function criarRouterGooglePlanilhas(deps:Deps){
   }return c;
  }
  router.get('/picker-token',proteger(async(_q,r)=>{
+  if(!deps.googleApiKey || !/^[1-9]\d*$/.test(deps.googleAppId??'')) throw new ErroPublico(503,'A equipe precisa configurar GOOGLE_API_KEY e GOOGLE_APP_ID com o número do projeto Google Cloud, não o nome do projeto.');
   const c=await credencial(r.locals.medicoId);
   r.json({ok:true,accessToken:c.access_token,apiKey:deps.googleApiKey??'',appId:deps.googleAppId??''});
  }));

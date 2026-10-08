@@ -7,6 +7,12 @@ export interface GooglePlanilhasClientOptions {
   fetch?: typeof fetch;
 }
 
+type EtapaGoogle = 'trocar_codigo' | 'renovar_token' | 'revogar_token' | 'consultar_abas' | 'ler_planilha';
+export class ErroGooglePlanilhas extends Error {
+  constructor(public readonly etapa: EtapaGoogle, public readonly codigo: string,
+    public readonly statusHttp: number | undefined, mensagem: string) { super(mensagem); }
+}
+
 type Objeto = Record<string, unknown>;
 function objeto(value: unknown): Objeto {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Resposta inválida do Google.');
@@ -50,14 +56,14 @@ export class GooglePlanilhasClient implements GooglePlanilhas {
   }
 
   async revogar(token: string): Promise<void> {
-    await this.requisitar('https://oauth2.googleapis.com/revoke', this.formulario({token}), false);
+    await this.requisitar('https://oauth2.googleapis.com/revoke', this.formulario({token}), 'revogar_token', false);
   }
 
   async abas(token: string, id: string) {
     this.validarId(id);
     const url = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${id}`);
     url.searchParams.set('fields', 'spreadsheetId,properties.title,sheets.properties');
-    const body = objeto(await this.requisitar(url.href, {headers:{Authorization:`Bearer ${token}`}}));
+    const body = objeto(await this.requisitar(url.href, {headers:{Authorization:`Bearer ${token}`}}, 'consultar_abas'));
     if (!Array.isArray(body.sheets)) throw new Error('Resposta inválida do Google.');
     return {titulo: texto(objeto(body.properties).title), abas: body.sheets.map(sheet => {
       const properties = objeto(objeto(sheet).properties);
@@ -73,7 +79,7 @@ export class GooglePlanilhasClient implements GooglePlanilhas {
     const url = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}`);
     url.searchParams.set('valueRenderOption', 'FORMATTED_VALUE');
     url.searchParams.set('majorDimension', 'ROWS');
-    const body = objeto(await this.requisitar(url.href, {headers:{Authorization:`Bearer ${token}`}}));
+    const body = objeto(await this.requisitar(url.href, {headers:{Authorization:`Bearer ${token}`}}, 'ler_planilha'));
     const rows = body.values ?? [];
     if (!Array.isArray(rows) || rows.some(row => !Array.isArray(row) || row.some(value => typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean'))) throw new Error('Resposta inválida do Google.');
     // 1001 includes a potential header and 1000 data rows. Reaching the bound is not proof of completeness.
@@ -93,7 +99,7 @@ export class GooglePlanilhasClient implements GooglePlanilhas {
   private async token(values: Record<string,string>): Promise<{accessToken:string;refreshToken?:string;expiraEm:number}> {
     const body = objeto(await this.requisitar('https://oauth2.googleapis.com/token', this.formulario({
       ...values, client_id:this.options.clientId, client_secret:this.options.clientSecret,
-    })));
+    }), values.grant_type === 'refresh_token' ? 'renovar_token' : 'trocar_codigo'));
     const accessToken = texto(body.access_token);
     const expiry = inteiro(body.expires_in);
     if (expiry === 0 || !Number.isSafeInteger(Date.now() + expiry * 1000)) throw new Error('Resposta inválida do Google.');
@@ -101,19 +107,30 @@ export class GooglePlanilhasClient implements GooglePlanilhas {
     return {accessToken, ...(refreshToken === undefined ? {} : {refreshToken}), expiraEm:Date.now() + expiry * 1000};
   }
 
-  private async requisitar(url: string, init: RequestInit, lerJson = true): Promise<unknown> {
+  private async requisitar(url: string, init: RequestInit, etapa: EtapaGoogle, lerJson = true): Promise<unknown> {
     // Endpoints originate only in this class. Never follow redirects with credentials.
     let response: Response;
     try {
       response = await this.fetcher(url, {...init, redirect:'error', signal:AbortSignal.timeout(15_000)});
     } catch {
-      throw new Error('Não foi possível conectar ao Google. Tente novamente.');
+      throw new ErroGooglePlanilhas(etapa, 'CONEXAO_FALHOU', undefined, 'Não foi possível conectar ao Google. Tente novamente.');
     }
     if (response.status !== 200) {
-      if (response.status === 401 || response.status === 403) throw new Error('Acesso ao Google recusado. Reconecte sua conta ou confira as permissões.');
-      throw new Error('Não foi possível concluir a solicitação ao Google.');
+      // Read only known diagnostic identifiers; never propagate Google's message, metadata or credentials.
+      const body = await response.json().catch(() => null) as any;
+      const error = body?.error;
+      const details = Array.isArray(error?.details) ? error.details : [];
+      const errors = Array.isArray(error?.errors) ? error.errors : [];
+      const apiDesativada = details.some((d: any) => d?.reason === 'SERVICE_DISABLED') || errors.some((d: any) => d?.reason === 'accessNotConfigured');
+      if (apiDesativada) throw new ErroGooglePlanilhas(etapa, 'API_DESATIVADA', response.status,
+        'A equipe precisa ativar a Google Sheets API no projeto da integração.');
+      if (response.status === 401 || error === 'invalid_grant') throw new ErroGooglePlanilhas(etapa, 'RECONECTAR', response.status,
+        'Reconecte sua conta Google e selecione a planilha novamente.');
+      if (response.status === 403 || response.status === 404) throw new ErroGooglePlanilhas(etapa, 'ACESSO_RECUSADO', response.status,
+        'O Google não liberou acesso a esta planilha. Selecione-a novamente e confira a conta utilizada.');
+      throw new ErroGooglePlanilhas(etapa, 'HTTP_ERRO', response.status, 'Não foi possível concluir a solicitação ao Google.');
     }
     if (!lerJson) return undefined;
-    try { return await response.json(); } catch { throw new Error('Resposta inválida do Google.'); }
+    try { return await response.json(); } catch { throw new ErroGooglePlanilhas(etapa, 'RESPOSTA_INVALIDA', response.status, 'Resposta inválida do Google.'); }
   }
 }

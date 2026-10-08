@@ -112,3 +112,16 @@ test('falhas de rede sao sanitizadas', async () => {
   const client = new GooglePlanilhasClient({...config,fetch:async () => {throw new Error('Bearer segredo');}});
   await assert.rejects(() => client.ler('token',id,'Lista'), error => error instanceof Error && !error.message.includes('segredo'));
 });
+
+
+ test('API desativada preserva diagnóstico seguro sem corpo ou credenciais', async () => {
+  const {client}=fixture({error:{message:'Bearer segredo',details:[{reason:'SERVICE_DISABLED',metadata:{consumer:'privado'}}]}},403);
+  await assert.rejects(()=>client.abas('token-secreto',id), (e:any)=>{
+   assert.equal(e.etapa,'consultar_abas');assert.equal(e.statusHttp,403);assert.equal(e.codigo,'API_DESATIVADA');
+   assert.match(e.message,/Google Sheets API/);assert.doesNotMatch(JSON.stringify(e),/segredo|privado/);return true;
+  });
+ });
+ test('permissão de arquivo e renovação expirada têm diagnósticos diferentes', async () => {
+  await assert.rejects(()=>fixture({},403).client.abas('token',id),(e:any)=>{assert.equal(e.codigo,'ACESSO_RECUSADO');return true;});
+  await assert.rejects(()=>fixture({error:'invalid_grant',error_description:'segredo'},400).client.renovar('refresh'),(e:any)=>{assert.equal(e.codigo,'RECONECTAR');assert.equal(e.etapa,'renovar_token');return true;});
+ });

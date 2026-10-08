@@ -2,11 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {criarRouterGooglePlanilhas} from './router.js';
-async function fixture(op:{ativo?:boolean;autenticado?:boolean}={}){
+async function fixture(op:{ativo?:boolean;autenticado?:boolean;appId?:string}={}){
  const chamadas:any[]=[];
  const pool={query:async(sql:string,args:any[])=>{chamadas.push({sql,args});if(sql.startsWith('insert into google_planilhas_conexoes'))return {rows:[{versao:1}]};if(sql.includes('from medicos'))return {rows:[{id:'medico-real'}]};return {rows:[]};},connect:async()=>({query:pool.query,release(){}})}as any;
  const google={urlAutorizacao:(s:string,c:string)=>`https://accounts.google.com/o/oauth2/v2/auth?state=${s}&code_challenge=${c}`}as any;
- const app=express();app.use(express.json());app.use('/api/integracoes/google-planilhas',criarRouterGooglePlanilhas({pool,google:op.ativo===false?undefined:google,mapeador:{mapear:async()=>({nome:null,cpf:null,email:null,telefone:0})},autenticar:async token=>op.autenticado===false?null:token==='sessao-valida'?'auth-real':null,encryptionKey:'test',pepper:'test',redirectUri:'https://noto.example/api/integracoes/google-planilhas/callback'}));
+ const app=express();app.use(express.json());app.use('/api/integracoes/google-planilhas',criarRouterGooglePlanilhas({pool,google:op.ativo===false?undefined:google,mapeador:{mapear:async()=>({nome:null,cpf:null,email:null,telefone:0})},autenticar:async token=>op.autenticado===false?null:token==='sessao-valida'?'auth-real':null,encryptionKey:'test',pepper:'test',redirectUri:'https://noto.example/api/integracoes/google-planilhas/callback',googleApiKey:'chave',googleAppId:op.appId}));
  const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));const base=`http://127.0.0.1:${(server.address()as any).port}/api/integracoes/google-planilhas`;
  return {base,chamadas,close:()=>new Promise<void>(r=>server.close(()=>r()))};
 }
@@ -37,4 +37,12 @@ test('callback superado não revoga o grant de uma conexão mais recente', async
   assert.equal(response.status,302);assert.match(response.headers.get('location')??'',/google_planilhas=erro/);
   assert.equal(trocas,1);assert.equal(chamadas.length,2);assert.equal(revogacoes,0);
  }finally{await new Promise<void>(r=>server.close(()=>r()));}
+});
+
+test('Picker recusa nome do projeto antes de obter token',async()=>{
+ const f=await fixture({appId:'noto-integrations'});try{
+ const r=await fetch(f.base+'/picker-token',{headers:{Authorization:'Bearer sessao-valida'}});
+ assert.equal(r.status,503);const data:any=await r.json();assert.match(data.detalhe,/número do projeto/);
+ assert.equal(f.chamadas.some(c=>c.sql.includes('pgp_sym_decrypt')),false);
+ }finally{await f.close();}
 });
