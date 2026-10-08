@@ -31,6 +31,8 @@ export async function consultarStatusInstanciaWhatsapp(
   try {
     const res = await fetch(`${baseUrl}/instance/connectionState/${nomeInstancia}`, {
       method: 'GET',
+      signal: AbortSignal.timeout(5_000),
+      redirect: 'error',
       headers: { apikey: evolutionApiKey }
     });
 

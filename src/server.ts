@@ -246,7 +246,19 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      const status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
+      res.setHeader('Cache-Control', 'no-store');
+      let status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
+      // Reconcile an outdated local record before asking an already linked user to pair again.
+      if (status.passos.passo3CertificadoValido && !status.passos.passo4WhatsappConectado) {
+        const conexao = await consultarStatusInstanciaWhatsapp(pool, {
+          medicoId,
+          evolutionUrl: config.evolutionApiUrl,
+          evolutionApiKey: config.evolutionGlobalApiKey
+        });
+        if (conexao.ok && conexao.conectado) {
+          status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
+        }
+      }
       dispararTreino(medicoId);
       if (status.passos.passo4WhatsappConectado) {
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
