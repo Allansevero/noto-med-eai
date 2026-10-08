@@ -34,6 +34,8 @@ import {
 } from '../whatsapp/payload-historico-webhook-schema.js';
 import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
+import type { GerenciadorConversaOnboarding } from '../agente-conversa/gerenciador-conversa-onboarding.js';
+
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
   comunicadorNoto?: ComunicadorNoto;
@@ -45,15 +47,18 @@ export interface ProcessarWebhookDeps {
   segredoConfigurado: string;
   pepper: string;
   instanciaOficialNome?: string;
+  instanciaAssistenteNome?: string;
+  enviarMensagemAssistente?: EnviarMensagemPaciente;
+  gerenciadorAssistente?: GerenciadorConversaOnboarding;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
 }
 
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'conversa_oficial' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
+      acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
-      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido';
+      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido';
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
 
@@ -95,6 +100,31 @@ export async function processarMensagemWebhook(
   const texto = extrairTextoMensagem(payload.data);
   if (!telefone) return { ok: true, acao: 'descartada', motivoDescarte: 'contato_nao_identificado' };
   if (!texto) return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_sem_texto' };
+
+  // Mensagem na instância do Noto Assistente (container dedicado da IA conversacional)
+  if (deps.instanciaAssistenteNome && payload.instance === deps.instanciaAssistenteNome) {
+    if (payload.data.key.fromMe) {
+      return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_assistente' };
+    }
+    const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+    if (medico && deps.gerenciadorAssistente) {
+      const resp = await deps.gerenciadorAssistente.processarMensagemMedico({
+        medicoId: medico.id,
+        textoRecebido: texto
+      });
+      if (deps.enviarMensagemAssistente) {
+        for (const msg of resp.mensagensEnviar) {
+          await deps.enviarMensagemAssistente.enviarTexto({
+            instanciaNome: deps.instanciaAssistenteNome,
+            contatoTelefone: telefone,
+            texto: msg
+          });
+        }
+      }
+      return { ok: true, acao: 'conversa_assistente', detalhe: resp };
+    }
+    return { ok: true, acao: 'conversa_assistente' };
+  }
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };

@@ -18,6 +18,10 @@ export interface AppConfig {
   evolutionGlobalApiKey: string;
   evolutionWebhookSecret: string;
   evolutionOfficialInstanceName: string;
+  evolutionAssistantUrl: string;
+  evolutionAssistantApiKey: string;
+  evolutionAssistantInstanceName: string;
+  evolutionAssistantWebhookSecret: string;
   resendApiKey?: string;
   devEmailAlerta?: string;
   nvidiaApiKey?: string;
@@ -64,6 +68,10 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     evolutionGlobalApiKey: env['EVOLUTION_GLOBAL_API_KEY'] || '',
     evolutionWebhookSecret: env['EVOLUTION_WEBHOOK_SECRET'] || '',
     evolutionOfficialInstanceName: env['EVOLUTION_OFFICIAL_INSTANCE_NAME'] || 'notomed_oficial',
+    evolutionAssistantUrl: env['EVOLUTION_ASSISTANT_URL'] || env['EVOLUTION_API_URL'] || '',
+    evolutionAssistantApiKey: env['EVOLUTION_ASSISTANT_API_KEY'] || env['EVOLUTION_GLOBAL_API_KEY'] || '',
+    evolutionAssistantInstanceName: env['EVOLUTION_ASSISTANT_INSTANCE_NAME'] || 'notomed_assistente',
+    evolutionAssistantWebhookSecret: env['EVOLUTION_ASSISTANT_WEBHOOK_SECRET'] || env['EVOLUTION_WEBHOOK_SECRET'] || '',
     resendApiKey: env['RESEND_API_KEY'],
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,

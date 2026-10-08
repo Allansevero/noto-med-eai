@@ -9,6 +9,7 @@ const config: AppConfig = {
   porta: 3000, host: 'localhost', databaseUrl: '', supabaseUrl: '', supabaseServiceRoleKey: '',
   encryptionKey: '', appPepper: '', evolutionApiUrl: 'https://evolution.test',
   evolutionGlobalApiKey: 'test-key', evolutionWebhookSecret: '', evolutionOfficialInstanceName: 'noto-oficial',
+  evolutionAssistantUrl: 'https://assistant.test', evolutionAssistantApiKey: 'assist-key', evolutionAssistantInstanceName: 'noto-assistente', evolutionAssistantWebhookSecret: '',
   nvidiaApiKey: '', nvidiaModel: '', treinoOnboardingAtivo: true, preparacaoFiscalAtiva: true
 };
 

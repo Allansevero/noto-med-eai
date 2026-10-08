@@ -29,7 +29,7 @@ export interface EntradaProcessamentoOnboarding {
   nomeCompleto?: string;
   uf?: string;
   textoRecebido?: string;
-  estadoAtual: EstadoAssistenteMedico;
+  estadoAtual?: EstadoAssistenteMedico;
 }
 
 export interface RespostaProcessamentoOnboarding {
@@ -58,16 +58,20 @@ export class GerenciadorConversaOnboarding {
     const mensagens: string[] = [];
     mensagens.push('Olá, doutor(a)! Sou o assistente do Noto. Estou aqui para cuidar da emissão das suas notas fiscais de consultas direto pelo WhatsApp.');
 
+    let resp: RespostaProcessamentoOnboarding;
     if (!nomeCompleto || nomeCompleto.trim().split(/\s+/).length < 2) {
       mensagens.push('Para começarmos, como é o seu nome completo, como está no seu CRM?');
-      return {
+      resp = {
         novoEstado: { etapa: 'apresentacao' },
         mensagensEnviar: mensagens
       };
+    } else {
+      // Se já temos o nome completo, busca online o CRM/RQE
+      resp = await this.avancarParaBuscaCrm(medicoId, nomeCompleto, uf, mensagens);
     }
 
-    // Se já temos o nome completo, busca online o CRM/RQE
-    return this.avancarParaBuscaCrm(medicoId, nomeCompleto, uf, mensagens);
+    await this.ferramentas.salvarEstadoOnboarding(medicoId, resp.novoEstado);
+    return resp;
   }
 
   /**
@@ -77,44 +81,43 @@ export class GerenciadorConversaOnboarding {
     entrada: EntradaProcessamentoOnboarding
   ): Promise<RespostaProcessamentoOnboarding> {
     const texto = entrada.textoRecebido?.trim() || '';
-    const estado = entrada.estadoAtual;
+    const estadoSalvo = (await this.ferramentas.obterEstadoOnboarding(entrada.medicoId)) as EstadoAssistenteMedico | null;
+    const estado = entrada.estadoAtual ?? estadoSalvo ?? { etapa: 'apresentacao' };
 
+    let resposta: RespostaProcessamentoOnboarding;
     switch (estado.etapa) {
       case 'apresentacao': {
-        // O médico acabou de informar seu nome completo
         const nomeInformado = texto;
-        return this.avancarParaBuscaCrm(entrada.medicoId, nomeInformado, entrada.uf);
+        resposta = await this.avancarParaBuscaCrm(entrada.medicoId, nomeInformado, entrada.uf);
+        break;
       }
 
       case 'confirmacao_crm_rqe': {
         if (ehRespostaAfirmativa(texto)) {
-          // Salva os dados confirmados
           await this.ferramentas.salvarDadosMedico(entrada.medicoId, {
             crm: estado.crmSugerido,
             rqe: estado.rqeSugerido,
             especialidade: estado.especialidadeSugerida
           });
 
-          return this.avancarParaPacientesEJanela(entrada.medicoId);
+          resposta = await this.avancarParaPacientesEJanela(entrada.medicoId);
+        } else {
+          resposta = {
+            novoEstado: { ...estado, etapa: 'confirmacao_crm_rqe' },
+            mensagensEnviar: ['Sem problemas! Qual é o número do seu CRM e estado (por exemplo: 12345/SP)?']
+          };
         }
-
-        // Se o médico disse que não está correto, pede para ele informar o CRM diretamente
-        return {
-          novoEstado: { ...estado, etapa: 'confirmacao_crm_rqe' },
-          mensagensEnviar: ['Sem problemas! Qual é o número do seu CRM e estado (por exemplo: 12345/SP)?']
-        };
+        break;
       }
 
       case 'aguardando_janela_tempo': {
-        // O médico respondeu há quanto tempo está sem emitir notas
         const dataCorte = this.ferramentas.interpretarJanelaTempo(texto);
-
         const mensagens = [
           'Entendido! Já configurei esse período e vou começar a varrer os comprovantes recebidos nas suas conversas.',
           'Antes de emitirmos as notas encontradas: você prefere que eu pergunte uma data por vez aos pacientes para confirmar o dia exato da consulta, ou posso colocar a data da consulta a mesma do comprovante de pagamento?'
         ];
 
-        return {
+        resposta = {
           novoEstado: {
             ...estado,
             etapa: 'perguntar_preferencia_data',
@@ -123,6 +126,7 @@ export class GerenciadorConversaOnboarding {
           mensagensEnviar: mensagens,
           acaoExecutada: `janela_configurada:${dataCorte}`
         };
+        break;
       }
 
       case 'perguntar_preferencia_data': {
@@ -135,7 +139,7 @@ export class GerenciadorConversaOnboarding {
           ? 'Perfeito! Vou considerar a data do comprovante para a descrição das consultas.'
           : 'Combinado! Vou confirmar com cada paciente a data da consulta antes de gerar a nota.';
 
-        return {
+        resposta = {
           novoEstado: { ...estado, etapa: 'concluido' },
           mensagensEnviar: [
             confirmacao,
@@ -143,15 +147,20 @@ export class GerenciadorConversaOnboarding {
           ],
           acaoExecutada: `preferencia_salva:${preferencia}`
         };
+        break;
       }
 
       default: {
-        return {
+        resposta = {
           novoEstado: estado,
           mensagensEnviar: []
         };
+        break;
       }
     }
+
+    await this.ferramentas.salvarEstadoOnboarding(entrada.medicoId, resposta.novoEstado);
+    return resposta;
   }
 
   private async avancarParaBuscaCrm(

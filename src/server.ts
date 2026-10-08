@@ -55,6 +55,10 @@ import { criarRouterTribemdDesenvolvedor } from './desenvolvedor/tribemd-router.
 import { NavegadorTribemd } from './desenvolvedor/tribemd-navegador.js';
 import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
+import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
+import { CfmBuscarMedicoOnlineProvider } from './medico/io/buscar-medico-online.js';
+import { FerramentasAssistenteNoto } from './agente-conversa/ferramentas-assistente-noto.js';
+import { GerenciadorConversaOnboarding } from './agente-conversa/gerenciador-conversa-onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -80,6 +84,23 @@ export function criarAppExpress() {
     config.evolutionGlobalApiKey,
     config.evolutionOfficialInstanceName
   );
+  const evolutionAssistantClient = new EvolutionApiClient(
+    config.evolutionAssistantUrl,
+    config.evolutionAssistantApiKey,
+    config.evolutionAssistantInstanceName
+  );
+  const paligemmaClient = new PaligemmaComprovanteClient(
+    config.nvidiaApiKey || '',
+    'https://ai.api.nvidia.com/v1/vlm/google/paligemma'
+  );
+  const buscarMedicoOnline = new CfmBuscarMedicoOnlineProvider();
+  const ferramentasAssistente = new FerramentasAssistenteNoto(
+    pool,
+    buscarMedicoOnline,
+    paligemmaClient,
+    evolutionAssistantClient
+  );
+  const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente);
   const ia = criarServicosIa(config);
   const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
   const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
@@ -596,16 +617,17 @@ export function criarAppExpress() {
       (req.query['apikey'] as string) ||
       (req.query['token'] as string);
 
-    // Autentica com segredo do webhook ou API key global da Evolution
+    // Autentica com segredo do webhook ou API key global da Evolution (oficial ou assistente)
     let segredoEsperado = config.evolutionWebhookSecret;
     if (
       tokenRecebido &&
       (tokenRecebido === config.evolutionGlobalApiKey ||
-        tokenRecebido === config.evolutionWebhookSecret)
+        tokenRecebido === config.evolutionWebhookSecret ||
+        tokenRecebido === config.evolutionAssistantApiKey ||
+        tokenRecebido === config.evolutionAssistantWebhookSecret)
     ) {
       segredoEsperado = tokenRecebido;
     }
-
 
     const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
       repositorio: atendimentoRepo,
@@ -618,10 +640,45 @@ export function criarAppExpress() {
       segredoConfigurado: segredoEsperado,
       pepper: config.appPepper,
       instanciaOficialNome: config.evolutionOfficialInstanceName,
+      instanciaAssistenteNome: config.evolutionAssistantInstanceName,
+      enviarMensagemAssistente: evolutionAssistantClient,
+      gerenciadorAssistente: gerenciadorOnboarding,
       async aoAtualizarConexao(evento) {
-        if (evento.instancia === config.evolutionOfficialInstanceName) return;
+        if (
+          evento.instancia === config.evolutionOfficialInstanceName ||
+          evento.instancia === config.evolutionAssistantInstanceName
+        ) return;
         const medicoId = await registrarConexaoWhatsapp(pool, evento);
-        if (medicoId) dispararTreino(medicoId);
+        if (medicoId) {
+          dispararTreino(medicoId);
+          // Aciona o Noto Assistente em seu container dedicado para conduzir o onboarding
+          try {
+            const medicoRow = (await pool.query(
+              `select m.id, m.nome_completo, m.uf, u.telefone
+               from medicos m
+               join usuarios u on u.id = m.usuario_id
+               where m.id = $1`,
+              [medicoId]
+            )).rows[0];
+
+            if (medicoRow && medicoRow.telefone) {
+              const resp = await gerenciadorOnboarding.iniciarAoConectar(
+                medicoRow.id,
+                medicoRow.nome_completo,
+                medicoRow.uf
+              );
+              for (const msg of resp.mensagensEnviar) {
+                await evolutionAssistantClient.enviarTexto({
+                  instanciaNome: config.evolutionAssistantInstanceName,
+                  contatoTelefone: medicoRow.telefone,
+                  texto: msg
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('[Onboarding Assistente] Erro ao iniciar ao conectar:', err);
+          }
+        }
       }
     });
 

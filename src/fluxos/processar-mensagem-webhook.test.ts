@@ -526,4 +526,89 @@ describe('processarMensagemWebhook', () => {
     assert.ok(repo.solicitacoes[0].xdescServ.includes('ROBERTO SANTOS'));
     assert.ok(repo.solicitacoes[0].xdescServ.includes('CRM 12345/SP / RQE 6789'));
   });
+
+  it('deve rotear mensagem recebida pelo container do Noto Assistente para o gerenciador e enviar resposta', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.medico = {
+      id: 'med-assist-1',
+      telefone: '5551993527271',
+      nomeCompleto: 'Dr. Allan',
+      especialidade: null,
+      crm: null,
+      rqe: null,
+      ctribNacPadrao: '041601'
+    };
+
+    const mensagensEnviadas: string[] = [];
+    const enviadorAssistente = {
+      enviarTexto: async (p: any) => {
+        mensagensEnviadas.push(p.texto);
+        return { sucesso: true };
+      }
+    };
+
+    const gerenciadorMock = {
+      processarMensagemMedico: async () => ({
+        novoEstado: { etapa: 'confirmacao_crm_rqe' as const },
+        mensagensEnviar: ['Localizei seus dados: CRM 12345/SP. Está correto?']
+      })
+    };
+
+    const payload = {
+      event: 'messages.upsert',
+      instance: 'notomed_assistente',
+      data: {
+        key: {
+          remoteJid: '5551993527271@s.whatsapp.net',
+          fromMe: false,
+          id: 'MSG-ASSIST-1'
+        },
+        message: { conversation: 'Allan Severo' }
+      }
+    };
+
+    const deps = {
+      ...criarDeps(repo),
+      instanciaAssistenteNome: 'notomed_assistente',
+      gerenciadorAssistente: gerenciadorMock as any,
+      enviarMensagemAssistente: enviadorAssistente as any
+    };
+
+    const res = await processarMensagemWebhook(payload, segredo, deps);
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.acao, 'conversa_assistente');
+    }
+    assert.strictEqual(mensagensEnviadas.length, 1);
+    assert.ok(mensagensEnviadas[0].includes('Localizei seus dados: CRM 12345/SP'));
+  });
+
+  it('deve descartar mensagens enviadas pelo próprio container do Noto Assistente (fromMe: true)', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const payload = {
+      event: 'messages.upsert',
+      instance: 'notomed_assistente',
+      data: {
+        key: {
+          remoteJid: '5551993527271@s.whatsapp.net',
+          fromMe: true,
+          id: 'MSG-ASSIST-FROM-ME'
+        },
+        message: { conversation: 'Olá doutor!' }
+      }
+    };
+
+    const deps = {
+      ...criarDeps(repo),
+      instanciaAssistenteNome: 'notomed_assistente'
+    };
+
+    const res = await processarMensagemWebhook(payload, segredo, deps);
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.acao, 'descartada');
+      assert.strictEqual(res.motivoDescarte, 'mensagem_enviada_pelo_assistente');
+    }
+  });
 });
+

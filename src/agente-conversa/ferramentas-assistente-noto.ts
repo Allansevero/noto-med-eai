@@ -188,6 +188,30 @@ export class FerramentasAssistenteNoto {
   }
 
   /**
+   * Obtém o último estado de onboarding do médico registrado em auditoria.
+   */
+  async obterEstadoOnboarding(medicoId: string): Promise<Record<string, any> | null> {
+    const res = await this.pool.query(
+      `select dados_novos from auditoria
+       where entidade = 'medicos' and entidade_id = $1 and acao = 'estado_onboarding_assistente'
+       order by criado_em desc limit 1`,
+      [medicoId]
+    );
+    return (res.rows[0]?.dados_novos as Record<string, any>) ?? null;
+  }
+
+  /**
+   * Grava o estado atual da conversa de onboarding do médico em auditoria.
+   */
+  async salvarEstadoOnboarding(medicoId: string, estado: Record<string, any>): Promise<void> {
+    await this.pool.query(
+      `insert into auditoria (acao, entidade, entidade_id, dados_novos)
+       values ('estado_onboarding_assistente', 'medicos', $1, $2::jsonb)`,
+      [medicoId, JSON.stringify({ ...estado, atualizadoEm: new Date().toISOString() })]
+    );
+  }
+
+  /**
    * Processa mensagens de uma conversa com um paciente, identificando comprovantes
    * via PaliGemma e aplicando a filtragem temporal de notas fiscais.
    */
