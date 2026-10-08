@@ -1135,10 +1135,15 @@
           <span id="btnIniciarWhatsappTxt">Gerar Conexão WhatsApp</span>
         </button>
         <button type="button" class="btn-link" id="btnConectarQr">Conectar por QR Code</button>
+        <button type="button" class="btn-link" id="btnVoltarPainelWhatsapp" hidden>← Voltar ao painel</button>
       </div>
 
       <!-- ETAPA 5: LIBERADO / PAINEL FINAL -->
       <div id="step5View" class="step-view hidden">
+        <div id="avisoConexaoWhatsappPainel" hidden>
+          <p>Confira a conexão do WhatsApp para retomar a emissão e a entrega das notas.</p>
+          <button type="button" class="btn-link" id="btnReconectarWhatsappPainel">Reconectar WhatsApp</button>
+        </div>
         <div class="painel-layout">
           <!-- LATERAL: CONTAMENU (230px) -->
           <div id="contaMenu" class="painel-lateral">
@@ -1418,6 +1423,7 @@
     const inputTelefone = document.getElementById('inputTelefone');
     const authHeader = document.getElementById('authHeader');
     let painelDisponivel = false;
+    let whatsappJaVinculado = false;
     let leituraCertificado = 0;
     const alertBox = document.getElementById('alertBox');
     const otpDigits = document.querySelectorAll('.otp-digit');
@@ -1694,13 +1700,16 @@
 
     function renderizarPassos(status) {
       const p = status.passos;
+      whatsappJaVinculado = p.passo4WhatsappVinculado ?? p.passo4WhatsappConectado;
+      document.getElementById('avisoConexaoWhatsappPainel').hidden = !whatsappJaVinculado || p.passo4WhatsappConectado;
+      document.getElementById('btnVoltarPainelWhatsapp').hidden = !whatsappJaVinculado;
       document.getElementById('resumoNomeMedico').textContent = p.passo1Nome ? status.nomeUsuario : 'Preencha na Conta';
       document.getElementById('statusFiscalPainel').textContent = p.passo2FiscalConfirmado ? 'CONFIRMADO' : 'PENDENTE';
       document.getElementById('mensagemPainel').textContent = status.liberadoParaEmitir
         ? 'Você já pode emitir notas fiscais pelo WhatsApp.'
         : 'Seu WhatsApp está conectado. Confira as pendências fiscais na opção Conta para liberar a emissão.';
       if (!p.passo3CertificadoValido) mostrarPasso(3);
-      else if (!p.passo4WhatsappConectado) mostrarPasso(4);
+      else if (!whatsappJaVinculado) mostrarPasso(4);
       else mostrarPasso(5);
     }
 
@@ -2110,6 +2119,8 @@
 
     document.getElementById('btnIniciarWhatsapp').addEventListener('click', () => iniciarConexaoWhatsapp());
     document.getElementById('btnConectarQr').addEventListener('click', () => iniciarConexaoWhatsapp('qrcode'));
+    document.getElementById('btnReconectarWhatsappPainel').addEventListener('click', () => mostrarPasso(4));
+    document.getElementById('btnVoltarPainelWhatsapp').addEventListener('click', () => carregarFluxoOnboarding());
 
     // --- FATURAMENTO / STRIPE BILLING ---
     // Notificações de retorno do Checkout Stripe

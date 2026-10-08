@@ -24,6 +24,7 @@ export type StatusOnboardingMedico = {
     passo2FiscalConfirmado: boolean;
     passo3CertificadoValido: boolean;
     passo4WhatsappConectado: boolean;
+    passo4WhatsappVinculado?: boolean;
   };
   liberadoParaEmitir: boolean;
   dadosProfissionaisCompletos: boolean;
@@ -75,7 +76,8 @@ export async function consultarStatusOnboarding(
       to_jsonb(msf)->'parametros_emissao' as parametros_emissao,
       (select w.numero_telefone from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado' order by w.conectado_em desc nulls last limit 1) as numero_whatsapp,
       (select count(*) from medico_certificados c where c.medico_id = m.id and c.status = 'ativo') as cert_ativos,
-      (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado') as whats_conectados
+      (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado') as whats_conectados,
+      exists(select 1 from whatsapp_instancias w where w.medico_id = m.id and w.oficial = false and w.conectado_em is not null) as whatsapp_vinculado
     from medicos m
     join usuarios u on u.id = m.usuario_id
     left join medico_perfil_fiscal pf on pf.medico_id = m.id
@@ -100,6 +102,8 @@ export async function consultarStatusOnboarding(
   const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico) && (!preparacaoFiscalAtiva || politicaRevisada) && referenciaValidada;
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
+  // A temporary disconnect does not undo the completed pairing step.
+  const passo4WhatsappVinculado = Boolean(r.whatsapp_vinculado) || passo4WhatsappConectado;
 
   // Identidade profissional não impede acesso ao painel, mas é obrigatória para emissão.
   const cadastroProfissionalCompleto = dadosProfissionaisCompletos({ nomeCompleto: r.medico_nome, crm: r.crm });
@@ -119,7 +123,8 @@ export async function consultarStatusOnboarding(
       passo2XmlEnviado,
       passo2FiscalConfirmado,
       passo3CertificadoValido,
-      passo4WhatsappConectado
+      passo4WhatsappConectado,
+      passo4WhatsappVinculado
     },
     liberadoParaEmitir,
     dadosProfissionaisCompletos: cadastroProfissionalCompleto,
