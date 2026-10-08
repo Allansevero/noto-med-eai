@@ -168,6 +168,17 @@ export function criarAppExpress() {
     res.sendFile(join(__dirname, 'ui', 'index.html'));
   });
 
+  // Páginas institucionais simples (Google Console)
+  app.get('/sobre', (_req: Request, res: Response) => {
+    res.sendFile(join(__dirname, 'ui', 'sobre.html'));
+  });
+  app.get('/termos', (_req: Request, res: Response) => {
+    res.sendFile(join(__dirname, 'ui', 'termos.html'));
+  });
+  app.get('/privacidade', (_req: Request, res: Response) => {
+    res.sendFile(join(__dirname, 'ui', 'privacidade.html'));
+  });
+
   // Rota de Solicitação de OTP (WhatsApp)
   app.post('/api/auth/otp/solicitar', async (req: Request, res: Response) => {
     try {
