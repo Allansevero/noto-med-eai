@@ -72,3 +72,21 @@ do arquivo. Esses diagnósticos são distintos de um `502` HTML retornado pelo
 proxy: nesse caso, confira os logs do serviço e sua disponibilidade.
 
 Referência: https://developers.google.com/workspace/drive/picker/guides/web-picker
+
+## NVIDIA no mapeamento das colunas
+
+Configure `NVIDIA_API_KEY` no ambiente do serviço web e `NVIDIA_MODEL=moonshotai/kimi-k3`.
+Com a chave NVIDIA configurada, a importação usa esse provedor. Sem ela, mantém
+Groq conforme a configuração existente. Uma falha da NVIDIA não troca de provedor
+silenciosamente. As outras funções do Noto continuam com sua configuração de IA atual.
+
+O servidor chama o endpoint fixo `https://integrate.api.nvidia.com/v1/chat/completions`
+com `stream: false`, usando somente cabeçalhos reconhecidos e sanitizados. Nenhum
+valor de paciente, imagem ou planilha completa é enviado à IA. A resposta é
+validada antes de ler os campos das linhas. A requisição tem prazo de 30 segundos;
+respostas incompletas, índices inválidos e colunas incompatíveis são recusados.
+O modelo indicado precisa estar disponível para a conta NVIDIA configurada.
+
+Use uma chave nova se a anterior tiver sido compartilhada em mensagens. Chaves
+ficam somente no ambiente; nunca em código, navegador ou logs. Após configurar,
+implante o serviço. Não há migração de banco para a troca do provedor.

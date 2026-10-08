@@ -2,6 +2,7 @@ import {Router,type RequestHandler,type Response} from 'express';
 import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
 import type pg from 'pg';
 import type {GooglePlanilhas,MapeadorColunasPlanilha,ResultadoExtracaoPlanilha} from './types.js';
+import {ErroNvidiaPlanilhas} from './nvidia-mapeador-colunas.js';
 import {ErroGooglePlanilhas} from './google-client.js';
 import {extrairPacientesPlanilha} from './extrair-pacientes.js';
 import {importarPacientesPlanilha} from './importar-pacientes.js';
@@ -33,9 +34,10 @@ export function criarRouterGooglePlanilhas(deps:Deps){
    const diagnostico={rota,etapa:r.locals.planilhaEtapa as string,
     codigo:semCabecalho?'CABECALHO_NAO_IDENTIFICADO':groq?'IA_HTTP_ERRO':codigoBanco?'BANCO_ERRO':'ERRO_INTERNO',
     ...(codigoBanco?{codigoBanco}:{}),...(groq?{statusHttp:Number(groq[1])}:{}),
-    ...(e instanceof ErroGooglePlanilhas?{etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:{})};
+    ...(e instanceof ErroGooglePlanilhas?{etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:{}),
+    ...(e instanceof ErroNvidiaPlanilhas?{provedor:e.provedor,etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:{})};
    console.warn('[Google Planilhas]',{resultado:'falha',status,duracaoMs:Date.now()-inicio,...diagnostico});
-   const detalhe=e instanceof ErroPublico||e instanceof ErroGooglePlanilhas?e.message:
+   const detalhe=e instanceof ErroPublico||e instanceof ErroGooglePlanilhas||e instanceof ErroNvidiaPlanilhas?e.message:
     semCabecalho?'Não encontramos os títulos das colunas nesta aba. Use títulos como Nome, CPF, E-mail e Telefone nas primeiras dez linhas, ou escolha outra aba.':
     groq?'A leitura das colunas pela IA está indisponível. A equipe precisa verificar a configuração do serviço.':
     'Não foi possível concluir a operação. Confira a conexão e tente novamente.';
