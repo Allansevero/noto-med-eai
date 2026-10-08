@@ -63,7 +63,7 @@ Ferramentas mínimas:
   ou avanço automático por duplicidade.
 - `registrar`: eventos, resultado da verificação e motivo de intervenção.
 
-O Groq recebe um JSON selecionado, diagnósticos conhecidos e descrições de rejeição com minimização de identificadores, e retorna proposta validada por Zod. Não recebe
+O NVIDIA recebe um JSON selecionado, diagnósticos conhecidos e descrições de rejeição com minimização de identificadores, e retorna proposta validada por Zod. Não recebe
 SQL, CPF, nome, descrição clínica, certificado, XML ou resposta bruta do provedor.
 A resposta técnica completa e o XML original da DPS ficam restritos ao caso no banco. As descrições selecionadas não incluem o campo Complemento; números longos, e-mails e valores entre aspas são ocultados antes do envio ao modelo. Mensagens técnicas
 não são enviadas como explicação ao usuário. A decisão registra hipótese,
@@ -117,7 +117,7 @@ histórico detalhado disponível: somente o contador/erro legado, sem inventar d
 
 1. Publicar a imagem com o código e os scripts atualizados. Aplicar `npm run migrate:agente` com a conexão de backend.
    A migração é aditiva e transacional; pressupõe os papéis Supabase existentes.
-2. Configurar Groq e integrações fiscais reais. Habilitar a flag em **todos** os
+2. Configurar NVIDIA e integrações fiscais reais. Habilitar a flag em **todos** os
    workers; parar workers antigos antes da troca. Não misturar políticas de lock.
 3. Definir `AGENTE_FISCAL_ATIVO=true` no serviço e executar `npm run check:agente`. A checagem confirma configuração e tabela sem consumir a fila; não valida APIs externas nem workers em execução. Reiniciar todos os workers com a nova configuração e conferir os logs. Validar primeiro em homologação. Nenhuma migração ou transmissão real foi
    executada durante esta implementação.
@@ -163,8 +163,8 @@ Testes em memória cobrem o loop do worker, caminho normal sem LLM, veto a decis
 inseguras, limite, repetição de evento, falha do modelo, autorização sem persistência,
 falha após autorização e entrega. Testes do transporte distinguem erros antes do
 envio de resultados incertos; fixtures do emissor verificam que o modo conservador
-não altera perfil nem avança sequência por rejeição. O contrato Groq rejeita ações
-inventadas e respostas inválidas. Não há teste contra PostgreSQL/SEFIN/Groq reais;
+não altera perfil nem avança sequência por rejeição. O contrato NVIDIA rejeita ações
+inventadas e respostas inválidas. Não há teste contra PostgreSQL/SEFIN/NVIDIA reais;
 concorrência e migração precisam de validação em homologação antes da ativação.
 
 A evolução para E0676 foi validada com transporte simulado: o XML retransmitido

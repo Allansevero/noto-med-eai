@@ -1,6 +1,6 @@
 /**
  * Porta de serviço para extração inteligente de dados de consultas médicas via IA.
- * Isola a comunicação com provedores de LLM (como a Groq API) das regras de negócio
+ * Isola a comunicação com provedores de LLM (como a NVIDIA API) das regras de negócio
  * e fluxos do WhatsApp, permitindo testes sem dependências de rede e troca de modelo.
  */
 

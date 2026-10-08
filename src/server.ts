@@ -2,10 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {diagnosticoEntradaWebhook,diagnosticoResultadoWebhook,diagnosticoErroWebhook} from './whatsapp/diagnostico-webhook.js';
 import {criarRouterGooglePlanilhas} from './integracoes/google-planilhas/router.js';
 import {GooglePlanilhasClient} from './integracoes/google-planilhas/google-client.js';
-import {NvidiaMapeadorColunas} from './integracoes/google-planilhas/nvidia-mapeador-colunas.js';
-import {GroqMapeadorColunas} from './integracoes/google-planilhas/groq-mapeador-colunas.js';
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
-import { GroqGeradorMensagemNoto } from './io/groq/groq-gerador-mensagem-noto.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
  * Expõe as rotas de webhook da Evolution API, API de autenticação por OTP
@@ -38,7 +35,6 @@ import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onbo
 import { resolverMedicoId } from './onboarding/io/resolver-medico-id.js';
 import { salvarPerfilProfissional, ErroPerfilProfissional } from './io/postgres/salvar-perfil-profissional.js';
 import { ZodError } from 'zod';
-import { GroqApiClient } from './io/groq/groq-api-client.js';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
 import { PostgresBillingRepositorio } from './io/postgres/postgres-billing-repositorio.js';
@@ -56,7 +52,7 @@ import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
 import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
 import { criarRouterTribemdDesenvolvedor } from './desenvolvedor/tribemd-router.js';
 import { NavegadorTribemd } from './desenvolvedor/tribemd-navegador.js';
-import { GroqDecisorTribemd } from './desenvolvedor/tribemd-agente.js';
+import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -83,18 +79,14 @@ export function criarAppExpress() {
     config.evolutionGlobalApiKey,
     config.evolutionOfficialInstanceName
   );
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, new GroqGeradorMensagemNoto(config.groqApiKey, config.groqModel));
+  const ia = criarServicosIa(config);
+  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
   const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
     pool
   );
-  const groqClient = new GroqApiClient({
-    apiKey: config.groqApiKey,
-    modeloPrincipal: config.groqModel,
-    modeloFallback: 'openai/gpt-oss-20b'
-  });
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
@@ -133,7 +125,7 @@ export function criarAppExpress() {
   }));
   app.use('/api/desenvolvedor/tribemd', criarRouterTribemdDesenvolvedor({
     ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
-    configurado: Boolean(config.groqApiKey), decisor: new GroqDecisorTribemd(config.groqApiKey, config.groqModel, process.env['TRIBEMD_VISION_MODEL'] || 'meta-llama/llama-4-scout-17b-16e-instruct'),
+    configurado: Boolean(config.nvidiaApiKey), decisor: ia.decisorTribemd,
     criarNavegador: signal => NavegadorTribemd.criar(config.chromiumExecutablePath || '/usr/bin/chromium-browser', signal)
   }));
   if (config.desenvolvedorFiscalAtivo) {
@@ -160,8 +152,7 @@ export function criarAppExpress() {
   app.use('/api/integracoes/google-planilhas', criarRouterGooglePlanilhas({
     pool, google: config.googleClientId && config.googleClientSecret && config.googleRedirectUri
       ? new GooglePlanilhasClient({clientId:config.googleClientId,clientSecret:config.googleClientSecret,redirectUri:config.googleRedirectUri}) : undefined,
-    mapeador: config.nvidiaApiKey ? new NvidiaMapeadorColunas(config.nvidiaApiKey,config.nvidiaModel)
-      : config.groqApiKey ? new GroqMapeadorColunas(config.groqApiKey,config.groqModel) : undefined,
+    mapeador: ia.mapeadorPlanilhas,
     autenticar: async token => { const {data,error}=await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
     encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??'',
     googleApiKey: config.googleApiKey,
@@ -613,7 +604,7 @@ export function criarAppExpress() {
       comunicadorNoto,
       billingRepositorio: billingRepo,
       enviarMensagemPaciente: evolutionClient,
-      iaService: groqClient,
+      iaService: ia.extrator,
       consultaCpfProvider: hubCpfClient,
       segredoConfigurado: segredoEsperado,
       pepper: config.appPepper,
@@ -661,7 +652,7 @@ export function criarAppExpress() {
     }
   });
 
-  // Rota de Extração Inteligente de Dados com Groq AI
+  // Rota de Extração Inteligente de Dados com NVIDIA
   app.post('/api/ia/extrair-dados', async (req: Request, res: Response) => {
     try {
       const { texto, mensagens, dataReferencia } = req.body || {};
@@ -670,7 +661,7 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'Texto ou mensagens são obrigatórios' });
       }
       const dataRef = dataReferencia ? new Date(dataReferencia) : new Date();
-      const resultado = await groqClient.extrairDados(textoConsulta, dataRef);
+      const resultado = await ia.extrator.extrairDados(textoConsulta, dataRef);
       return res.json({ ok: true, dados: resultado });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro na extração de IA' });

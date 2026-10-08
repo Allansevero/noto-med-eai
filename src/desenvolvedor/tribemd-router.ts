@@ -37,7 +37,7 @@ export function criarRouterTribemdDesenvolvedor(deps:{ativo:boolean;token?:strin
   let d:z.infer<typeof entrada>;
   try{d=entrada.parse(req.body);}catch{res.status(400).json({ok:false,detalhe:'Informe o modo de login e datas válidas, com intervalo de até 31 dias. No modo automático, informe e-mail e senha.'});return;}
   finally{apagarCorpo(req);}
-  if(!deps.configurado){apagarCredenciais(d);res.status(503).json({ok:false,detalhe:'Configure GROQ_API_KEY no serviço web para executar o agente.'});return;}
+  if(!deps.configurado){apagarCredenciais(d);res.status(503).json({ok:false,detalhe:'Configure NVIDIA_API_KEY no serviço web para executar o agente.'});return;}
   if(sessoes.size){apagarCredenciais(d);res.status(429).json({ok:false,sessaoId:[...sessoes.keys()][0],detalhe:'Encerre a sessão anterior e aguarde a limpeza antes de iniciar outro teste.'});return;}
   const s:Sessao={id:randomUUID(),expira:Date.now()+20*60000,estado:'preparando',modo:d.modo||'automatico',controller:new AbortController(),eventos:[],encerrando:false};sessoes.set(s.id,s);
   s.timer=setTimeout(()=>{void limpar(s).catch(()=>{});},20*60000);s.timer.unref();

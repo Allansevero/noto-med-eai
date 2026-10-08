@@ -44,7 +44,7 @@ Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
 3. No Easypanel `notomed` → `web`, configurar `GOOGLE_CLIENT_ID`,
    `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (o endereço acima), além de
    `GOOGLE_API_KEY` para o Picker, `GOOGLE_APP_ID` com o **número numérico do
-   projeto**, e `GROQ_API_KEY` e `GROQ_MODEL` já usados pelo Noto. OAuth, chave e
+   projeto**, e `NVIDIA_API_KEY` e `NVIDIA_MODEL` já usados pelo Noto. OAuth, chave e
    número devem pertencer ao mesmo projeto. O nome/ID textual do projeto, como
    `noto-integrations`, não serve como `GOOGLE_APP_ID`. Não usar URL HTTP em produção.
 4. Implantar código, executar `npm run migrate:planilhas` e reiniciar `web`.
@@ -54,7 +54,7 @@ Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
    expirada, entrar novamente; a integração não confia no medicoId do navegador.
 
 Sem credenciais Google completas, a Conta mostra integração indisponível e os
-outros fluxos seguem funcionando. Testes simulam Google/Groq e usam PostgreSQL
+outros fluxos seguem funcionando. Testes simulam Google/NVIDIA e usam PostgreSQL
 local isolado; não demonstram consentimento, permissões ou importação em produção.
 
 ## Diagnóstico de seleção da planilha
@@ -76,9 +76,8 @@ Referência: https://developers.google.com/workspace/drive/picker/guides/web-pic
 ## NVIDIA no mapeamento das colunas
 
 Configure `NVIDIA_API_KEY` no ambiente do serviço web e `NVIDIA_MODEL=moonshotai/kimi-k3`.
-Com a chave NVIDIA configurada, a importação usa esse provedor. Sem ela, mantém
-Groq conforme a configuração existente. Uma falha da NVIDIA não troca de provedor
-silenciosamente. As outras funções do Noto continuam com sua configuração de IA atual.
+Todos os fluxos de IA usam NVIDIA. Sem a chave, o mapeamento de colunas fica
+indisponível. Uma falha da NVIDIA não troca de provedor silenciosamente.
 
 O servidor chama o endpoint fixo `https://integrate.api.nvidia.com/v1/chat/completions`
 com `stream: false`, usando somente cabeçalhos reconhecidos e sanitizados. Nenhum

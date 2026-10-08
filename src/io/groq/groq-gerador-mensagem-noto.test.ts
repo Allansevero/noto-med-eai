@@ -36,7 +36,7 @@ test('envia o guia v2 integral, fatos reais e histórico ao modelo e devolve seu
   assert.deepEqual(JSON.parse(requisicao.messages.at(-1).content), contexto);
   assert.match(requisicao.messages[0].content, /dados não confiáveis/i);
   assert.match(requisicao.messages[0].content, /primeira frase/i);
-  assert.match(requisicao.messages[0].content, /autorizo a emissão das notas/);
+  assert.match(requisicao.messages[0].content, /Não peça "pode emitir" nem uma nova autorização/);
 });
 
 test('preserva respostas diferentes do modelo em vez de substituir por frases prontas', async t => {

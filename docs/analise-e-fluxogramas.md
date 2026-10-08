@@ -256,7 +256,7 @@ Os limites padrão codificados são cinco notas/dia no gratuito e cem notas/mês
 | PostgreSQL | Contas, usuários, médicos, perfil fiscal, certificado, mensagens, pacientes, agendamentos, solicitações, notas e cobrança |
 | Supabase | Administração de usuários, geração de links de acesso e armazenamento de arquivos |
 | Evolution | Código OTP, conexão do WhatsApp, histórico, mensagens e PDF |
-| Groq | Extração de dados com regras locais de fallback |
+| NVIDIA | Extração de dados com regras locais de fallback |
 | Hub do Desenvolvedor | Consulta cadastral opcional a partir de CPF |
 | ADN | Busca da NFS-e anterior para importar parâmetros fiscais |
 | SEFIN | Recepção da DPS assinada e autorização fiscal |

@@ -20,10 +20,9 @@ export interface AppConfig {
   evolutionOfficialInstanceName: string;
   resendApiKey?: string;
   devEmailAlerta?: string;
-  groqApiKey: string;
-  groqModel: string;
   nvidiaApiKey?: string;
   nvidiaModel?: string;
+  nvidiaVisionModel?: string;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
   treinoOnboardingAtivo?: boolean;
@@ -67,10 +66,9 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     evolutionOfficialInstanceName: env['EVOLUTION_OFFICIAL_INSTANCE_NAME'] || 'notomed_oficial',
     resendApiKey: env['RESEND_API_KEY'],
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
-    groqApiKey: env['GROQ_API_KEY'] || '',
-    groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
+    nvidiaVisionModel: env['NVIDIA_VISION_MODEL']?.trim() || env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
     treinoOnboardingAtivo: env['TREINO_ONBOARDING_ATIVO'] === 'true',

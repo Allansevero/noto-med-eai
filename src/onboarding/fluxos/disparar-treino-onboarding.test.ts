@@ -9,7 +9,7 @@ const config: AppConfig = {
   porta: 3000, host: 'localhost', databaseUrl: '', supabaseUrl: '', supabaseServiceRoleKey: '',
   encryptionKey: '', appPepper: '', evolutionApiUrl: 'https://evolution.test',
   evolutionGlobalApiKey: 'test-key', evolutionWebhookSecret: '', evolutionOfficialInstanceName: 'noto-oficial',
-  groqApiKey: '', groqModel: '', treinoOnboardingAtivo: true, preparacaoFiscalAtiva: true
+  nvidiaApiKey: '', nvidiaModel: '', treinoOnboardingAtivo: true, preparacaoFiscalAtiva: true
 };
 
 // Only PostgreSQL and HTTP are replaced: status, dispatcher, reservation and sending run for real.

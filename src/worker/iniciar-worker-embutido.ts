@@ -1,5 +1,5 @@
 import { PostgresComunicadorNoto } from '../io/postgres/postgres-comunicador-noto.js';
-import { GroqGeradorMensagemNoto } from '../io/groq/groq-gerador-mensagem-noto.js';
+import { criarServicosIa } from '../ia/criar-servicos-ia.js';
 import { iniciarAvisosPendenciasProfissionais } from './avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados-profissionais-service.js';
 /**
@@ -9,7 +9,6 @@ import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados
  */
 
 import { PostgresInvestigacaoRepositorio } from '../io/postgres/postgres-investigacao-repositorio.js';
-import { GroqDecisorFiscal } from '../io/groq/groq-decisor-fiscal.js';
 
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
@@ -52,7 +51,8 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     config.evolutionOfficialInstanceName
   );
 
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, new GroqGeradorMensagemNoto(config.groqApiKey, config.groqModel));
+  const ia = criarServicosIa(config);
+  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
   const notificadorAlertas: NotificadorAlertas = {
     async notificarMedicoWhatsApp(params) {
       if(!params.medicoId || !params.solicitacaoId)return;
@@ -89,7 +89,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
           notificadorAlertas,
           agenteFiscal: config.agenteFiscalAtivo ? {
             repositorio: new PostgresInvestigacaoRepositorio(pool),
-            decisor: new GroqDecisorFiscal(config.groqApiKey, config.groqModel)
+            decisor: ia.decisorFiscal
           } : undefined
         });
         console.log(`[WorkerEmbutido] Solicitação ${item.id} finalizada com status: ${res.status}`);
