@@ -1,3 +1,6 @@
+import {criarRouterGooglePlanilhas} from './integracoes/google-planilhas/router.js';
+import {GooglePlanilhasClient} from './integracoes/google-planilhas/google-client.js';
+import {GroqMapeadorColunas} from './integracoes/google-planilhas/groq-mapeador-colunas.js';
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
 import { GroqGeradorMensagemNoto } from './io/groq/groq-gerador-mensagem-noto.js';
 /**
@@ -150,6 +153,14 @@ export function criarAppExpress() {
       res.sendFile(join(__dirname, 'ui', 'desenvolvedor-fiscal.html'));
     });
   }
+
+  app.use('/api/integracoes/google-planilhas', criarRouterGooglePlanilhas({
+    pool, google: config.googleClientId && config.googleClientSecret && config.googleRedirectUri
+      ? new GooglePlanilhasClient({clientId:config.googleClientId,clientSecret:config.googleClientSecret,redirectUri:config.googleRedirectUri}) : undefined,
+    mapeador: config.groqApiKey ? new GroqMapeadorColunas(config.groqApiKey,config.groqModel) : undefined,
+    autenticar: async token => { const {data,error}=await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
+    encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??''
+  }));
 
   // UI Web de Entrada e Assets Estáticos
   app.use('/assets', express.static(join(__dirname, 'assets')));

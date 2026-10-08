@@ -15,9 +15,10 @@ export class SupabaseAuthAdminService implements AuthAdminService {
   private readonly supabase: SupabaseClient;
 
   constructor(
-    supabaseUrl: string,
-    supabaseServiceRoleKey: string,
-    private readonly pool: pg.Pool
+    private readonly supabaseUrl: string,
+    private readonly supabaseServiceRoleKey: string,
+    private readonly pool: pg.Pool,
+    private readonly criarClienteSessao?: () => SupabaseClient
   ) {
     this.supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
@@ -133,14 +134,25 @@ export class SupabaseAuthAdminService implements AuthAdminService {
       email: (await this.buscarEmailPorAuthId(authUserId)) || ''
     });
 
-    if (error || !data?.properties) {
-      return { tokenAcesso: `sessao_${authUserId}` };
+    if (error || !data?.properties?.hashed_token) {
+      throw new Error('Não foi possível gerar a sessão de acesso.');
     }
 
-    return {
-      tokenAcesso: data.properties.hashed_token || `sessao_${authUserId}`,
-      urlRedirecionamento: data.properties.action_link
-    };
+    // verifyOtp altera a sessão ativa do cliente: nunca usar o cliente administrativo.
+    const clienteSessao = this.criarClienteSessao?.() ?? createClient(
+      this.supabaseUrl,
+      this.supabaseServiceRoleKey,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: sessao, error: erroSessao } = await clienteSessao.auth.verifyOtp({
+      token_hash: data.properties.hashed_token,
+      type: 'magiclink'
+    });
+    if (erroSessao || !sessao?.session?.access_token || sessao.user?.id !== authUserId) {
+      throw new Error('Não foi possível validar a sessão de acesso.');
+    }
+
+    return { tokenAcesso: sessao.session.access_token };
   }
 
   private async buscarEmailPorAuthId(authUserId: string): Promise<string | null> {

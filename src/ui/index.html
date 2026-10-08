@@ -1049,6 +1049,9 @@
           <button type="button" class="conta-menu-item" id="btnContaFiscal" data-conta-secao="fiscal">Dados fiscais<span aria-hidden="true">›</span></button>
           <button type="button" class="conta-menu-item" id="btnContaPreferencias" data-conta-secao="preferencias">Preferências<span aria-hidden="true">›</span></button>
         </nav>
+        <nav class="conta-menu-container" aria-label="Integrações">
+          <button type="button" class="conta-menu-item" id="btnContaPlanilhas" data-conta-secao="planilhas">Google Planilhas<span aria-hidden="true">›</span></button>
+        </nav>
         <nav class="conta-menu-container" aria-label="Faturamento e equipe">
           <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
           <button type="button" class="conta-menu-item" id="btnContaMembros" data-conta-secao="membros">Membros<span aria-hidden="true">›</span></button>
@@ -1061,6 +1064,26 @@
       </div>
       <div id="contaInterna" class="hidden conta-interna">
         <button type="button" class="btn-link" id="btnVoltarConta">← Voltar</button>
+        <section id="contaSecaoPlanilhas" class="conta-secao hidden" aria-labelledby="tituloContaPlanilhas">
+          <h2 class="access-title" id="tituloContaPlanilhas">Google Planilhas</h2>
+          <p class="access-subtitle">Conecte sua planilha para importar pacientes. Você confere a prévia antes de salvar. Nenhuma nota será emitida nesta etapa.</p>
+          <p id="statusPlanilhaGoogle" role="status" aria-live="polite"></p>
+          <button type="button" class="btn-action" id="btnConectarGoogle">Conectar Google</button>
+          <div id="formPlanilhaGoogle" hidden>
+            <label for="inputPlanilhaGoogle">Link da planilha</label>
+            <input id="inputPlanilhaGoogle" class="input-data-field" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" />
+            <button type="button" class="btn-action" id="btnBuscarAbasGoogle">Buscar abas</button>
+            <label for="selectAbaGoogle">Aba com os pacientes</label>
+            <select id="selectAbaGoogle" class="input-data-field"></select>
+            <button type="button" class="btn-action" id="btnLerPlanilhaGoogle">Ler pacientes</button>
+            <div id="tabelaPlanilhaGoogle" hidden style="overflow-x:auto;margin-top:16px;">
+              <table><thead><tr><th>Linha</th><th>Nome</th><th>CPF</th><th>E-mail</th><th>Telefone</th><th>Pendências</th></tr></thead><tbody id="previaPlanilhaGoogle"></tbody></table>
+            </div>
+            <button type="button" class="btn-action" id="btnImportarPlanilhaGoogle" disabled>Confirmar importação</button>
+            <div id="resultadoImportacaoGoogle"></div>
+          </div>
+          <button type="button" class="btn-link" id="btnDesconectarGoogle" hidden>Desconectar Google</button>
+        </section>
         <section id="contaSecaoDados" class="conta-secao hidden" aria-labelledby="tituloContaDados">
           <h2 class="access-title" id="tituloContaDados">Dados da conta</h2>
       <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
@@ -1296,6 +1319,7 @@
     function efetuarLogout() {
       localStorage.removeItem('notomed_sessao');
       sessaoAtual = null;
+      limparPreviaGoogle(); googleEl('resultadoImportacaoGoogle').replaceChildren();
       pararPollingConexao();
 
       // Limpa os formulários
@@ -1571,6 +1595,11 @@
           document.getElementById('resumoNomeMedico').textContent = sessaoAtual.usuario.nome;
         }
         carregarStatusBilling();
+        if (new URLSearchParams(window.location.search).has('google_planilhas')) {
+          alternarAba('conta'); abrirSecaoConta('planilhas');
+          if (new URLSearchParams(window.location.search).get('google_planilhas') !== 'conectado') googleStatus('A conexão não foi concluída. Tente conectar novamente.');
+          window.history.replaceState?.({}, '', '/');
+        }
       }
     }
 
@@ -2066,7 +2095,7 @@
       }
     }
 
-    const secoesConta = { dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
+    const secoesConta = { dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', planilhas: 'Planilhas', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
     function voltarMenuConta() {
       document.getElementById('contaMenu').classList.remove('hidden');
       document.getElementById('contaInterna').classList.add('hidden');
@@ -2081,6 +2110,7 @@
       for (const [chave, slug] of Object.entries(secoesConta)) document.getElementById('contaSecao' + slug).classList.toggle('hidden', chave !== secao);
       if (secao === 'dados' || secao === 'fiscal') atualizarVisualizacaoConta();
       if (secao === 'faturamento') carregarStatusBilling();
+      if (secao === 'planilhas') {limparPreviaGoogle(); void carregarGooglePlanilhas();}
       document.getElementById('btnVoltarConta').focus();
     }
     for (const [chave, slug] of Object.entries(secoesConta)) document.getElementById('btnConta' + slug).addEventListener('click', () => abrirSecaoConta(chave));
@@ -2127,6 +2157,102 @@
         } catch {}
       }
     }
+
+    // INICIO GOOGLE PLANILHAS
+    let previaGoogleId = null, googleOperacao = false, googleVersaoTela = 0;
+    const googleEl = id => document.getElementById(id);
+    const googleStatus = texto => { googleEl('statusPlanilhaGoogle').textContent = texto; };
+    function limparPreviaGoogle() {
+      googleVersaoTela++; previaGoogleId = null;
+      googleEl('btnImportarPlanilhaGoogle').disabled = true;
+      googleEl('previaPlanilhaGoogle').replaceChildren();
+      googleEl('tabelaPlanilhaGoogle').hidden = true;
+    }
+    async function apiPlanilhaGoogle(caminho, body, method = body === undefined ? 'GET' : 'POST') {
+      const token = sessaoAtual?.tokenAcesso;
+      if (!token) throw Error('Entre novamente no Noto para acessar sua planilha.');
+      const res = await fetch('/api/integracoes/google-planilhas' + caminho, {
+        method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      const data = await res.json().catch(() => { throw Error('Não foi possível conectar. Tente novamente.'); });
+      if (!res.ok || !data.ok) throw Error(data.detalhe || 'Não foi possível concluir a operação.');
+      return data;
+    }
+    async function executarGoogle(acao) {
+      if (googleOperacao) return;
+      googleOperacao = true;
+      for (const id of ['btnConectarGoogle', 'btnBuscarAbasGoogle', 'btnLerPlanilhaGoogle', 'btnImportarPlanilhaGoogle', 'btnDesconectarGoogle']) googleEl(id).disabled = true;
+      try { await acao(); } catch (e) { googleStatus(e.message || 'Não foi possível concluir a operação.'); }
+      finally {
+        googleOperacao = false;
+        for (const id of ['btnConectarGoogle', 'btnBuscarAbasGoogle', 'btnLerPlanilhaGoogle', 'btnDesconectarGoogle']) googleEl(id).disabled = false;
+        googleEl('btnImportarPlanilhaGoogle').disabled = !previaGoogleId;
+      }
+    }
+    async function carregarGooglePlanilhas() {
+      await executarGoogle(async () => {
+        const data = await apiPlanilhaGoogle('/status');
+        googleEl('formPlanilhaGoogle').hidden = !data.conectado;
+        googleEl('btnDesconectarGoogle').hidden = !data.conectado;
+        googleEl('btnConectarGoogle').hidden = data.conectado;
+        googleStatus(!data.configurado ? 'A integração Google Planilhas ainda precisa ser ativada pela equipe.'
+          : data.conectado ? (data.iaConfigurada ? 'Google conectado. Informe o link da sua planilha.' : 'Google conectado. A leitura por IA ainda precisa ser ativada pela equipe.')
+          : 'Conecte sua conta Google para ler uma planilha. O Noto não altera seu arquivo.');
+      });
+    }
+    googleEl('btnConectarGoogle').addEventListener('click', () => executarGoogle(async () => {
+      limparPreviaGoogle(); const data = await apiPlanilhaGoogle('/conectar', {}); window.location.assign(data.url);
+    }));
+    googleEl('btnBuscarAbasGoogle').addEventListener('click', () => executarGoogle(async () => {
+      limparPreviaGoogle(); const versao = googleVersaoTela;
+      const data = await apiPlanilhaGoogle('/abas', { planilha: googleEl('inputPlanilhaGoogle').value });
+      if (versao !== googleVersaoTela) return;
+      googleEl('selectAbaGoogle').replaceChildren();
+      for (const aba of data.abas) { const option = document.createElement('option'); option.value = String(aba.id); option.textContent = aba.titulo; googleEl('selectAbaGoogle').appendChild(option); }
+      googleStatus('Escolha uma aba de ' + data.titulo + ' e clique em Ler pacientes.');
+    }));
+    googleEl('btnLerPlanilhaGoogle').addEventListener('click', () => executarGoogle(async () => {
+      limparPreviaGoogle(); const versao = googleVersaoTela;
+      const aba = googleEl('selectAbaGoogle').value;
+      if (aba === '') throw Error('Busque e escolha uma aba primeiro.');
+      googleStatus('Identificando as colunas e validando os pacientes…');
+      const data = await apiPlanilhaGoogle('/previa', { planilha: googleEl('inputPlanilhaGoogle').value, abaId: Number(aba) });
+      if (versao !== googleVersaoTela) return;
+      previaGoogleId = data.previaId;
+      const tbody = googleEl('previaPlanilhaGoogle');
+      for (const p of data.pacientes) {
+        const tr = document.createElement('tr');
+        for (const valor of [String(p.linha), p.nome || '—', p.cpf || '—', p.email || '—', p.telefone || '—', p.pendencias.length ? p.pendencias.map(codigo => ({nome_invalido:'Nome inválido',cpf_invalido:'CPF inválido',email_invalido:'E-mail inválido',telefone_invalido:'Telefone inválido',telefone_ausente:'Telefone ausente',telefone_cpf_conflitante:'Um telefone aparece com CPFs diferentes',cpf_telefones_conflitantes:'Um CPF aparece com telefones diferentes'}[codigo] || 'Revisar dados desta linha')).join(', ') : 'Pronto para conferir']) {
+          const td = document.createElement('td'); td.textContent = valor; tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      googleEl('tabelaPlanilhaGoogle').hidden = false;
+      googleStatus(data.pacientes.length + ' linhas de pacientes encontradas. Confira antes de importar. ' +
+        (data.limitado ? 'Leitura parcial: até 1001 linhas e 52 colunas. Dados fora desse intervalo não foram lidos.' : 'A leitura não atingiu os limites de linhas e colunas.'));
+    }));
+    googleEl('btnImportarPlanilhaGoogle').addEventListener('click', () => {
+      if (!previaGoogleId) return;
+      return executarGoogle(async () => {
+        const data = await apiPlanilhaGoogle('/importar', { previaId: previaGoogleId });
+        previaGoogleId = null;
+        googleStatus(data.criados + ' pacientes criados, ' + data.completados + ' completados, ' + data.semAlteracao + ' já cadastrados. ' + data.ignorados.length + ' linhas não importadas.');
+        if (data.ignorados.length) {
+          const ul = document.createElement('ul');
+          for (const item of data.ignorados) { const li = document.createElement('li'); li.textContent = 'Linha ' + item.linha + ': ' + item.motivo; ul.appendChild(li); }
+          googleEl('resultadoImportacaoGoogle').replaceChildren(ul);
+        } else googleEl('resultadoImportacaoGoogle').replaceChildren();
+      });
+    });
+    googleEl('btnDesconectarGoogle').addEventListener('click', () => executarGoogle(async () => {
+      const data = await apiPlanilhaGoogle('/conexao', undefined, 'DELETE'); limparPreviaGoogle();
+      googleEl('formPlanilhaGoogle').hidden = true; googleEl('btnConectarGoogle').hidden = false; googleEl('btnDesconectarGoogle').hidden = true;
+      googleStatus(data.revogadoNoGoogle === false ? 'Desconectado do Noto. A revogação no Google falhou; remova o acesso do Noto nas permissões da sua conta Google.' : 'Google desconectado. Os pacientes já importados foram mantidos.');
+    }));
+    googleEl('inputPlanilhaGoogle').addEventListener('input', () => {limparPreviaGoogle();googleEl('selectAbaGoogle').replaceChildren();});
+    googleEl('selectAbaGoogle').addEventListener('change', limparPreviaGoogle);
+    // FIM GOOGLE PLANILHAS
 
     // Configuração de campo editável inline (Nome, CRM, RQE)
     function configurarCampoEditavel(inputId, btnId, campo) {

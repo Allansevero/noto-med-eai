@@ -29,6 +29,9 @@ export interface AppConfig {
   desenvolvedorFiscalAtivo?: boolean;
   desenvolvedorFiscalToken?: string;
   chromiumExecutablePath?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleRedirectUri?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -69,6 +72,9 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     desenvolvedorFiscalAtivo: env['DESENVOLVEDOR_FISCAL_ATIVO'] === 'true',
     desenvolvedorFiscalToken: env['DESENVOLVEDOR_FISCAL_TOKEN'],
     chromiumExecutablePath: env['CHROMIUM_EXECUTABLE_PATH'] || '/usr/bin/chromium-browser',
+    googleClientId: env['GOOGLE_CLIENT_ID'],
+    googleClientSecret: env['GOOGLE_CLIENT_SECRET'],
+    googleRedirectUri: env['GOOGLE_REDIRECT_URI'],
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],
