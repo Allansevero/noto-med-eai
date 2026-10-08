@@ -67,6 +67,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
   }
 
   private async emitirPreparado(item: SolicitacaoEmissaoItem, correcao?: FalhaEmissao): Promise<ResultadoEmissaoDps> {
+    // Um mesmo instante define competência e dhEmi, inclusive na virada do dia.
+    // Correções preservam o instante da DPS original, sem gerar outra emissão.
+    const dataGeracao = correcao ? new Date(String(correcao.contextoTecnico!.dataGeracao)) : new Date();
     const { rows: profissionais } = await this.pool.query(
       'select m.nome_completo, m.crm, m.rqe, m.especialidade, s.aguardando_confirmacao_medico from medicos m join solicitacoes_nota s on s.medico_id=m.id where m.id=$1 and s.id=$2', [item.medicoId,item.id]);
     if (!profissionais[0] || !dadosProfissionaisCompletos(profissionais[0])) {
@@ -94,7 +97,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     }
 
     const preparacao = this.preparacaoFiscalAtiva
-      ? prepararEmissao(item, await carregarEvidenciasEmissao(this.pool, item), new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }))
+      ? prepararEmissao(item, await carregarEvidenciasEmissao(this.pool, item), dataGeracao.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }))
       : undefined;
     if (preparacao && !preparacao.ok) {
       return { sucesso: false, erro: 'Há parâmetros fiscais pendentes de revisão antes do envio.',
@@ -176,7 +179,6 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
         pendenciasFiscais: pendencias, contextoTecnico: { etapa: 'validacao', transmitida: false, origem: preparacao.origem } };
     }
     let ndpsAtual = correcao ? Number(correcao.contextoTecnico!.ndps) : ndps;
-    const dataGeracao = correcao ? new Date(String(correcao.contextoTecnico!.dataGeracao)) : new Date();
     let xmlDpsOriginal: string | undefined;
     const anoMes = (preparacao?.ok ? preparacao.competencia : dataGeracao.toISOString()).slice(0, 7);
     let chaveAcessoFinal = '';

@@ -22,9 +22,11 @@ não escolhe enquadramento, alíquota ou classificação por conta própria.
 | Classificação nacional/municipal e NBS | Cadastro do serviço revisado; divergência com snapshot bloqueia |
 | Ambiente, regime, tributação e local da prestação | Política explicitamente revisada no onboarding |
 | Valor e descrição | Solicitação original; não são recalculados nem substituídos por IA |
-| Competência | `solicitacoes_nota.competencia_emissao`, quando informada; senão, a única data das consultas vinculadas |
+| Competência | Dia da emissão em Brasília, usando o mesmo instante de `dhEmi`; datas das consultas permanecem apenas na descrição |
 | Número e série | Sequência existente e série revisada; formato inválido não é truncado pela preparação |
 | Dados opcionais ausentes | Não recebem código fictício; ausência obrigatória gera pendência |
+
+A competência das novas emissões não é definida pelas datas das consultas nem por valores históricos de `competencia_emissao`. A vigência dos parâmetros é verificada contra o dia da emissão. Correções da mesma DPS preservam seu instante original. Essa regra não altera notas autorizadas nem libera solicitações retidas automaticamente.
 
 A política é armazenada por serviço em `medico_servicos_fiscais.parametros_emissao`.
 Contém origem, instante da confirmação, intervalo de validade, parâmetros e
