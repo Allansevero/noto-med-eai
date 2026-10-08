@@ -1,3 +1,5 @@
+import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
+import { GroqGeradorMensagemNoto } from './io/groq/groq-gerador-mensagem-noto.js';
 import { iniciarAvisosPendenciasProfissionais } from './worker/avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 /**
@@ -20,7 +22,7 @@ import { processarItemFila } from './worker/processar-item-fila.js';
 import { createClient } from '@supabase/supabase-js';
 import { SefinNacionalClient } from './io/fiscal/sefin-nacional-client.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
-import { formatarMensagemErroMedico, type NotificadorAlertas } from './worker/notificar-erro-medico.js';
+import { type NotificadorAlertas } from './worker/notificar-erro-medico.js';
 
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 6)}`;
 const filaRepo = new PostgresFilaRepositorio(pool, config.agenteFiscalAtivo);
@@ -49,14 +51,13 @@ const evolutionClient = new EvolutionApiClient(
   config.evolutionOfficialInstanceName
 );
 
+const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, new GroqGeradorMensagemNoto(config.groqApiKey, config.groqModel));
 const notificadorAlertas: NotificadorAlertas = {
   async notificarMedicoWhatsApp(params) {
-    const texto = formatarMensagemErroMedico(params);
-    await evolutionClient.enviarTexto({
-      instanciaNome: config.evolutionOfficialInstanceName,
-      contatoTelefone: params.telefoneMedico,
-      texto
-    });
+    if(!params.medicoId || !params.solicitacaoId)return;
+      const envio=await comunicadorNoto.enviar({medicoId:params.medicoId,solicitacaoId:params.solicitacaoId,
+        chave:`falha:${params.solicitacaoId}`,evento:'falha_emissao',dados:{diagnostico:params.motivoErro}});
+      if(!envio.sucesso)console.warn('[NotoConversa] Aviso de emissão aguardando comunicação.',{solicitacaoId:params.solicitacaoId});
   },
   async notificarDesenvolvedorEmail(params) {
     if (config.resendApiKey && config.devEmailAlerta) {
@@ -65,7 +66,7 @@ const notificadorAlertas: NotificadorAlertas = {
   }
 };
 
-const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName);
+const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
 const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
 let executando = true;
 

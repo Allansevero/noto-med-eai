@@ -10,12 +10,16 @@ separadas, ou campos explícitos `Nome completo:`, `CRM:` e `RQE:`. Dados válid
 existentes não são substituídos pela conversa; RQE só muda se informado.
 As mensagens seguem o guia integral em [noto-conversa.md](prompts/noto-conversa.md).
 O guia orienta comunicação, não concede poderes para alterar tributação ou emitir
-fora das ferramentas. Este fluxo é determinístico; não habilita conversa livre,
-áudio, reações ou alteração fiscal por IA.
+fora das ferramentas. As respostas são geradas pela IA configurada na Groq, usando o guia v2 completo,
+o perfil, o caso e as últimas oito comunicações do médico. Também responde às
+mensagens de texto do médico reconhecido no WhatsApp Oficial. Perguntas sobre
+CPF ao paciente usam contexto separado, sem histórico privado do médico.
+A IA escreve o texto; validação, gravação e autorização continuam determinísticas.
+Não habilita áudio, reações ou alteração fiscal livre por IA.
 
 ## Notas que já estavam pendentes
 
-`npm run migrate:perfil` aplica as duas migrações em uma única transação. Na
+`npm run migrate:perfil` aplica as três migrações em uma única transação. Na
 primeira inclusão de `aguardando_confirmacao_medico`, captura todas as solicitações
 `pendente` sem nota fiscal registrada, mesmo com cadastro profissional completo.
 Marca também `aguardando_dados_profissionais` e retira essas solicitações da fila.
@@ -55,9 +59,15 @@ normal, exigindo o cadastro profissional, sem confirmação extra do lote anteri
 
 ## Persistência e segurança
 
+`noto_comunicacoes` guarda evento, contexto utilizado, textos gerados, estado e
+resultado de cada envio. A chave por médico e evento impede duplicação. A história
+usa apenas mensagens aceitas pelo provedor; envio aceito não prova entrega.
+
 Coleta e confirmação reservam o envio no banco antes da chamada à Evolution.
 Timeout, erro ou queda deixam estado incerto/reservado e não geram reenvio
-automático. IDs de resposta são deduplicados por médico. A confirmação guarda
+automático. Falha conhecida de geração antes de qualquer envio não usa texto fixo;
+os pedidos iniciais podem ser gerados novamente pelo monitor de pendências.
+IDs de resposta são deduplicados por médico. A confirmação guarda
 ID e horário, sem registrar texto bruto nessa tabela. As tabelas têm RLS e
 permissões públicas, anônimas e de clientes revogadas.
 
@@ -81,6 +91,10 @@ Depois reiniciar `web` e eventual worker separado. Não misturar workers antigos
 e novos durante a atualização. O worker novo não consome a fila enquanto falta
 a coluna da migração. Uma transmissão já iniciada antes da pausa não pode ser
 cancelada por essa alteração; conferir seu resultado antes de qualquer nova ação.
+
+Configurar `GROQ_API_KEY` e `GROQ_MODEL` válidos. O container inclui o guia em
+`docs/prompts/noto-conversa.md`; o treino mantém as mensagens literais existentes.
+Sem IA disponível, não há fallback de comunicação fixa.
 
 Conferir a instância oficial e autenticação do webhook, e validar com conta de
 teste. O envio aceito pela Evolution não prova entrega no aparelho. Produção não

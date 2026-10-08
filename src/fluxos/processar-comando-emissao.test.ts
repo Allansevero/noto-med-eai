@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { processarComandoEmissao } from './processar-comando-emissao.js';
-import { MENSAGEM_PEDIDO_CPF } from '../whatsapp/whatsapp-config.js';
 import type {
   AtendimentoRepositorio,
   ConversaRegistro,
@@ -81,6 +80,10 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
 
 class EnviarMensagemPacienteFake implements EnviarMensagemPaciente {
   public envios: EnviarMensagemPacienteParams[] = [];
+  public comunicacoes: any[] = [];
+  public comunicador = { enviar: async (entrada: any) => {
+    this.comunicacoes.push(entrada); return { sucesso: true, envioIniciado: true };
+  } };
 
   async enviarTexto(params: EnviarMensagemPacienteParams): Promise<ResultadoEnvioMensagemPaciente> {
     this.envios.push(params);
@@ -131,6 +134,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversa, null, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       instanciaNome: 'dr_roberto'
     });
 
@@ -177,6 +181,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversa, 40000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       instanciaNome: 'dr_roberto'
     });
 
@@ -185,8 +190,8 @@ describe('processarComandoEmissao', () => {
       assert.strictEqual(res.fila, 'pendente_cadastro');
       assert.strictEqual(res.aguardandoCpf, true);
     }
-    assert.strictEqual(enviador.envios.length, 1);
-    assert.strictEqual(enviador.envios[0].texto, MENSAGEM_PEDIDO_CPF);
+    assert.strictEqual(enviador.comunicacoes.length, 1);
+    assert.strictEqual(enviador.comunicacoes[0].evento, 'pedir_cpf');
     assert.ok(conversa.aguardandoCpfDesde !== null);
   });
 
@@ -214,6 +219,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversaSemPaciente, 20000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       instanciaNome: 'dr_roberto'
     });
 
@@ -225,8 +231,8 @@ describe('processarComandoEmissao', () => {
     assert.strictEqual(repo.pacientes.length, 1);
     assert.strictEqual(repo.pacientes[0].telefone, '5551988887777');
     assert.strictEqual(conversaSemPaciente.pacienteId, repo.pacientes[0].id);
-    assert.strictEqual(enviador.envios.length, 1);
-    assert.strictEqual(enviador.envios[0].texto, MENSAGEM_PEDIDO_CPF);
+    assert.strictEqual(enviador.comunicacoes.length, 1);
+    assert.strictEqual(enviador.comunicacoes[0].evento, 'pedir_cpf');
   });
 
   it('deve enviar pergunta ao médico via notomed_oficial quando não houver data agendada no banco', async () => {
@@ -262,6 +268,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversa, 35000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       instanciaNome: 'dr_roberto',
       instanciaOficialNome: 'notomed_oficial'
     });
@@ -276,13 +283,10 @@ describe('processarComandoEmissao', () => {
     assert.strictEqual(repo.solicitacoesCriadas[0].fila, null);
 
     // Mensagem enviada ao médico pelo notomed_oficial
-    assert.strictEqual(enviador.envios.length, 1);
-    assert.strictEqual(enviador.envios[0].instanciaNome, 'notomed_oficial');
-    assert.strictEqual(enviador.envios[0].contatoTelefone, '5551993527271');
-    assert.strictEqual(
-      enviador.envios[0].texto,
-      'Não encontramos a data da consulta paciente Carlos Souza, poderia me informar para emissão?'
-    );
+    assert.strictEqual(enviador.comunicacoes.length, 1);
+    assert.strictEqual(enviador.comunicacoes[0].evento, 'pedir_data');
+    assert.strictEqual(enviador.comunicacoes[0].solicitacaoId, 'sol-1');
+    assert.strictEqual(enviador.envios.length, 0);
   });
 
   it('deve bloquear emissão e notificar o médico se o limite de notas for atingido', async () => {
@@ -327,6 +331,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversa, 20000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       billingRepositorio: mockBillingRepo,
       instanciaNome: 'dr_roberto',
       instanciaOficialNome: 'notomed_oficial'
@@ -339,8 +344,12 @@ describe('processarComandoEmissao', () => {
     // Nenhuma solicitação deve ser criada no banco
     assert.strictEqual(repo.solicitacoesCriadas.length, 0);
     // Notificação de bloqueio enviada ao médico
-    assert.strictEqual(enviador.envios.length, 1);
-    assert.match(enviador.envios[0].texto, /limite de 5 notas fiscais gratuitas de hoje/);
+    assert.strictEqual(enviador.comunicacoes.length, 1);
+    assert.equal(enviador.comunicacoes[0].evento, 'limite_emissao');
+    assert.equal(enviador.comunicacoes[0].dados.nomePaciente, 'Carlos Souza');
+    assert.equal(enviador.comunicacoes[0].dados.valorCentavos, 20000);
+    assert.equal(enviador.comunicacoes[0].solicitacaoId, undefined);
+    assert.match(enviador.comunicacoes[0].dados.motivo, /limite de 5 notas fiscais gratuitas de hoje/);
   });
 
   it('deve aceitar condição de data direto na mensagem de gatilho sem perguntar ao médico', async () => {
@@ -371,6 +380,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversa, 35000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       instanciaNome: 'dr_roberto',
       instanciaOficialNome: 'notomed_oficial',
       textoComando: 'Vou enviar em instantes a sua NF no valor de R$ 350 da consulta de 25/09/2026',
@@ -423,6 +433,7 @@ describe('processarComandoEmissao', () => {
     const res = await processarComandoEmissao(conversa, 70000, {
       repositorio: repo,
       enviarMensagemPaciente: enviador,
+      comunicadorNoto: enviador.comunicador,
       instanciaNome: 'dr_roberto',
       instanciaOficialNome: 'notomed_oficial',
       textoComando: 'Vou enviar sua NF no valor de R$ 700 referente as consultas de 10/09 e 15/09',
@@ -458,4 +469,44 @@ it('guarda a solicitação sem fila e pede dados profissionais ao médico, sem u
     assert.equal(repo.solicitacoesCriadas[0].datasConsultaTexto, '07/10/2026');
     assert.deepEqual(pedidos, ['med-1']);
   }
+});
+
+it('solicita data e CPF exclusivamente pela porta com contexto da solicitação criada', async () => {
+  const repo = new AtendimentoRepositorioMemoria(); const env = new EnviarMensagemPacienteFake();
+  repo.medico = { id:'med-1',nomeCompleto:'Maria Silva',crm:'123/SC',rqe:null,especialidade:null,ctribNacPadrao:'041601' };
+  repo.pacientes.push({id:'pac-1',medicoId:'med-1',telefone:'5511999998888',nome:'Carlos Souza',cpfHash:null});
+  const entradas:any[]=[];
+  const res=await processarComandoEmissao({id:'conv',instanciaId:'inst',medicoId:'med-1',pacienteId:'pac-1',contatoTelefone:'5511999998888',aguardandoCpfDesde:null},35000,{
+    repositorio:repo,enviarMensagemPaciente:env,instanciaNome:'medico-inst',
+    comunicadorNoto:{enviar:async (p:any)=>{entradas.push(p);return{sucesso:true,envioIniciado:true};}}
+  } as any);
+  assert.equal(res.ok,true); assert.equal(env.envios.length,0);
+  assert.deepEqual(entradas.map(p=>p.evento),['pedir_data','pedir_cpf']);
+  assert.ok(entradas.every(p=>p.solicitacaoId==='sol-1'&&p.medicoId==='med-1'&&p.chave.includes('sol-1')));
+  assert.equal(entradas[1].pacienteId,'pac-1');assert.equal(entradas[1].instanciaPaciente,'medico-inst');
+});
+
+it('falha na geração mantém solicitação aguardando CPF/data e não usa texto fixo', async () => {
+  for(const comunicadorNoto of [undefined,{enviar:async()=>{throw Error('segredo');}}]) {
+    const repo=new AtendimentoRepositorioMemoria();const env=new EnviarMensagemPacienteFake();
+    repo.medico={id:'med-1',nomeCompleto:'Maria Silva',crm:'123/SC',rqe:null,especialidade:null,ctribNacPadrao:'041601'};
+    repo.pacientes.push({id:'pac-1',medicoId:'med-1',telefone:'5511999998888',nome:'Carlos Souza',cpfHash:null});
+    const c={id:'conv',instanciaId:'inst',medicoId:'med-1',pacienteId:'pac-1',contatoTelefone:'5511999998888',aguardandoCpfDesde:null};repo.conversas.push(c);
+    const r=await processarComandoEmissao(c,35000,{repositorio:repo,enviarMensagemPaciente:env,instanciaNome:'inst',comunicadorNoto} as any);
+    assert.equal(r.ok,true);if(r.ok){assert.equal(r.fila,null);assert.equal(r.aguardandoCpf,true);assert.equal(r.aguardandoData,true);}
+    assert.equal(env.envios.length,0);assert.ok(c.aguardandoCpfDesde);
+  }
+});
+
+it('limite atingido continua bloqueando criação quando a IA falha', async () => {
+  const repo=new AtendimentoRepositorioMemoria(); const env=new EnviarMensagemPacienteFake();
+  repo.medico={id:'med-1',nomeCompleto:'Maria Silva',crm:'123/SC',rqe:null,especialidade:null,ctribNacPadrao:'041601'};
+  repo.pacientes.push({id:'pac-1',medicoId:'med-1',telefone:'5511999998888',nome:'Carlos Souza',cpfHash:'hash'});
+  const resultado=await processarComandoEmissao({id:'conv',instanciaId:'inst',medicoId:'med-1',pacienteId:'pac-1',contatoTelefone:'5511999998888',aguardandoCpfDesde:null},35000,{
+    repositorio:repo,enviarMensagemPaciente:env,instanciaNome:'inst',
+    billingRepositorio:{buscarUsoELimiteMedico:async()=>({planoNome:'Gratuito',limiteNotasDia:5,notasHoje:5,notasMes:15,travaEmissao:false,assinaturaStatus:'trial'})} as any,
+    comunicadorNoto:{enviar:async()=>{throw Error('secret');}}
+  });
+  assert.equal(resultado.ok,false);if(!resultado.ok)assert.equal(resultado.motivo,'limite_atingido');
+  assert.equal(repo.solicitacoesCriadas.length,0);assert.equal(env.envios.length,0);
 });

@@ -6,6 +6,8 @@
  * 3. Descarte seguro de mensagens de grupo e comuns (seções 2 e 3 do plano).
  */
 
+import type { ComunicadorNoto } from '../conversa/comunicador-noto.js';
+import { extrairDatasConsulta } from '../emissao/regras/extrair-datas-consulta.js';
 import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 import { validarWebhookSecret } from '../whatsapp/validar-webhook-secret.js';
 import { conexaoWebhookSchema } from '../whatsapp/payload-conexao-webhook-schema.js';
@@ -34,6 +36,7 @@ import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
+  comunicadorNoto?: ComunicadorNoto;
   dadosProfissionais?: DadosProfissionaisService;
   enviarMensagemPaciente: EnviarMensagemPaciente;
   billingRepositorio?: BillingRepositorio;
@@ -48,7 +51,7 @@ export interface ProcessarWebhookDeps {
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
+      acao: 'conversa_oficial' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
@@ -100,14 +103,37 @@ export async function processarMensagemWebhook(
   }
 
   const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
-  if (!payload.data.key.fromMe && medico && deps.dadosProfissionais && deps.segredoConfigurado &&
+  if (!payload.data.key.fromMe && medico && deps.segredoConfigurado &&
       (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
-    const resposta = await deps.dadosProfissionais.processarResposta({
-      medicoId: medico.id, texto, mensagemId: payload.data.key.id,
-      mensagemEm: payload.data.messageTimestamp === undefined ? undefined
-        : new Date(Number(payload.data.messageTimestamp) * (Number(payload.data.messageTimestamp) < 1e12 ? 1000 : 1))
-    });
-    if (resposta.tratada) return { ok: true, acao: 'resposta_perfil_medico', detalhe: resposta };
+    if (deps.dadosProfissionais) {
+      const resposta = await deps.dadosProfissionais.processarResposta({
+        medicoId: medico.id, texto, mensagemId: payload.data.key.id,
+        mensagemEm: payload.data.messageTimestamp === undefined ? undefined
+          : new Date(Number(payload.data.messageTimestamp) * (Number(payload.data.messageTimestamp) < 1e12 ? 1000 : 1))
+      });
+      if (resposta.tratada) return { ok: true, acao: 'resposta_perfil_medico', detalhe: resposta };
+    }
+    if (extrairDatasConsulta(texto, new Date()).datas.length > 0 &&
+        await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id)) {
+      const resData = await processarRespostaDataConsulta(telefone, texto, {
+        repositorio: deps.repositorio, dadosProfissionais: deps.dadosProfissionais,
+        enviarMensagem: deps.enviarMensagemPaciente, comunicadorNoto: deps.comunicadorNoto,
+        instanciaOficialNome: deps.instanciaOficialNome
+      });
+      if (resData.ok) return { ok: true, acao: 'resposta_data_consulta', detalhe: resData };
+    }
+    try {
+      if (deps.comunicadorNoto) {
+        const resultado = await deps.comunicadorNoto.enviar({ medicoId: medico.id, evento: 'conversa',
+          chave: `conversa:${payload.data.key.id}`, mensagemRecebida: texto });
+        if (!resultado.sucesso) console.warn('[processarMensagemWebhook] Comunicação não concluída', { evento: 'conversa' });
+      } else {
+        console.warn('[processarMensagemWebhook] Comunicador indisponível', { evento: 'conversa' });
+      }
+    } catch {
+      console.warn('[processarMensagemWebhook] Comunicação falhou', { evento: 'conversa' });
+    }
+    return { ok: true, acao: 'conversa_oficial' };
   }
   const medicoId = instancia.medicoId || medico?.id || null;
 
@@ -160,13 +186,14 @@ async function rotearMensagem(
 
   // 2. Resposta do médico à pergunta sobre a data da consulta
   const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
-  if (medico) {
+  if (medico && extrairDatasConsulta(texto, new Date()).datas.length > 0) {
     const solicitacaoPendente = await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id);
     if (solicitacaoPendente) {
       const resData = await processarRespostaDataConsulta(telefone, texto, {
         repositorio: deps.repositorio,
         dadosProfissionais: deps.dadosProfissionais,
         enviarMensagem: deps.enviarMensagemPaciente,
+        comunicadorNoto: deps.comunicadorNoto,
         instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
       });
       if (resData.ok) {
@@ -196,6 +223,7 @@ async function rotearMensagem(
     repositorio: deps.repositorio,
     dadosProfissionais: deps.dadosProfissionais,
     enviarMensagemPaciente: deps.enviarMensagemPaciente,
+    comunicadorNoto: deps.comunicadorNoto,
     billingRepositorio: deps.billingRepositorio,
     consultaCpfProvider: deps.consultaCpfProvider,
     iaService: deps.iaService,
@@ -203,6 +231,7 @@ async function rotearMensagem(
     instanciaNome: payload.instance,
     instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial',
     textoComando: texto,
+    mensagemIdComando: payload.data.key.id,
     datasComando: casamento.datas
   });
   return { ok: true, acao: 'comando_emissao', detalhe: res };

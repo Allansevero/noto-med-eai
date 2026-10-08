@@ -92,7 +92,7 @@ async function tratarFalhaEmissao(
     const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
     if (contexto) {
       await deps.notificadorAlertas.notificarMedicoWhatsApp({
-        telefoneMedico: contexto.telefoneMedico,
+        telefoneMedico: contexto.telefoneMedico, medicoId:item.medicoId, solicitacaoId:item.id,
         nomePaciente: contexto.nomePaciente,
         valorCentavos: item.valorServicoCentavos,
         motivoErro: erro
@@ -152,9 +152,9 @@ async function tratarComAgente(item: ItemFilaComTentativas, falha: FalhaEmissao,
       const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
       if (!contexto) throw new Error('Contato do médico não localizado');
       await deps.notificadorAlertas.notificarMedicoWhatsApp({
-        telefoneMedico: contexto.telefoneMedico, nomePaciente: contexto.nomePaciente,
+        telefoneMedico: contexto.telefoneMedico, medicoId:item.medicoId, solicitacaoId:item.id, nomePaciente: contexto.nomePaciente,
         valorCentavos: item.valorServicoCentavos,
-        motivoErro: 'O Noto encontrou uma pendência e interrompeu novas tentativas para evitar uma emissão incorreta ou duplicada. O caso está registrado para revisão.'
+        motivoErro: falha.erro
       });
     }
   });

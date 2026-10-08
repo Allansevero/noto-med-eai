@@ -8,7 +8,7 @@ import { calcularValorEmissao } from '../emissao/calcular-valor-emissao.js';
 import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 import { dadosProfissionaisCompletos } from '../conta/validar-dados-emissao.js';
 import { formatarDatasConsultas, montarDescricaoServico } from '../emissao/montar-descricao-servico.js';
-import { MENSAGEM_PEDIDO_CPF } from '../whatsapp/whatsapp-config.js';
+import type { ComunicadorNoto, EntradaComunicacaoNoto } from '../conversa/comunicador-noto.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 import type { BillingRepositorio } from '../billing/billing-repositorio.js';
@@ -24,6 +24,7 @@ import { extrairDatasConsulta } from '../emissao/regras/extrair-datas-consulta.j
 
 export interface ProcessarEmissaoDeps {
   repositorio: AtendimentoRepositorio;
+  comunicadorNoto?: ComunicadorNoto;
   dadosProfissionais?: DadosProfissionaisService;
   enviarMensagemPaciente: EnviarMensagemPaciente;
   billingRepositorio?: BillingRepositorio;
@@ -34,6 +35,7 @@ export interface ProcessarEmissaoDeps {
   instanciaOficialNome?: string;
   agora?: () => Date;
   textoComando?: string | null;
+  mensagemIdComando?: string;
   datasComando?: Date[];
 }
 
@@ -234,11 +236,11 @@ export async function processarComandoEmissao(
     const uso = await deps.billingRepositorio.buscarUsoELimiteMedico(medicoId);
     const verificacao = verificarLimiteEmissao(uso);
     if (!verificacao.permitido) {
-      const telMedico = medico.telefone || conversa.contatoTelefone;
-      await deps.enviarMensagemPaciente.enviarTexto({
-        instanciaNome: deps.instanciaOficialNome || 'notomed_oficial',
-        contatoTelefone: telMedico,
-        texto: `⚠️ Emissão não realizada: ${verificacao.mensagem}`
+      await comunicar(deps, {
+        medicoId, chave: `limite_emissao:${deps.mensagemIdComando ?? `${conversa.id}:${calculo.valorCentavos}`}`,
+        evento: 'limite_emissao', mensagemRecebida: deps.textoComando ?? undefined,
+        dados: { nomePaciente: paciente?.nome ?? null, telefonePaciente: conversa.contatoTelefone,
+          valorCentavos: calculo.valorCentavos, motivo: verificacao.mensagem }
       });
       return { ok: false, motivo: 'limite_atingido', detalhe: verificacao.mensagem };
     }
@@ -270,22 +272,18 @@ export async function processarComandoEmissao(
   }
 
   if (semDataConsulta) {
-    const nomePaciente = paciente?.nome?.trim() ? `paciente ${paciente.nome.trim()}` : 'do paciente';
-    const telMedico = medico.telefone || conversa.contatoTelefone;
-    await deps.enviarMensagemPaciente.enviarTexto({
-      instanciaNome: deps.instanciaOficialNome || 'notomed_oficial',
-      contatoTelefone: telMedico,
-      texto: `Não encontramos a data da consulta ${nomePaciente}, poderia me informar para emissão?`
+    await comunicar(deps, {
+      medicoId, chave: `pedir_data:${solicitacao.id}`, evento: 'pedir_data',
+      solicitacaoId: solicitacao.id, mensagemRecebida: deps.textoComando ?? undefined
     });
   }
 
   if (!possuiCpf) {
     const dataAtual = deps.agora ? deps.agora() : new Date();
     await deps.repositorio.marcarAguardandoCpf(conversa.id, dataAtual);
-    await deps.enviarMensagemPaciente.enviarTexto({
-      instanciaNome: deps.instanciaNome,
-      contatoTelefone: conversa.contatoTelefone,
-      texto: MENSAGEM_PEDIDO_CPF
+    await comunicar(deps, {
+      medicoId, chave: `pedir_cpf:${solicitacao.id}`, evento: 'pedir_cpf',
+      solicitacaoId: solicitacao.id, pacienteId, instanciaPaciente: deps.instanciaNome
     });
   }
 
@@ -297,4 +295,17 @@ export async function processarComandoEmissao(
     aguardandoData: semDataConsulta,
     aguardandoDadosProfissionais
   };
+}
+
+async function comunicar(deps: ProcessarEmissaoDeps, entrada: EntradaComunicacaoNoto): Promise<void> {
+  try {
+    if (!deps.comunicadorNoto) {
+      console.warn('[processarComandoEmissao] Comunicador indisponível', { evento: entrada.evento });
+      return;
+    }
+    const resultado = await deps.comunicadorNoto.enviar(entrada);
+    if (!resultado.sucesso) console.warn('[processarComandoEmissao] Comunicação não concluída', { evento: entrada.evento });
+  } catch {
+    console.warn('[processarComandoEmissao] Comunicação falhou', { evento: entrada.evento });
+  }
 }

@@ -88,12 +88,13 @@ describe('processarRespostaDataConsulta', () => {
 
   it('deve atualizar solicitação com nova descrição e colocar fila pronta quando paciente tem CPF', async () => {
     const { repositorio, getSolicitacaoAtualizada } = criarRepoMock({ pacienteComCpf: true });
-    let mensagemEnviada = '';
+    const comunicacoes: any[] = [];
     const res = await processarRespostaDataConsulta('5551993527271', '27/09/2026', {
       repositorio,
+      comunicadorNoto: { enviar: async entrada => { comunicacoes.push(entrada); return { sucesso:true, envioIniciado:true }; } },
       enviarMensagem: {
         enviarTexto: async (params: any) => {
-          mensagemEnviada = params.texto;
+          assert.fail('Texto fixo proibido');
           return { sucesso: true };
         }
       } as any
@@ -108,7 +109,9 @@ describe('processarRespostaDataConsulta', () => {
     assert.ok(atualizada);
     assert.equal(atualizada.fila, 'pronta');
     assert.ok(atualizada.xdescServ.includes('NAS DATAS 27/09/2026'));
-    assert.ok(mensagemEnviada.includes('27/09/2026'));
+    assert.equal(comunicacoes[0].evento, 'data_salva');
+    assert.equal(comunicacoes[0].solicitacaoId, 'sol-1');
+    assert.equal(comunicacoes[0].dados.dataInformada, '27/09/2026');
   });
 
   it('deve colocar fila pendente_cadastro se paciente não tiver CPF', async () => {
@@ -129,7 +132,7 @@ describe('processarRespostaDataConsulta', () => {
   it('data recebida verifica pendência profissional atual e solicita os dados sem prometer emissão', async () => {
     const { repositorio } = criarRepoMock();
     const acoes: string[] = [];
-    let texto = '';
+    const comunicacoes: any[] = [];
     await processarRespostaDataConsulta('5551993527271', '27/09/2026', {
       repositorio,
       dadosProfissionais: {
@@ -137,11 +140,29 @@ describe('processarRespostaDataConsulta', () => {
         retomar: async id => { acoes.push('retomar:'+id); return 0; },
         processarResposta: async () => ({tratada:false, completo:false})
       },
-      enviarMensagem: { enviarTexto: async params => {texto=params.texto; return {sucesso:true};} }
+      comunicadorNoto: { enviar: async entrada => { comunicacoes.push(entrada); return {sucesso:true,envioIniciado:true}; } },
+      enviarMensagem: { enviarTexto: async () => {assert.fail('Texto fixo proibido');} }
     });
     assert.deepEqual(acoes, ['pedir:medico-1', 'retomar:medico-1']);
-    assert.match(texto, /Data registrada/);
-    assert.doesNotMatch(texto, /está sendo emitida/);
+    assert.equal(comunicacoes[0].evento, 'data_salva');
+    assert.equal(comunicacoes[0].medicoId, 'medico-1');
   });
 
+});
+
+it('falha na confirmação por IA mantém a data salva e não envia fallback', async () => {
+  const atualizacoes: any[] = []; let envios=0;
+  const repo = {
+    buscarMedicoPorTelefone: async () => ({id:'med-1',nomeCompleto:'Maria Silva',crm:'123/SC',rqe:null,especialidade:null}),
+    buscarSolicitacaoAguardandoData: async () => ({id:'sol-1',pacienteId:'pac-1',nomePaciente:'João Silva'}),
+    buscarPacientePorId: async () => ({id:'pac-1',cpfHash:null}),
+    atualizarDataDescricaoSolicitacao: async (p:any) => {atualizacoes.push(p);}
+  };
+  const r = await processarRespostaDataConsulta('5548999998888','27/09/2026',{
+    repositorio:repo as any,
+    enviarMensagem:{enviarTexto:async()=>{envios++;return{sucesso:true};}},
+    comunicadorNoto:{enviar:async()=>{throw Error('secret');}}
+  });
+  assert.equal(r.ok,true);assert.equal(atualizacoes[0].solicitacaoId,'sol-1');
+  assert.equal(atualizacoes[0].fila,'pendente_cadastro');assert.equal(envios,0);
 });

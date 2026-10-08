@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PostgresDadosProfissionaisService } from './postgres-dados-profissionais-service.js';
-function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:boolean;telefone?:string;falharUsuario?:boolean;concluido?:boolean;datas?:string|null;legado?:string;datasAgenda?:string|null;semSolicitacoes?:boolean;confirmacao?:boolean;capturadaEm?:Date} = {}) {
+function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:boolean;telefone?:string;falharUsuario?:boolean;concluido?:boolean;datas?:string|null;legado?:string;datasAgenda?:string|null;semSolicitacoes?:boolean;confirmacao?:boolean;capturadaEm?:Date;comunicador?:any} = {}) {
   let medico = {id:'11111111-1111-4111-8111-111111111111',usuario_id:'22222222-2222-4222-8222-222222222222',nome_completo:opcoes.nome??'Médico 9886',crm:opcoes.crm??null,rqe:null,especialidade:'Cardiologia',telefone:opcoes.telefone??'5551999999999'};
   let pendencia = opcoes.concluido ? {estado:'concluido'} : opcoes.pendente ? {estado:'enviado'} : null;
   let revisao: any = opcoes.confirmacao ? {estado:'pendente', capturada_em:opcoes.capturadaEm??new Date('2026-10-07T00:00:00Z')} : null;
@@ -20,6 +20,7 @@ function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:bo
     if(sql.startsWith('update solicitacoes_nota set aguardando_confirmacao_medico')){aguardaConfirmacao=false;return {rows:[],rowCount:1};}
     if(sql.startsWith('select estado')) return {rows:pendencia?[{...pendencia}]:[]};
     if(sql.startsWith('insert into dados_profissionais_pendencias')){if(pendencia && !(pendencia.estado==='concluido' && sql.includes("where dados_profissionais_pendencias.estado='concluido'")))return {rows:[]};pendencia={estado:'reservado'};return {rows:[{medico_id:p[0]}]};}
+    if(sql.startsWith('delete from dados_profissionais_pendencias')){if(pendencia?.estado==='reservado')pendencia=null;return {rows:[],rowCount:1};}
     if(sql.startsWith('update dados_profissionais_pendencias')){if(pendencia)pendencia.estado=p[1]??'concluido';return {rows:[],rowCount:1};}
     if(sql.startsWith('insert into dados_profissionais_mensagens')){const chave=p[0]+':'+p[1];if(mensagens.has(chave))return {rows:[]};mensagens.add(chave);return {rows:[{mensagem_id:p[1]}]};}
     if(sql.startsWith('update medicos')){medico.nome_completo=p[1]??medico.nome_completo;medico.crm=p[2]??medico.crm;medico.rqe=p[3]??medico.rqe;return {rows:[{...medico}]};}
@@ -30,7 +31,12 @@ function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:bo
   }};
   const pool={connect:async()=>client,query:client.query} as any;
   const enviar={async enviarTexto(p:any){assert.equal(emTransacao,false,'HTTP deve ocorrer após a transação');envios.push(p);if(opcoes.falhar)throw Error('timeout');return {sucesso:true};}};
-  return {service:new PostgresDadosProfissionaisService(pool,enviar,'noto_oficial'),envios,updates,queries,medico:()=>medico,pendencia:()=>pendencia,revisao:()=>revisao};
+  const comunicador=opcoes.comunicador??{enviar:async(entrada:any)=>{
+    const texto=({pedir_nome:'Qual seu nome completo?',pedir_crm:'Qual é o seu CRM?',dados_salvos:'Dados salvos.',pedir_confirmacao:'Autoriza? Responda pode emitir.',orientar_confirmacao:'Posso? Responda pode emitir.',retomada_autorizada:'Autorização salva.'}as any)[entrada.evento];
+    try{const r=await enviar.enviarTexto({instanciaNome:'noto_oficial',contatoTelefone:medico.telefone,texto});return {sucesso:r.sucesso,envioIniciado:true};}
+    catch{return {sucesso:false,envioIniciado:true};}
+  }};
+  return {service:new PostgresDadosProfissionaisService(pool,enviar,'noto_oficial',comunicador),envios,updates,queries,medico:()=>medico,pendencia:()=>pendencia,revisao:()=>revisao};
 }
 test('reserva pedido persistente antes do envio oficial e não repete após erro incerto', async()=>{
   const a=ambiente({falhar:true}); await a.service.solicitar('11111111-1111-4111-8111-111111111111');await a.service.solicitar('11111111-1111-4111-8111-111111111111');
@@ -130,3 +136,22 @@ test('falhas nos primeiros vinte avisos não impedem o próximo médico de ser a
  await service.notificarPendentes();await service.notificarPendentes();
  assert.deepEqual(notificados,[ids[20]]);
 });
+
+test('comunicação de dado faltando delega o contexto para IA sem mensagem fixa',async()=>{
+ const recebidas:any[]=[];
+ const a=ambiente({comunicador:{enviar:async (entrada:any)=>{recebidas.push(entrada);return {sucesso:true,envioIniciado:true};}}});
+ await a.service.solicitar('11111111-1111-4111-8111-111111111111');
+ assert.equal(a.envios.length,0,'não chamar envio antigo com texto pronto');
+ assert.equal(recebidas.length,1);assert.equal(recebidas[0].evento,'pedir_nome');assert.equal(recebidas[0].medicoId,'11111111-1111-4111-8111-111111111111');
+});
+
+ test('falha conhecida de geração libera nova investigação do pedido sem texto fixo',async()=>{
+ let chamadas=0;const a=ambiente({comunicador:{enviar:async()=>{chamadas++;return {sucesso:false,envioIniciado:false};}}});
+ await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(a.pendencia(),null);
+ await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(chamadas,2);assert.equal(a.envios.length,0);
+ });
+ test('falha de geração da confirmação restaura pendência, não libera notas',async()=>{
+ let chamadas=0;const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true,comunicador:{enviar:async()=>{chamadas++;return {sucesso:false,envioIniciado:false};}}});
+ await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(a.revisao().estado,'pendente');
+ await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(chamadas,2);assert.equal(a.updates.length,0);assert.equal(a.envios.length,0);
+ });

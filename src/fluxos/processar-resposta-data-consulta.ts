@@ -5,6 +5,7 @@
  * para 'pronta' (se paciente já possui CPF) ou 'pendente_cadastro'.
  */
 
+import type { ComunicadorNoto } from '../conversa/comunicador-noto.js';
 import { montarDescricaoServico } from '../emissao/montar-descricao-servico.js';
 import type { AtendimentoRepositorio } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
@@ -12,6 +13,7 @@ import type { DadosProfissionaisService } from '../conta/dados-profissionais-ser
 
 export interface ProcessarRespostaDataDeps {
   repositorio: AtendimentoRepositorio;
+  comunicadorNoto?: ComunicadorNoto;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaOficialNome?: string;
   dadosProfissionais?: DadosProfissionaisService;
@@ -58,12 +60,20 @@ export async function processarRespostaDataConsulta(
     await deps.dadosProfissionais.retomar(medico.id);
   }
 
-  const instanciaOficial = deps.instanciaOficialNome || 'notomed_oficial';
-  await deps.enviarMensagem.enviarTexto({
-    instanciaNome: instanciaOficial,
-    contatoTelefone: telefoneMedico,
-    texto: `Data registrada (${dataInformada}). A solicitação de nota de ${pendente.nomePaciente} continuará assim que os dados necessários estiverem completos.`
-  });
+  try {
+    if (deps.comunicadorNoto) {
+      const resultado = await deps.comunicadorNoto.enviar({
+        medicoId: medico.id, chave: `data_salva:${pendente.id}`,
+        evento: 'data_salva', solicitacaoId: pendente.id, mensagemRecebida: textoResposta,
+        dados: { dataInformada }
+      });
+      if (!resultado.sucesso) console.warn('[processarRespostaDataConsulta] Comunicação não concluída', { evento: 'data_salva' });
+    } else {
+      console.warn('[processarRespostaDataConsulta] Comunicador indisponível', { evento: 'data_salva' });
+    }
+  } catch {
+    console.warn('[processarRespostaDataConsulta] Comunicação falhou', { evento: 'data_salva' });
+  }
 
   return {
     ok: true,

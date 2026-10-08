@@ -1,3 +1,5 @@
+import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
+import { GroqGeradorMensagemNoto } from './io/groq/groq-gerador-mensagem-noto.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
  * Expõe as rotas de webhook da Evolution API, API de autenticação por OTP
@@ -75,7 +77,8 @@ export function criarAppExpress() {
     config.evolutionGlobalApiKey,
     config.evolutionOfficialInstanceName
   );
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName);
+  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, new GroqGeradorMensagemNoto(config.groqApiKey, config.groqModel));
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
@@ -558,6 +561,7 @@ export function criarAppExpress() {
     const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
       repositorio: atendimentoRepo,
       dadosProfissionais,
+      comunicadorNoto,
       billingRepositorio: billingRepo,
       enviarMensagemPaciente: evolutionClient,
       iaService: groqClient,
