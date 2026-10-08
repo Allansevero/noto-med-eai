@@ -26,6 +26,7 @@ export function validarMapaColunasPlanilha(valor: unknown, cabecalho: string[]):
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Mapa de colunas inválido.');
   const mapa = valor as Record<string, unknown>;
   if (Object.keys(mapa).length !== CAMPOS.length || Object.keys(mapa).some(chave => !CAMPOS.includes(chave as Campo))) throw new Error('Mapa de colunas deve conter somente nome, cpf, email e telefone.');
+  const completado = { ...mapa };
   const usados = new Set<number>();
   for (const campo of CAMPOS) {
     const indice = mapa[campo];
@@ -33,8 +34,18 @@ export function validarMapaColunasPlanilha(valor: unknown, cabecalho: string[]):
     if (typeof indice !== 'number' || !Number.isInteger(indice) || indice < 0 || indice >= cabecalho.length || usados.has(indice) || campoCabecalhoPlanilha(cabecalho[indice]) !== campo) throw new Error('Mapa de colunas contém índice inválido ou rótulo incompatível.');
     usados.add(indice);
   }
-  if (mapa.telefone === null && mapa.cpf === null) throw new Error('Mapa de colunas precisa identificar telefone ou CPF.');
-  return { nome: mapa.nome as number | null, cpf: mapa.cpf as number | null, email: mapa.email as number | null, telefone: mapa.telefone as number | null };
+  // O LLM pode omitir um título que a aplicação já conhece. Uma única coluna
+  // compatível determina o índice; colunas duplicadas continuam sem escolha.
+  for (const campo of CAMPOS) {
+    if (completado[campo] !== null) continue;
+    const candidatos = cabecalho.map((rotulo, indice) => campoCabecalhoPlanilha(rotulo) === campo ? indice : -1).filter(indice => indice >= 0);
+    if (candidatos.length === 1 && !usados.has(candidatos[0])) {
+      completado[campo] = candidatos[0];
+      usados.add(candidatos[0]);
+    }
+  }
+  if (completado.telefone === null && completado.cpf === null) throw new Error('Mapa de colunas precisa identificar telefone ou CPF.');
+  return { nome: completado.nome as number | null, cpf: completado.cpf as number | null, email: completado.email as number | null, telefone: completado.telefone as number | null };
 }
 
 export async function extrairPacientesPlanilha(valores: string[][], mapeador: MapeadorColunasPlanilha, limitado: boolean): Promise<ResultadoExtracaoPlanilha> {

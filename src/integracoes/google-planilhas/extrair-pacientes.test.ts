@@ -30,7 +30,7 @@ describe('extrairPacientesPlanilha', () => {
     assert.deepEqual(resultado.pacientes[0].pendencias, ['telefone_ausente']);
   });
   it('não inventa dígitos e rejeita CPF, email e telefone inválidos', async () => {
-    const resultado = await extrairPacientesPlanilha([['Nome', 'CPF', 'Email', 'Telefone'], ['Ana', '1234567890', 'email inválido', '111'], ['Bia', '', '', '']], mapeador, false);
+    const resultado = await extrairPacientesPlanilha([['Nome', 'CPF', 'Email', 'Telefone'], ['Ana', '12345678901', 'email inválido', '111'], ['Bia', '', '', '']], mapeador, false);
     assert.deepEqual(resultado.pacientes[0], { linha: 2, nome: 'Ana', cpf: null, email: null, telefone: null, pendencias: ['cpf_invalido', 'email_invalido', 'telefone_invalido'] });
     assert.deepEqual(resultado.pacientes[1].pendencias, ['telefone_ausente']);
   });
@@ -59,10 +59,40 @@ describe('extrairPacientesPlanilha', () => {
     assert.ok(resultado.pacientes[3].pendencias.includes('telefone_cpf_conflitante'));
     assert.ok(!resultado.pacientes[3].pendencias.includes('cpf_telefones_conflitantes'));
   });
+
+  it('usa Contatos reconhecido quando a IA omite o telefone e preserva nome e CPF', async () => {
+    const resultado = await extrairPacientesPlanilha([
+      ['Nome completo', 'CPF', 'Contatos'],
+      ['Ana Silva', '52998224725', '48999991234'],
+    ], { async mapear() { return { nome: 0, cpf: 1, email: null, telefone: null }; } }, false);
+    assert.equal(resultado.colunas.telefone, 2);
+    assert.deepEqual(resultado.pacientes[0], {
+      linha: 2, nome: 'Ana Silva', cpf: '52998224725', email: null,
+      telefone: '5548999991234', pendencias: [],
+    });
+  });
+  it('completa colunas únicas reconhecidas mesmo com todos os campos omitidos pela IA', async () => {
+    const resultado = await extrairPacientesPlanilha([
+      ['Nome completo', 'CPF', 'E-mail', 'Contato'],
+      ['Ana Silva', '52998224725', 'ana@example.com', '+55 (48) 99999-1234'],
+    ], { async mapear() { return { nome: null, cpf: null, email: null, telefone: null }; } }, false);
+    assert.deepEqual(resultado.colunas, mapa);
+    assert.deepEqual(resultado.pacientes[0].pendencias, []);
+    assert.equal(resultado.pacientes[0].telefone, '5548999991234');
+  });
+  it('não escolhe entre duas colunas de contato omitidas pela IA', async () => {
+    const resultado = await extrairPacientesPlanilha([
+      ['Nome', 'CPF', 'Contatos', 'WhatsApp'],
+      ['Ana Silva', '52998224725', '48999991234', '11999991234'],
+    ], { async mapear() { return { nome: 0, cpf: 1, email: null, telefone: null }; } }, false);
+    assert.equal(resultado.colunas.telefone, null);
+    assert.deepEqual(resultado.pacientes[0].pendencias, ['telefone_ausente']);
+  });
+
   for (const invalido of [
     { ...mapa, telefone: 99 }, { ...mapa, cpf: 0 }, { ...mapa, telefone: -1 },
     { ...mapa, telefone: 1.5 }, { ...mapa, cpf: 3, telefone: 1 },
-    { nome: null, cpf: null, email: null, telefone: null }, { ...mapa, inventado: 'paciente' },
+    { ...mapa, inventado: 'paciente' },
   ]) it(`rejeita mapa inseguro ${JSON.stringify(invalido)}`, async () => {
     await assert.rejects(extrairPacientesPlanilha([['Nome', 'CPF', 'Email', 'Telefone'], ['Ana']], { async mapear() { return invalido; } }, false), /colunas/i);
   });
