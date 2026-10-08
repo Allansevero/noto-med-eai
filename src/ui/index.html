@@ -770,12 +770,12 @@
     button.btn-secondary:hover, button.btn-link:hover { color: rgba(18, 28, 34, 0.7) !important; }
     body p, body label, body h1, body h2, body h3,
     .drop-zone, .access-subtitle, .alert, .code-box { text-align: left !important; }
-    .conta-menu-container { background: #DDDDDF; border-radius: 20px; padding: 0.5rem 0; width: 100%; }
-    #contaMenu { width: 100%; display: flex; flex-direction: column; gap: 1rem; min-height: calc(100dvh - 7.5rem - env(safe-area-inset-top)); }
-    button.conta-menu-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 1.1rem 1.25rem; border: none; background: transparent !important; color: var(--text) !important; text-align: left; cursor: pointer; border-radius: 0; }
+    .conta-menu-container { background: #DDDDDF; border-radius: 16px; padding: 0.35rem 0; width: 100%; }
+    #contaMenu { width: 230px; display: flex; flex-direction: column; gap: 0.85rem; }
+    button.conta-menu-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0.85rem 1.15rem; border: none; background: transparent !important; color: var(--text) !important; text-align: left; cursor: pointer; border-radius: 0; font-size: 14px; }
     button.conta-menu-item:hover { background: rgba(18, 28, 34, 0.05) !important; }
     button.conta-menu-item.conta-menu-danger { color: #C43232 !important; }
-    button.conta-sair { margin-top: auto; padding: 1rem 0 0; width: 100%; justify-content: center; text-align: center !important; }
+    button.conta-sair { margin-top: 0.5rem; padding: 0.75rem 0 0; width: 100%; justify-content: center; text-align: center !important; font-size: 14px; }
     .conta-interna, .conta-secao { display: flex; flex-direction: column; align-items: flex-start; gap: var(--gap); width: 100%; }
     .conta-secao > .access-title { margin: 0; }
     .fiscal-parametros { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem 1rem; margin-top: 1rem; }
@@ -803,30 +803,61 @@
     .fiscal-campo input[readonly] { background: transparent; border-color: transparent; }
     .fiscal-acoes { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
     @media (prefers-reduced-motion: reduce) { .segmented-control::before { transition: none; } }
-    body:not(.onboarding-active) { padding-top: calc(2rem + env(safe-area-inset-top)); padding-bottom: 2rem; }
+    body:not(.onboarding-active) { padding-top: calc(2.5rem + env(safe-area-inset-top)); padding-bottom: 2.5rem; }
+    body:not(.onboarding-active) .onboarding-card { max-width: 900px; width: 100%; align-items: center; }
+    body:not(.onboarding-active) .step-view { align-items: center; width: 100%; }
     #tabsNavigation { display: none !important; }
+
+    /* LAYOUT EM 2 COLUNAS DO PAINEL (LATERAL 230px + CENTRAL 600px) */
+    .painel-layout {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 2.5rem;
+      width: 100%;
+    }
+    #contaMenu {
+      width: 230px !important;
+      min-width: 230px !important;
+      max-width: 230px !important;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .painel-central {
+      width: 600px;
+      max-width: 600px;
+      flex: 0 0 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      min-width: 0;
+    }
 
     /* CARD GOOGLE PLANILHAS NO PAINEL */
     .sheets-card {
       background: #FFFFFF;
       border: 1px solid rgba(18, 28, 34, 0.08);
-      border-radius: 14px;
-      padding: 1.1rem 1.25rem;
-      margin-bottom: 1.25rem;
+      border-radius: 16px;
+      padding: 1.35rem 1.6rem;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
       width: 100%;
+      box-sizing: border-box;
     }
     .sheets-card-main {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 0.85rem;
+      gap: 2.25rem; /* Gap amplo entre os botões e os textos em linhas */
     }
     .sheets-card-left {
       display: flex;
       align-items: center;
-      gap: 0.85rem;
+      gap: 1.15rem; /* Gap maior entre o logo e o bloco de textos */
       min-width: 0;
+      flex: 1 1 auto;
     }
     .sheets-logo-wrapper {
       display: flex;
@@ -838,6 +869,7 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
+      gap: 4px;
     }
     .sheets-title {
       font-size: 15px;
@@ -848,19 +880,18 @@
     .sheets-subtitle {
       font-size: 11px;
       color: var(--text-secondary);
-      line-height: 1.35;
-      margin-top: 2px;
+      line-height: 1.4;
     }
     .sheets-btn-conectar {
       background: var(--primary);
       color: #FFFFFF;
       border: none;
       border-radius: 9999px;
-      padding: 0.55rem 1.25rem;
+      padding: 0.65rem 1.5rem;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.15s ease, background-color 0.15s ease;
+      transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
       white-space: nowrap;
       flex-shrink: 0;
     }
@@ -872,8 +903,8 @@
       cursor: not-allowed;
     }
     .sheets-status {
-      margin-top: 0.85rem;
-      padding: 0.65rem 0.85rem;
+      margin-top: 0.95rem;
+      padding: 0.75rem 0.95rem;
       border-radius: 8px;
       font-size: 12px;
       line-height: 1.45;
@@ -895,6 +926,24 @@
       border-left-color: #0F9D58;
       background: #E6F4EA;
       color: #137333;
+    }
+
+    @media (max-width: 880px) {
+      .painel-layout {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+      }
+      #contaMenu {
+        width: 100% !important;
+        max-width: 600px !important;
+        min-width: 0 !important;
+      }
+      .painel-central {
+        width: 100%;
+        max-width: 600px;
+        flex: 1 1 auto;
+      }
     }
   </style>
 </head>
@@ -1071,54 +1120,57 @@
 
       <!-- ETAPA 5: LIBERADO / PAINEL FINAL -->
       <div id="step5View" class="step-view hidden">
-        <!-- GOOGLE PLANILHAS: CARD RÁPIDO NO PAINEL -->
-        <div id="cardSheetsRapido" class="sheets-card">
-          <div class="sheets-card-main">
-            <div class="sheets-card-left">
-              <div class="sheets-logo-wrapper" title="Google Planilhas">
-                <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path d="M29 4H12C9.79 4 8 5.79 8 8V40C8 42.21 9.79 44 12 44H36C38.21 44 40 42.21 40 40V15L29 4Z" fill="#0F9D58"/>
-                  <path d="M29 4V15H40L29 4Z" fill="#87CEAC"/>
-                  <path d="M29 4L40 15H29V4Z" fill="#0B8043" opacity="0.3"/>
-                  <rect x="14" y="21" width="20" height="15" rx="1.5" fill="#FFFFFF"/>
-                  <path d="M14 26H34M14 31H34M21 21V36M27 21V36" stroke="#0F9D58" stroke-width="1.8" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="sheets-info-wrapper">
-                <span class="sheets-title">Planilhas google</span>
-                <span class="sheets-subtitle">Importe seus pacientes facilmente de uma planilha para o noto</span>
-              </div>
-            </div>
-            <button type="button" class="sheets-btn-conectar" id="btnSheetsRapidoConectar">Conectar</button>
+        <div class="painel-layout">
+          <!-- LATERAL: CONTAMENU (230px) -->
+          <div id="contaMenu" class="painel-lateral">
+            <nav class="conta-menu-container" aria-label="Dados e preferências">
+              <button type="button" class="conta-menu-item" id="btnContaDados" data-conta-secao="dados">Dados da conta<span aria-hidden="true">›</span></button>
+              <button type="button" class="conta-menu-item" id="btnContaFiscal" data-conta-secao="fiscal">Dados fiscais<span aria-hidden="true">›</span></button>
+              <button type="button" class="conta-menu-item" id="btnContaPreferencias" data-conta-secao="preferencias">Preferências<span aria-hidden="true">›</span></button>
+            </nav>
+            <nav class="conta-menu-container" aria-label="Integrações e emissões">
+              <button type="button" class="conta-menu-item" id="btnContaEmissoes" data-conta-secao="emissoes">Emissões<span aria-hidden="true">›</span></button>
+              <button type="button" class="conta-menu-item" id="btnContaPlanilhas" data-conta-secao="planilhas">Google Planilhas<span aria-hidden="true">›</span></button>
+            </nav>
+            <nav class="conta-menu-container" aria-label="Faturamento e equipe">
+              <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
+              <button type="button" class="conta-menu-item" id="btnContaMembros" data-conta-secao="membros">Membros<span aria-hidden="true">›</span></button>
+              <button type="button" class="conta-menu-item" id="btnContaConvites" data-conta-secao="convites">Convites<span aria-hidden="true">›</span></button>
+            </nav>
+            <nav class="conta-menu-container" aria-label="Exclusão da conta">
+              <button type="button" class="conta-menu-item conta-menu-danger" id="btnContaDeletar" data-conta-secao="deletar">Deletar conta<span aria-hidden="true">›</span></button>
+            </nav>
+            <button type="button" class="btn-link conta-sair" id="btnLogoutConta">Sair da conta</button>
           </div>
-          <div id="sheetsRapidoStatus" class="sheets-status hidden" role="status" aria-live="polite"></div>
-        </div>
 
-        <!-- MENU PRINCIPAL DO PAINEL / OPÇÕES DE CONFIGURAÇÃO -->
-        <div id="contaMenu">
-          <nav class="conta-menu-container" aria-label="Dados e preferências">
-            <button type="button" class="conta-menu-item" id="btnContaDados" data-conta-secao="dados">Dados da conta<span aria-hidden="true">›</span></button>
-            <button type="button" class="conta-menu-item" id="btnContaFiscal" data-conta-secao="fiscal">Dados fiscais<span aria-hidden="true">›</span></button>
-            <button type="button" class="conta-menu-item" id="btnContaPreferencias" data-conta-secao="preferencias">Preferências<span aria-hidden="true">›</span></button>
-          </nav>
-          <nav class="conta-menu-container" aria-label="Integrações e emissões">
-            <button type="button" class="conta-menu-item" id="btnContaEmissoes" data-conta-secao="emissoes">Emissões<span aria-hidden="true">›</span></button>
-            <button type="button" class="conta-menu-item" id="btnContaPlanilhas" data-conta-secao="planilhas">Google Planilhas<span aria-hidden="true">›</span></button>
-          </nav>
-          <nav class="conta-menu-container" aria-label="Faturamento e equipe">
-            <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
-            <button type="button" class="conta-menu-item" id="btnContaMembros" data-conta-secao="membros">Membros<span aria-hidden="true">›</span></button>
-            <button type="button" class="conta-menu-item" id="btnContaConvites" data-conta-secao="convites">Convites<span aria-hidden="true">›</span></button>
-          </nav>
-          <nav class="conta-menu-container" aria-label="Exclusão da conta">
-            <button type="button" class="conta-menu-item conta-menu-danger" id="btnContaDeletar" data-conta-secao="deletar">Deletar conta<span aria-hidden="true">›</span></button>
-          </nav>
-          <button type="button" class="btn-link conta-sair" id="btnLogoutConta">Sair da conta</button>
-        </div>
+          <!-- CENTRAL: CONTEÚDO PRINCIPAL (600px) -->
+          <div class="painel-central">
+            <!-- GOOGLE PLANILHAS: CARD RÁPIDO NO PAINEL -->
+            <div id="cardSheetsRapido" class="sheets-card">
+              <div class="sheets-card-main">
+                <div class="sheets-card-left">
+                  <div class="sheets-logo-wrapper" title="Google Planilhas">
+                    <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M29 4H12C9.79 4 8 5.79 8 8V40C8 42.21 9.79 44 12 44H36C38.21 44 40 42.21 40 40V15L29 4Z" fill="#0F9D58"/>
+                      <path d="M29 4V15H40L29 4Z" fill="#87CEAC"/>
+                      <path d="M29 4L40 15H29V4Z" fill="#0B8043" opacity="0.3"/>
+                      <rect x="14" y="21" width="20" height="15" rx="1.5" fill="#FFFFFF"/>
+                      <path d="M14 26H34M14 31H34M21 21V36M27 21V36" stroke="#0F9D58" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <div class="sheets-info-wrapper">
+                    <span class="sheets-title">Planilhas google</span>
+                    <span class="sheets-subtitle">Importe seus pacientes facilmente de uma planilha para o noto</span>
+                  </div>
+                </div>
+                <button type="button" class="sheets-btn-conectar" id="btnSheetsRapidoConectar">Conectar</button>
+              </div>
+              <div id="sheetsRapidoStatus" class="sheets-status hidden" role="status" aria-live="polite"></div>
+            </div>
 
-        <!-- SEÇÕES INTERNAS (ABERTAS A PARTIR DO MENU, COM BOTÃO VOLTAR PARA O PAINEL) -->
-        <div id="contaInterna" class="hidden conta-interna">
-          <button type="button" class="btn-link" id="btnVoltarConta">← Voltar</button>
+            <!-- SEÇÕES INTERNAS (ABERTAS A PARTIR DO MENU, COM BOTÃO VOLTAR PARA O PAINEL) -->
+            <div id="contaInterna" class="hidden conta-interna">
+              <button type="button" class="btn-link" id="btnVoltarConta">← Voltar</button>
 
           <!-- SEÇÃO: EMISSÕES -->
           <section id="contaSecaoEmissoes" class="conta-secao hidden" aria-labelledby="tituloContaEmissoes">
@@ -1309,6 +1361,8 @@
             <p>A exclusão da conta será disponibilizada aqui, com confirmação antes de executar a ação.</p>
           </section>
         </div>
+      </div>
+    </div>
 
         <!-- ELEMENTOS DE COMPATIBILIDADE RETIDOS EM MODO OCULTO -->
         <div class="hidden" style="display:none;" aria-hidden="true">
