@@ -54,10 +54,23 @@ const ia = criarServicosIa(config);
 const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
 const notificadorAlertas: NotificadorAlertas = {
   async notificarMedicoWhatsApp(params) {
-    if(!params.medicoId || !params.solicitacaoId)return;
-      const envio=await comunicadorNoto.enviar({medicoId:params.medicoId,solicitacaoId:params.solicitacaoId,
-        chave:`falha:${params.solicitacaoId}`,evento:'falha_emissao',dados:{diagnostico:params.motivoErro}});
-      if(!envio.sucesso)console.warn('[NotoConversa] Aviso de emissão aguardando comunicação.',{solicitacaoId:params.solicitacaoId});
+    if (!params.medicoId || !params.solicitacaoId) {
+      throw new Error('Identificadores do médico ou da solicitação ausentes para envio de notificação.');
+    }
+    const envio = await comunicadorNoto.enviar({
+      medicoId: params.medicoId,
+      solicitacaoId: params.solicitacaoId,
+      chave: `falha:${params.solicitacaoId}`,
+      evento: 'falha_emissao',
+      dados: {
+        diagnostico: params.motivoErro,
+        ...(params.pendenciasFiscais ? { pendencias: params.pendenciasFiscais } : {})
+      }
+    });
+    if (!envio.sucesso) {
+      console.warn('[NotoConversa] Falha no envio do aviso de emissão ao médico.', { solicitacaoId: params.solicitacaoId });
+      throw new Error(`Falha ao enviar aviso de emissão pelo WhatsApp ao médico (solicitação ${params.solicitacaoId}).`);
+    }
   },
   async notificarDesenvolvedorEmail(params) {
     if (config.resendApiKey && config.devEmailAlerta) {

@@ -8,6 +8,7 @@ import type { EmissaoInput, ConfigPrestador } from './montar-dps.js';
 import { xmlTributosNaoOptante } from '../../fiscal/preparacao/tributos-nao-optante.js';
 import { momentoSP } from './montar-dps.js';
 import { gerarGrupoIbscbs } from '../../fiscal/preparacao/ibscbs.js';
+import { ajustarIndFinalTomador } from '../../fiscal/preparacao/classificar-servico-saude-reforma.js';
 
 export interface ResultadoXmlDps {
   dpsId: string;
@@ -74,6 +75,12 @@ export function gerarXmlDps(
   const totTribXml = ehMei
     ? `<totTrib><indTotTrib>0</indTotTrib></totTrib>`
     : `<totTrib><pTotTribSN>${pTotTribFmt}</pTotTribSN></totTrib>`;
+  const tomadorCpf = Boolean(input.tomador.CPF);
+  const tpRetMun = tomadorCpf ? 1 : (input.fiscal?.tpRetISSQN ?? 1);
+  const aliqMunXml = (input.fiscal?.aliquotaIss !== undefined && (input.fiscal.regimeApuracaoSn === 'regime_2' || tpRetMun === 2))
+    ? `<pAliq>${input.fiscal.aliquotaIss.toFixed(2)}</pAliq>`
+    : '';
+  const tribMunXml = `<tribMun><tribISSQN>${input.fiscal?.tribISSQN ?? 1}</tribISSQN><tpRetISSQN>${tpRetMun}</tpRetISSQN>${aliqMunXml}</tribMun>`;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>` +
     `<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">` +
@@ -110,11 +117,11 @@ export function gerarXmlDps(
         `<valores>` +
           `<vServPrest><vServ>${vServFmt}</vServ></vServPrest>` +
           `<trib>` +
-            (input.fiscal?.opcaoSimplesNacional === 'nao_optante' ? xmlTributosNaoOptante(input.fiscal, input.vServ) :
-              `<tribMun><tribISSQN>${input.fiscal?.tribISSQN ?? 1}</tribISSQN><tpRetISSQN>${input.fiscal?.tpRetISSQN ?? 1}</tpRetISSQN></tribMun>${tribFedXml}${totTribXml}`) +
+            (input.fiscal?.opcaoSimplesNacional === 'nao_optante' ? xmlTributosNaoOptante(input.fiscal, input.vServ, tomadorCpf) :
+              `${tribMunXml}${tribFedXml}${totTribXml}`) +
           `</trib>` +
         `</valores>` +
-        (input.fiscal?.ibscbs ? gerarGrupoIbscbs(input.fiscal.ibscbs) : '') +
+        (input.fiscal?.ibscbs ? gerarGrupoIbscbs(ajustarIndFinalTomador(input.fiscal.ibscbs, tomadorCpf)) : '') +
       `</infDPS>` +
     `</DPS>`;
 

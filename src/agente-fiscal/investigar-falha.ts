@@ -6,6 +6,7 @@ import { podeCorrigirTributosFederais, diagnosticarRejeicao, descreverRetornoPro
 import type { ItemFilaComTentativas } from '../worker/fila-repositorio.js';
 import type { EmissorDpsService, ResultadoEmissaoDps } from '../worker/emissor-dps-service.js';
 import { permiteRetentativa, type DecisorFiscal, type FalhaEmissao, type InvestigacaoRepositorio } from './investigacao.js';
+import { decidirResponsabilidadeFalha, type DecisaoResponsabilidadeFalha } from './decidir-responsabilidade-falha.js';
 
 type Autorizacao = Extract<ResultadoEmissaoDps, { sucesso: true }>;
 export interface AgenteFiscalDeps {
@@ -17,7 +18,7 @@ export async function investigarFalha(
   deps: AgenteFiscalDeps & {
     emissor: EmissorDpsService;
     concluir: (nota: Autorizacao) => Promise<void>;
-    notificar: () => Promise<void>;
+    notificar: (decisao: DecisaoResponsabilidadeFalha) => Promise<void>;
   }
 ): Promise<Autorizacao | null> {
   const { item, falha } = entrada;
@@ -91,13 +92,32 @@ export async function investigarFalha(
     return null;
   }
 }
-async function escalar(motivo: string, entrada: { item: ItemFilaComTentativas }, deps: AgenteFiscalDeps & { notificar: () => Promise<void> }) {
-  await deps.repositorio.registrar(entrada.item, { tipo: 'escalonamento', motivo,
-    acaoNecessaria: 'Revisar evidências e conciliar a emissão. Alterações fiscais exigem decisão humana.' }, 'necessita_intervencao');
+async function escalar(
+  motivo: string,
+  entrada: { item: ItemFilaComTentativas; falha?: FalhaEmissao },
+  deps: AgenteFiscalDeps & { notificar: (decisao: DecisaoResponsabilidadeFalha) => Promise<void> }
+) {
+  const decisao = decidirResponsabilidadeFalha(entrada.falha);
+  await deps.repositorio.registrar(entrada.item, {
+    tipo: 'escalonamento',
+    motivo,
+    responsavel: decisao.responsavel,
+    categoria: decisao.categoria,
+    acaoNecessaria: decisao.acaoSugerida
+  }, 'necessita_intervencao');
   try {
-    await deps.notificar();
-    await deps.repositorio.registrar(entrada.item, { tipo: 'notificacao', resultado: 'enviada' });
+    await deps.notificar(decisao);
+    await deps.repositorio.registrar(entrada.item, {
+      tipo: decisao.responsavel === 'desenvolvedor' ? 'notificacao_desenvolvedor' : 'notificacao',
+      resultado: 'enviada'
+    });
   } catch {
-    await deps.repositorio.registrar(entrada.item, { tipo: 'notificacao', resultado: 'falhou', acaoNecessaria: 'Comunicar pendência ao médico.' });
+    await deps.repositorio.registrar(entrada.item, {
+      tipo: decisao.responsavel === 'desenvolvedor' ? 'notificacao_desenvolvedor' : 'notificacao',
+      resultado: 'falhou',
+      acaoNecessaria: decisao.responsavel === 'desenvolvedor'
+        ? 'Alertar equipe de desenvolvimento sobre a falha técnica.'
+        : 'Comunicar pendência ao médico.'
+    });
   }
 }

@@ -19,9 +19,11 @@ export function extrairSugestaoEmissao(xmlObj: any): Record<string, unknown> {
   numero('tpRetISSQN', trib.tribMun?.tpRetISSQN);
   if (trib.tribFed?.piscofins?.CST !== undefined) sugestao.cstPisCofins = String(trib.tribFed.piscofins.CST).padStart(2, '0');
   numero('percentualTotTribSN', trib.totTrib?.pTotTribSN);
+  const decimal = (v: unknown) => /^\d+(?:\.\d{1,2})?$/.test(String(v)) ? Number(v) : NaN;
+  if (trib.tribMun?.pAliq !== undefined && (opcao === 'nao_optante' || reg.regApTribSN === 2 || String(trib.tribMun?.tpRetISSQN) === '2')) {
+    sugestao.aliquotaIss = decimal(trib.tribMun.pAliq);
+  }
   if (opcao === 'nao_optante') {
-    const decimal = (v: unknown) => /^\d+(?:\.\d{1,2})?$/.test(String(v)) ? Number(v) : NaN;
-    if (trib.tribMun?.pAliq !== undefined) sugestao.aliquotaIss = decimal(trib.tribMun.pAliq);
     const total = trib.totTrib;
     if (String(total?.indTotTrib) === '0') sugestao.totalTributos = { tipo: 'nao_informado' };
     if (total?.pTotTrib) sugestao.totalTributos = { tipo: 'percentual', federal: decimal(total.pTotTrib.pTotTribFed),

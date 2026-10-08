@@ -18,7 +18,7 @@ export const parametrosEmissaoSchema = z.object({
   regimeApuracaoSn: z.enum(['regime_1', 'regime_2', 'regime_3']).optional(),
   regimeEspecialTributacao: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(9)]),
   tribISSQN: z.literal(1, { errorMap: () => ({ message: 'Esta situação de ISSQN exige suporte fiscal adicional; não será substituída por operação tributável.' }) }),
-  tpRetISSQN: z.literal(1, { errorMap: () => ({ message: 'Retenção exige cálculo ainda não suportado; não será substituída por não retido.' }) }),
+  tpRetISSQN: z.union([z.literal(1), z.literal(2)], { errorMap: () => ({ message: 'Retenção exige suporte a Não Retido (1) ou Retido pelo Tomador (2).' }) }),
   cstPisCofins: z.enum(['00', '01', '02', '04', '06', '07', '08', '09']).optional(),
   aliquotaIss: z.number().finite().min(0).max(9.99).multipleOf(0.01).optional(),
   totalTributos: z.discriminatedUnion('tipo', [
@@ -33,10 +33,19 @@ export const parametrosEmissaoSchema = z.object({
 }).strict().superRefine((v, ctx) => {
   if (v.vigenciaFim && v.vigenciaFim < v.vigenciaInicio) ctx.addIssue({ code: 'custom', path: ['vigenciaFim'], message: 'Fim anterior ao início' });
   if (v.opcaoSimplesNacional !== 'nao_optante') {
-    for (const campo of ['aliquotaIss', 'totalTributos', 'pisCofinsCalculo'] as const) {
+    for (const campo of ['totalTributos', 'pisCofinsCalculo'] as const) {
       if (v[campo] !== undefined) ctx.addIssue({ code: 'custom', path: [campo], message: 'Campo disponível somente para não optante.' });
     }
+    if (v.aliquotaIss !== undefined && v.regimeApuracaoSn !== 'regime_2' && v.tpRetISSQN !== 2) {
+      ctx.addIssue({ code: 'custom', path: ['aliquotaIss'], message: 'Alíquota de ISS no Simples disponível apenas para ISS fora do Simples ou retenção.' });
+    }
     if (['00', '01', '02'].includes(v.cstPisCofins ?? '')) ctx.addIssue({ code: 'custom', path: ['cstPisCofins'], message: 'CST exige suporte adicional neste regime.' });
+  }
+  if (v.tpRetISSQN === 2 && v.regimeEspecialTributacao === 6) {
+    ctx.addIssue({ code: 'custom', path: ['tpRetISSQN'], message: 'Sociedade de profissionais com ISS fixo não admite retenção.' });
+  }
+  if (v.tpRetISSQN === 2 && v.opcaoSimplesNacional === 'me_epp' && v.aliquotaIss === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['aliquotaIss'], message: 'Retenção no Simples Nacional exige declaração da alíquota de ISS a ser retida.' });
   }
   if (v.opcaoSimplesNacional === 'nao_optante') {
     for (const campo of ['regimeApuracaoSn', 'percentualTotTribSN'] as const) {
