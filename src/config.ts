@@ -32,6 +32,8 @@ export interface AppConfig {
   googleClientId?: string;
   googleClientSecret?: string;
   googleRedirectUri?: string;
+  googleApiKey?: string;
+  googleAppId?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -75,6 +77,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     googleClientId: env['GOOGLE_CLIENT_ID'],
     googleClientSecret: env['GOOGLE_CLIENT_SECRET'],
     googleRedirectUri: env['GOOGLE_REDIRECT_URI'],
+    googleApiKey: env['GOOGLE_API_KEY'],
+    googleAppId: env['GOOGLE_APP_ID'],
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

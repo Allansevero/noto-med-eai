@@ -24,15 +24,17 @@ function texto(value: unknown): string {
 /** Reads a bounded, formatted snapshot; the caller must inspect worksheet column counts. */
 export class GooglePlanilhasClient implements GooglePlanilhas {
   private readonly fetcher: typeof fetch;
-  constructor(private readonly options: GooglePlanilhasClientOptions) {
+  private readonly scope: string;
+  constructor(private readonly options: GooglePlanilhasClientOptions & { scope?: string }) {
     this.fetcher = options.fetch ?? globalThis.fetch;
+    this.scope = options.scope ?? 'https://www.googleapis.com/auth/drive.file';
   }
 
   urlAutorizacao(estado: string, desafio: string): string {
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     url.search = new URLSearchParams({
       client_id: this.options.clientId, redirect_uri: this.options.redirectUri,
-      response_type: 'code', scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+      response_type: 'code', scope: this.scope,
       access_type: 'offline', prompt: 'consent', state: estado,
       code_challenge: desafio, code_challenge_method: 'S256',
     }).toString();

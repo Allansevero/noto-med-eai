@@ -16,7 +16,7 @@ function fixture(body: unknown, status = 200) {
 test('autorizacao usa PKCE e somente escopo de leitura sem segredo', () => {
   const url = new URL(fixture({}).client.urlAutorizacao('estado', 'desafio'));
   assert.equal(url.origin, 'https://accounts.google.com');
-  assert.equal(url.searchParams.get('scope'), 'https://www.googleapis.com/auth/spreadsheets.readonly');
+  assert.equal(url.searchParams.get('scope'), 'https://www.googleapis.com/auth/drive.file');
   for (const [key, value] of Object.entries({state:'estado', code_challenge:'desafio', code_challenge_method:'S256', response_type:'code', access_type:'offline', prompt:'consent', client_id:'cliente', redirect_uri:config.redirectUri})) assert.equal(url.searchParams.get(key), value);
   assert.equal(url.searchParams.has('client_secret'), false);
 });

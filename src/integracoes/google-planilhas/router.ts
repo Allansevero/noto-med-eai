@@ -4,7 +4,7 @@ import type pg from 'pg';
 import type {GooglePlanilhas,MapeadorColunasPlanilha,ResultadoExtracaoPlanilha} from './types.js';
 import {extrairPacientesPlanilha} from './extrair-pacientes.js';
 import {importarPacientesPlanilha} from './importar-pacientes.js';
-interface Deps {pool:pg.Pool;google?:GooglePlanilhas;mapeador?:MapeadorColunasPlanilha;autenticar:(token:string)=>Promise<string|null>;encryptionKey:string;pepper:string;redirectUri:string;}
+interface Deps {pool:pg.Pool;google?:GooglePlanilhas;mapeador?:MapeadorColunasPlanilha;autenticar:(token:string)=>Promise<string|null>;encryptionKey:string;pepper:string;redirectUri:string;googleApiKey?:string;googleAppId?:string;}
 class ErroPublico extends Error{constructor(public readonly status:number,mensagem:string){super(mensagem);}}
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const cookieNome='noto_google_estado';
@@ -48,7 +48,7 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  router.get('/status',proteger(async(_q,r)=>{
   if(!deps.google){r.json({ok:true,configurado:false,conectado:false});return;}
   const row=(await deps.pool.query('select access_token is not null as conectado from google_planilhas_conexoes where medico_id=$1',[r.locals.medicoId])).rows[0];
-  r.json({ok:true,configurado:true,iaConfigurada:Boolean(deps.mapeador),conectado:Boolean(row?.conectado)});
+  r.json({ok:true,configurado:true,iaConfigurada:Boolean(deps.mapeador),conectado:Boolean(row?.conectado),pickerConfigurado:Boolean(deps.googleApiKey)});
  }));
  router.use((_q,r,n)=>{if(!deps.google){r.status(503).json({ok:false,detalhe:'A integração Google Planilhas ainda precisa ser configurada pela equipe.'});return;}n();});
  router.post('/conectar',proteger(async(_q,r)=>{
@@ -79,6 +79,10 @@ export function criarRouterGooglePlanilhas(deps:Deps){
    if(!result.rows.length)throw new ErroPublico(409,'A conexão foi encerrada. Conecte novamente.');c.access_token=novo.accessToken;
   }return c;
  }
+ router.get('/picker-token',proteger(async(_q,r)=>{
+  const c=await credencial(r.locals.medicoId);
+  r.json({ok:true,accessToken:c.access_token,apiKey:deps.googleApiKey??'',appId:deps.googleAppId??''});
+ }));
  router.post('/abas',proteger(async(q,r)=>{const id=identificarPlanilha(q.body?.planilha);const c=await credencial(r.locals.medicoId);const dados=await deps.google!.abas(c.access_token,id);r.json({ok:true,planilhaId:id,...dados});}));
  router.post('/previa',proteger(async(q,r)=>{
   if(!deps.mapeador)throw new ErroPublico(503,'A leitura por IA ainda precisa ser configurada pela equipe.');

@@ -159,7 +159,9 @@ export function criarAppExpress() {
       ? new GooglePlanilhasClient({clientId:config.googleClientId,clientSecret:config.googleClientSecret,redirectUri:config.googleRedirectUri}) : undefined,
     mapeador: config.groqApiKey ? new GroqMapeadorColunas(config.groqApiKey,config.groqModel) : undefined,
     autenticar: async token => { const {data,error}=await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
-    encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??''
+    encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??'',
+    googleApiKey: config.googleApiKey,
+    googleAppId: config.googleAppId
   }));
 
   // UI Web de Entrada e Assets Estáticos

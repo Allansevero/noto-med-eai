@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet">
+  <script async defer src="https://apis.google.com/js/api.js"></script>
   <style>
     :root {
       --bg: #F4F4F5;
@@ -1071,7 +1072,8 @@
           <p id="statusPlanilhaGoogle" role="status" aria-live="polite"></p>
           <button type="button" class="btn-action" id="btnConectarGoogle">Conectar Google</button>
           <div id="formPlanilhaGoogle" hidden>
-            <label for="inputPlanilhaGoogle">Link da planilha</label>
+            <button type="button" class="btn-action" id="btnSelecionarGoogle" style="margin-bottom:12px;">Selecionar Planilha no Google</button>
+            <label for="inputPlanilhaGoogle">Ou informe o link da planilha</label>
             <input id="inputPlanilhaGoogle" class="input-data-field" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" />
             <button type="button" class="btn-action" id="btnBuscarAbasGoogle">Buscar abas</button>
             <label for="selectAbaGoogle">Aba com os pacientes</label>
@@ -2183,11 +2185,11 @@
     async function executarGoogle(acao) {
       if (googleOperacao) return;
       googleOperacao = true;
-      for (const id of ['btnConectarGoogle', 'btnBuscarAbasGoogle', 'btnLerPlanilhaGoogle', 'btnImportarPlanilhaGoogle', 'btnDesconectarGoogle']) googleEl(id).disabled = true;
+      for (const id of ['btnConectarGoogle', 'btnSelecionarGoogle', 'btnBuscarAbasGoogle', 'btnLerPlanilhaGoogle', 'btnImportarPlanilhaGoogle', 'btnDesconectarGoogle']) { if (googleEl(id)) googleEl(id).disabled = true; }
       try { await acao(); } catch (e) { googleStatus(e.message || 'Não foi possível concluir a operação.'); }
       finally {
         googleOperacao = false;
-        for (const id of ['btnConectarGoogle', 'btnBuscarAbasGoogle', 'btnLerPlanilhaGoogle', 'btnDesconectarGoogle']) googleEl(id).disabled = false;
+        for (const id of ['btnConectarGoogle', 'btnSelecionarGoogle', 'btnBuscarAbasGoogle', 'btnLerPlanilhaGoogle', 'btnDesconectarGoogle']) { if (googleEl(id)) googleEl(id).disabled = false; }
         googleEl('btnImportarPlanilhaGoogle').disabled = !previaGoogleId;
       }
     }
@@ -2197,11 +2199,38 @@
         googleEl('formPlanilhaGoogle').hidden = !data.conectado;
         googleEl('btnDesconectarGoogle').hidden = !data.conectado;
         googleEl('btnConectarGoogle').hidden = data.conectado;
+        if (googleEl('btnSelecionarGoogle')) googleEl('btnSelecionarGoogle').hidden = !data.pickerConfigurado;
         googleStatus(!data.configurado ? 'A integração Google Planilhas ainda precisa ser ativada pela equipe.'
-          : data.conectado ? (data.iaConfigurada ? 'Google conectado. Informe o link da sua planilha.' : 'Google conectado. A leitura por IA ainda precisa ser ativada pela equipe.')
+          : data.conectado ? (data.iaConfigurada ? 'Google conectado. Selecione uma planilha do Drive ou informe o link.' : 'Google conectado. A leitura por IA ainda precisa ser ativada pela equipe.')
           : 'Conecte sua conta Google para ler uma planilha. O Noto não altera seu arquivo.');
       });
     }
+    googleEl('btnSelecionarGoogle')?.addEventListener('click', () => executarGoogle(async () => {
+      if (typeof gapi === 'undefined') throw Error('Aguarde o carregamento do Google e tente novamente.');
+      await new Promise(r => gapi.load('picker', r));
+      if (typeof google === 'undefined' || !google.picker) throw Error('Não foi possível abrir a janela do Google Drive.');
+      const cfg = await apiPlanilhaGoogle('/picker-token');
+      if (!cfg.apiKey) throw Error('Chave de API do Google não configurada no servidor.');
+      const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+        .setMimeTypes('application/vnd.google-apps.spreadsheet');
+      let builder = new google.picker.PickerBuilder()
+        .setOAuthToken(cfg.accessToken)
+        .setDeveloperKey(cfg.apiKey)
+        .addView(view)
+        .setLocale('pt-BR')
+        .setCallback(async (res) => {
+          if (res[google.picker.Response.ACTION] === google.picker.Action.PICKED) {
+            const doc = res[google.picker.Response.DOCUMENTS][0];
+            const url = doc[google.picker.Document.URL] || ('https://docs.google.com/spreadsheets/d/' + doc[google.picker.Document.ID]);
+            googleEl('inputPlanilhaGoogle').value = url;
+            limparPreviaGoogle();
+            googleStatus('Planilha selecionada: ' + doc[google.picker.Document.NAME] + '. Buscando abas…');
+            googleEl('btnBuscarAbasGoogle').click();
+          }
+        });
+      if (cfg.appId) builder.setAppId(cfg.appId);
+      builder.build().setVisible(true);
+    }));
     googleEl('btnConectarGoogle').addEventListener('click', () => executarGoogle(async () => {
       limparPreviaGoogle(); const data = await apiPlanilhaGoogle('/conectar', {}); window.location.assign(data.url);
     }));
