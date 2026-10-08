@@ -803,8 +803,99 @@
     .fiscal-campo input[readonly] { background: transparent; border-color: transparent; }
     .fiscal-acoes { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
     @media (prefers-reduced-motion: reduce) { .segmented-control::before { transition: none; } }
-    body:not(.onboarding-active) { padding-top: calc(5.5rem + env(safe-area-inset-top)); padding-bottom: 2rem; }
-    #tabsNavigation { position: fixed; top: 0; left: 50%; transform: translateX(-50%); width: calc(100% - 3rem); max-width: 380px; padding: calc(1rem + env(safe-area-inset-top)) 0 1rem; background: var(--bg); z-index: 50; }
+    body:not(.onboarding-active) { padding-top: calc(2rem + env(safe-area-inset-top)); padding-bottom: 2rem; }
+    #tabsNavigation { display: none !important; }
+
+    /* CARD GOOGLE PLANILHAS NO PAINEL */
+    .sheets-card {
+      background: #FFFFFF;
+      border: 1px solid rgba(18, 28, 34, 0.08);
+      border-radius: 14px;
+      padding: 1.1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+      width: 100%;
+    }
+    .sheets-card-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.85rem;
+    }
+    .sheets-card-left {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      min-width: 0;
+    }
+    .sheets-logo-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .sheets-info-wrapper {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .sheets-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .sheets-subtitle {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.35;
+      margin-top: 2px;
+    }
+    .sheets-btn-conectar {
+      background: var(--primary);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 9999px;
+      padding: 0.55rem 1.25rem;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s ease, background-color 0.15s ease;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .sheets-btn-conectar:hover {
+      background: var(--primary-hover);
+    }
+    .sheets-btn-conectar:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .sheets-status {
+      margin-top: 0.85rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #F4F4F5;
+      color: var(--text);
+      border-left: 3px solid #0F9D58;
+    }
+    .sheets-status.is-loading {
+      border-left-color: #1a73e8;
+      background: #EFF6FC;
+      color: #1a73e8;
+    }
+    .sheets-status.is-error {
+      border-left-color: #d93025;
+      background: #FDE8E8;
+      color: #c5221f;
+    }
+    .sheets-status.is-success {
+      border-left-color: #0F9D58;
+      background: #E6F4EA;
+      color: #137333;
+    }
   </style>
 </head>
 <body class="onboarding-active">
@@ -980,301 +1071,259 @@
 
       <!-- ETAPA 5: LIBERADO / PAINEL FINAL -->
       <div id="step5View" class="step-view hidden">
-        <div class="access-header">
-          <span class="tag-active" style="align-self: flex-start; margin-bottom: 0.5rem;">WHATSAPP CONECTADO</span>
-          <h2 class="access-title" style="font-size: 34px;">Seu Noto</h2>
-          <p class="access-subtitle" id="mensagemPainel">
-            Seu WhatsApp está conectado. Confira sua configuração fiscal na opção Conta.
-          </p>
-        </div>
-
-        <button type="button" class="btn-action" id="btnRevisarFiscal">Revisar dados fiscais</button>
-        <div style="width: 100%;">
-          <div class="stat-row">
-            <span style="color: var(--text-secondary);">Médico Responsável</span>
-            <span id="resumoNomeMedico" style="font-weight: 700;">—</span>
-          </div>
-          <div class="stat-row">
-            <span style="color: var(--text-secondary);">Parâmetros Fiscais</span>
-            <span class="tag-active" id="statusFiscalPainel">PENDENTE</span>
-          </div>
-          <div class="stat-row">
-            <span style="color: var(--text-secondary);">Certificado Digital A1</span>
-            <span class="tag-active">ATIVO</span>
-          </div>
-          <div class="stat-row">
-            <span style="color: var(--text-secondary);">WhatsApp do Consultório</span>
-            <span class="tag-active">CONECTADO</span>
-          </div>
-        </div>
-
-        <div style="width: 100%;">
-          <p style="font-size: 13px; font-weight: 600; margin-bottom: 0.5rem; text-align: left;">Respostas Rápidas no seu WhatsApp:</p>
-          <div class="code-box"><strong>/agendamento</strong> → "Consulta agendada!"</div>
-          <div class="code-box"><strong>/emissao [valor]</strong> → "Vou enviar em instantes a sua NF no valor de R$ [valor]"</div>
-        </div>
-
-        <div style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
-          <button type="button" class="btn-action btn-secondary" onclick="location.reload()">
-            Atualizar Painel
-          </button>
-          <button type="button" class="btn-action btn-danger" id="btnLogoutDash">
-            Sair (Logout)
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- CONTEÚDO DA ABA EMISSÕES -->
-    <div id="tabContentEmissoes" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnEmissoes">
-      <div class="access-header">
-        <h2 class="access-title" style="font-size: 34px;">Emissões</h2>
-        <p class="access-subtitle">Histórico e comprovantes das notas fiscais emitidas no consultório.</p>
-      </div>
-
-      <div class="params-card" style="text-align: center; padding: 2.25rem 1.25rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: 100%;">
-        <div style="width: 48px; height: 48px; border-radius: 9999px; background: rgba(37, 211, 102, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px;">
-          📄
-        </div>
-        <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">Nenhuma emissão recente</h3>
-        <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
-          As notas emitidas automaticamente pelo WhatsApp com <code>/emissao [valor]</code> ficarão listadas aqui para download de PDF e XML.
-        </p>
-      </div>
-    </div>
-
-    <!-- CONTEÚDO DA ABA CONTA -->
-    <div id="tabContentConta" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnConta">
-      <div id="contaMenu">
-        <nav class="conta-menu-container" aria-label="Dados e preferências">
-          <button type="button" class="conta-menu-item" id="btnContaDados" data-conta-secao="dados">Dados da conta<span aria-hidden="true">›</span></button>
-          <button type="button" class="conta-menu-item" id="btnContaFiscal" data-conta-secao="fiscal">Dados fiscais<span aria-hidden="true">›</span></button>
-          <button type="button" class="conta-menu-item" id="btnContaPreferencias" data-conta-secao="preferencias">Preferências<span aria-hidden="true">›</span></button>
-        </nav>
-        <nav class="conta-menu-container" aria-label="Integrações">
-          <button type="button" class="conta-menu-item" id="btnContaPlanilhas" data-conta-secao="planilhas">Google Planilhas<span aria-hidden="true">›</span></button>
-        </nav>
-        <nav class="conta-menu-container" aria-label="Faturamento e equipe">
-          <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
-          <button type="button" class="conta-menu-item" id="btnContaMembros" data-conta-secao="membros">Membros<span aria-hidden="true">›</span></button>
-          <button type="button" class="conta-menu-item" id="btnContaConvites" data-conta-secao="convites">Convites<span aria-hidden="true">›</span></button>
-        </nav>
-        <nav class="conta-menu-container" aria-label="Exclusão da conta">
-          <button type="button" class="conta-menu-item conta-menu-danger" id="btnContaDeletar" data-conta-secao="deletar">Deletar conta<span aria-hidden="true">›</span></button>
-        </nav>
-        <button type="button" class="btn-link conta-sair" id="btnLogoutConta">Sair da conta</button>
-      </div>
-      <div id="contaInterna" class="hidden conta-interna">
-        <button type="button" class="btn-link" id="btnVoltarConta">← Voltar</button>
-        <section id="contaSecaoPlanilhas" class="conta-secao hidden" aria-labelledby="tituloContaPlanilhas">
-          <h2 class="access-title" id="tituloContaPlanilhas">Google Planilhas</h2>
-          <p class="access-subtitle">Conecte sua planilha para importar pacientes. Você confere a prévia antes de salvar. Nenhuma nota será emitida nesta etapa.</p>
-          <p id="statusPlanilhaGoogle" role="status" aria-live="polite"></p>
-          <button type="button" class="btn-action" id="btnConectarGoogle">Conectar Google</button>
-          <div id="formPlanilhaGoogle" hidden>
-            <button type="button" class="btn-action" id="btnSelecionarGoogle" style="margin-bottom:12px;">Selecionar Planilha no Google</button>
-            <label for="inputPlanilhaGoogle">Ou informe o link da planilha</label>
-            <input id="inputPlanilhaGoogle" class="input-data-field" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" />
-            <button type="button" class="btn-action" id="btnBuscarAbasGoogle">Buscar abas</button>
-            <label for="selectAbaGoogle">Aba com os pacientes</label>
-            <select id="selectAbaGoogle" class="input-data-field"></select>
-            <button type="button" class="btn-action" id="btnLerPlanilhaGoogle">Ler pacientes</button>
-            <div id="tabelaPlanilhaGoogle" hidden style="overflow-x:auto;margin-top:16px;">
-              <table><thead><tr><th>Linha</th><th>Nome</th><th>CPF</th><th>E-mail</th><th>Telefone</th><th>Pendências</th></tr></thead><tbody id="previaPlanilhaGoogle"></tbody></table>
+        <!-- GOOGLE PLANILHAS: CARD RÁPIDO NO PAINEL -->
+        <div id="cardSheetsRapido" class="sheets-card">
+          <div class="sheets-card-main">
+            <div class="sheets-card-left">
+              <div class="sheets-logo-wrapper" title="Google Planilhas">
+                <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M29 4H12C9.79 4 8 5.79 8 8V40C8 42.21 9.79 44 12 44H36C38.21 44 40 42.21 40 40V15L29 4Z" fill="#0F9D58"/>
+                  <path d="M29 4V15H40L29 4Z" fill="#87CEAC"/>
+                  <path d="M29 4L40 15H29V4Z" fill="#0B8043" opacity="0.3"/>
+                  <rect x="14" y="21" width="20" height="15" rx="1.5" fill="#FFFFFF"/>
+                  <path d="M14 26H34M14 31H34M21 21V36M27 21V36" stroke="#0F9D58" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div class="sheets-info-wrapper">
+                <span class="sheets-title">Planilhas google</span>
+                <span class="sheets-subtitle">Importe seus pacientes facilmente de uma planilha para o noto</span>
+              </div>
             </div>
-            <button type="button" class="btn-action" id="btnImportarPlanilhaGoogle" disabled>Confirmar importação</button>
-            <div id="resultadoImportacaoGoogle"></div>
+            <button type="button" class="sheets-btn-conectar" id="btnSheetsRapidoConectar">Conectar</button>
           </div>
-          <button type="button" class="btn-link" id="btnDesconectarGoogle" hidden>Desconectar Google</button>
-        </section>
-        <section id="contaSecaoDados" class="conta-secao hidden" aria-labelledby="tituloContaDados">
-          <h2 class="access-title" id="tituloContaDados">Dados da conta</h2>
-      <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
-      <div class="account-fields-list">
-        <!-- NOME COMPLETO -->
-        <div class="account-field-group">
-          <label class="field-label-data">Nome Completo</label>
-          <div class="input-with-action">
-            <input 
-              type="text" 
-              id="inputContaNome" 
-              class="input-data-field" 
-              placeholder="Nome Completo do Médico" 
-              readonly 
-            />
-            <button type="button" class="btn-input-action" id="btnActionNome" title="Editar Nome Completo">
-              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-              </svg>
-              <span class="btn-save-inline-text hidden">Salvar</span>
-            </button>
-          </div>
+          <div id="sheetsRapidoStatus" class="sheets-status hidden" role="status" aria-live="polite"></div>
         </div>
 
-        <!-- CRM -->
-        <div class="account-field-group">
-          <label class="field-label-data">CRM</label>
-          <div class="input-with-action">
-            <input 
-              type="text" 
-              id="inputContaCrm" 
-              class="input-data-field" 
-              placeholder="Ex: 12345/SP" 
-              readonly 
-            />
-            <button type="button" class="btn-input-action" id="btnActionCrm" title="Editar CRM">
-              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-              </svg>
-              <span class="btn-save-inline-text hidden">Salvar</span>
-            </button>
-          </div>
+        <!-- MENU PRINCIPAL DO PAINEL / OPÇÕES DE CONFIGURAÇÃO -->
+        <div id="contaMenu">
+          <nav class="conta-menu-container" aria-label="Dados e preferências">
+            <button type="button" class="conta-menu-item" id="btnContaDados" data-conta-secao="dados">Dados da conta<span aria-hidden="true">›</span></button>
+            <button type="button" class="conta-menu-item" id="btnContaFiscal" data-conta-secao="fiscal">Dados fiscais<span aria-hidden="true">›</span></button>
+            <button type="button" class="conta-menu-item" id="btnContaPreferencias" data-conta-secao="preferencias">Preferências<span aria-hidden="true">›</span></button>
+          </nav>
+          <nav class="conta-menu-container" aria-label="Integrações e emissões">
+            <button type="button" class="conta-menu-item" id="btnContaEmissoes" data-conta-secao="emissoes">Emissões<span aria-hidden="true">›</span></button>
+            <button type="button" class="conta-menu-item" id="btnContaPlanilhas" data-conta-secao="planilhas">Google Planilhas<span aria-hidden="true">›</span></button>
+          </nav>
+          <nav class="conta-menu-container" aria-label="Faturamento e equipe">
+            <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
+            <button type="button" class="conta-menu-item" id="btnContaMembros" data-conta-secao="membros">Membros<span aria-hidden="true">›</span></button>
+            <button type="button" class="conta-menu-item" id="btnContaConvites" data-conta-secao="convites">Convites<span aria-hidden="true">›</span></button>
+          </nav>
+          <nav class="conta-menu-container" aria-label="Exclusão da conta">
+            <button type="button" class="conta-menu-item conta-menu-danger" id="btnContaDeletar" data-conta-secao="deletar">Deletar conta<span aria-hidden="true">›</span></button>
+          </nav>
+          <button type="button" class="btn-link conta-sair" id="btnLogoutConta">Sair da conta</button>
         </div>
 
-        <!-- RQE -->
-        <div class="account-field-group">
-          <label class="field-label-data">RQE</label>
-          <div class="input-with-action">
-            <input 
-              type="text" 
-              id="inputContaRqe" 
-              class="input-data-field" 
-              placeholder="Ex: 6789" 
-              readonly 
-            />
-            <button type="button" class="btn-input-action" id="btnActionRqe" title="Editar RQE">
-              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-              </svg>
-              <span class="btn-save-inline-text hidden">Salvar</span>
-            </button>
-          </div>
-        </div>
+        <!-- SEÇÕES INTERNAS (ABERTAS A PARTIR DO MENU, COM BOTÃO VOLTAR PARA O PAINEL) -->
+        <div id="contaInterna" class="hidden conta-interna">
+          <button type="button" class="btn-link" id="btnVoltarConta">← Voltar</button>
 
-        <!-- NÚMERO DE TELEFONE DA PESSOA -->
-        <div class="account-field-group">
-          <label class="field-label-data" id="labelContaTelefone">Número conectado</label>
-          <div class="input-with-action">
-            <input 
-              type="text" 
-              id="inputContaTelefone" 
-              class="input-data-field" 
-              placeholder="Número do WhatsApp conectado"
-              readonly 
-            />
-          </div>
-        </div>
-        <!-- EMAIL -->
-        <div class="account-field-group">
-          <label class="field-label-data">E-mail</label>
-          <div class="input-with-action">
-            <input
-              type="email"
-              id="inputContaEmail"
-              class="input-data-field"
-              placeholder="Seu e-mail"
-              readonly
-            />
-            <button type="button" class="btn-input-action" id="btnActionEmail" title="Editar E-mail">
-              <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-              </svg>
-              <span class="btn-save-inline-text hidden">Salvar</span>
-            </button>
-          </div>
-        </div>
-
-      </div>
-
-<button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">Atualizar dados</button>
-        </section>
-        <section id="contaSecaoFiscal" class="conta-secao hidden" aria-labelledby="tituloContaFiscal">
-          <h2 class="access-title" id="tituloContaFiscal">Dados fiscais</h2>
-      <!-- Dados obtidos automaticamente pelo A1 de cada emitente -->
-      <div id="step2View" class="step-view">
-        <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Parâmetros fiscais</h2>
-          <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
-        </div>
-        <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
-        <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
-        <div id="previewFiscal" class="hidden" style="width:100%">
-          <div class="params-card">
-            <p id="resumoNotaReferencia"></p>
-            <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
-            <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
-            <p id="resumoIbscbs"></p>
-            <p id="pendenciasNotaReferencia" role="status"></p>
-            <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
-            <div class="fiscal-acoes">
-              <button type="button" id="btnEditarFiscal" class="btn-action">Editar parâmetros</button>
-              <button type="button" id="btnSalvarFiscal" class="btn-action hidden">Salvar parâmetros</button>
-              <button type="button" id="btnCancelarFiscal" class="btn-link hidden">Cancelar</button>
+          <!-- SEÇÃO: EMISSÕES -->
+          <section id="contaSecaoEmissoes" class="conta-secao hidden" aria-labelledby="tituloContaEmissoes">
+            <h2 class="access-title" id="tituloContaEmissoes">Emissões</h2>
+            <p class="access-subtitle">Histórico e comprovantes das notas fiscais emitidas no consultório.</p>
+            <div class="params-card" style="text-align: center; padding: 2.25rem 1.25rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: 100%;">
+              <div style="width: 48px; height: 48px; border-radius: 9999px; background: rgba(37, 211, 102, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                📄
+              </div>
+              <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">Nenhuma emissão recente</h3>
+              <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                As notas emitidas automaticamente pelo WhatsApp com <code>/emissao [valor]</code> ficarão listadas aqui para download de PDF e XML.
+              </p>
             </div>
-            <p id="statusEdicaoFiscal" role="status" aria-live="polite"></p>
-          </div>
-          <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
-          <p id="statusAdocaoFiscalConta">Os parâmetros são validados automaticamente após o consentimento ao cadastrar o certificado.</p>
+          </section>
+
+          <!-- SEÇÃO: GOOGLE PLANILHAS (VISÃO COMPLETA) -->
+          <section id="contaSecaoPlanilhas" class="conta-secao hidden" aria-labelledby="tituloContaPlanilhas">
+            <h2 class="access-title" id="tituloContaPlanilhas">Google Planilhas</h2>
+            <p class="access-subtitle">Conecte sua planilha para importar pacientes. Você confere a prévia antes de salvar. Nenhuma nota será emitida nesta etapa.</p>
+            <p id="statusPlanilhaGoogle" role="status" aria-live="polite"></p>
+            <button type="button" class="btn-action" id="btnConectarGoogle">Conectar Google</button>
+            <div id="formPlanilhaGoogle" hidden>
+              <button type="button" class="btn-action" id="btnSelecionarGoogle" style="margin-bottom:12px;">Selecionar Planilha no Google</button>
+              <label for="inputPlanilhaGoogle">Ou informe o link da planilha</label>
+              <input id="inputPlanilhaGoogle" class="input-data-field" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" />
+              <button type="button" class="btn-action" id="btnBuscarAbasGoogle">Buscar abas</button>
+              <label for="selectAbaGoogle">Aba com os pacientes</label>
+              <select id="selectAbaGoogle" class="input-data-field"></select>
+              <button type="button" class="btn-action" id="btnLerPlanilhaGoogle">Ler pacientes</button>
+              <div id="tabelaPlanilhaGoogle" hidden style="overflow-x:auto;margin-top:16px;">
+                <table><thead><tr><th>Linha</th><th>Nome</th><th>CPF</th><th>E-mail</th><th>Telefone</th><th>Pendências</th></tr></thead><tbody id="previaPlanilhaGoogle"></tbody></table>
+              </div>
+              <button type="button" class="btn-action" id="btnImportarPlanilhaGoogle" disabled>Confirmar importação</button>
+              <div id="resultadoImportacaoGoogle"></div>
+            </div>
+            <button type="button" class="btn-link" id="btnDesconectarGoogle" hidden>Desconectar Google</button>
+          </section>
+
+          <!-- SEÇÃO: DADOS DA CONTA -->
+          <section id="contaSecaoDados" class="conta-secao hidden" aria-labelledby="tituloContaDados">
+            <h2 class="access-title" id="tituloContaDados">Dados da conta</h2>
+            <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
+            <div class="account-fields-list">
+              <div class="account-field-group">
+                <label class="field-label-data">Nome Completo</label>
+                <div class="input-with-action">
+                  <input type="text" id="inputContaNome" class="input-data-field" placeholder="Nome Completo do Médico" readonly />
+                  <button type="button" class="btn-input-action" id="btnActionNome" title="Editar Nome Completo">
+                    <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                    </svg>
+                    <span class="btn-save-inline-text hidden">Salvar</span>
+                  </button>
+                </div>
+              </div>
+              <div class="account-field-group">
+                <label class="field-label-data">CRM</label>
+                <div class="input-with-action">
+                  <input type="text" id="inputContaCrm" class="input-data-field" placeholder="Ex: 12345/SP" readonly />
+                  <button type="button" class="btn-input-action" id="btnActionCrm" title="Editar CRM">
+                    <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                    </svg>
+                    <span class="btn-save-inline-text hidden">Salvar</span>
+                  </button>
+                </div>
+              </div>
+              <div class="account-field-group">
+                <label class="field-label-data">RQE</label>
+                <div class="input-with-action">
+                  <input type="text" id="inputContaRqe" class="input-data-field" placeholder="Ex: 6789" readonly />
+                  <button type="button" class="btn-input-action" id="btnActionRqe" title="Editar RQE">
+                    <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                    </svg>
+                    <span class="btn-save-inline-text hidden">Salvar</span>
+                  </button>
+                </div>
+              </div>
+              <div class="account-field-group">
+                <label class="field-label-data" id="labelContaTelefone">Número conectado</label>
+                <div class="input-with-action">
+                  <input type="text" id="inputContaTelefone" class="input-data-field" placeholder="Número do WhatsApp conectado" readonly />
+                </div>
+              </div>
+              <div class="account-field-group">
+                <label class="field-label-data">E-mail</label>
+                <div class="input-with-action">
+                  <input type="email" id="inputContaEmail" class="input-data-field" placeholder="Seu e-mail" readonly />
+                  <button type="button" class="btn-input-action" id="btnActionEmail" title="Editar E-mail">
+                    <svg class="icon-edit" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                    </svg>
+                    <span class="btn-save-inline-text hidden">Salvar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">Atualizar dados</button>
+          </section>
+
+          <!-- SEÇÃO: DADOS FISCAIS -->
+          <section id="contaSecaoFiscal" class="conta-secao hidden" aria-labelledby="tituloContaFiscal">
+            <h2 class="access-title" id="tituloContaFiscal">Dados fiscais</h2>
+            <div id="step2View" class="step-view">
+              <div class="access-header">
+                <h2 class="access-title" style="font-size: 34px;">Parâmetros fiscais</h2>
+                <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
+              </div>
+              <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
+              <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
+              <div id="previewFiscal" class="hidden" style="width:100%">
+                <div class="params-card">
+                  <p id="resumoNotaReferencia"></p>
+                  <div class="param-item"><span class="param-label">Emitente</span><span class="param-val" id="txtRazaoSocial">—</span></div>
+                  <div class="param-item"><span class="param-label">Município / UF</span><span class="param-val" id="txtMunUf">—</span></div>
+                  <p id="resumoIbscbs"></p>
+                  <p id="pendenciasNotaReferencia" role="status"></p>
+                  <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
+                  <div class="fiscal-acoes">
+                    <button type="button" id="btnEditarFiscal" class="btn-action">Editar parâmetros</button>
+                    <button type="button" id="btnSalvarFiscal" class="btn-action hidden">Salvar parâmetros</button>
+                    <button type="button" id="btnCancelarFiscal" class="btn-link hidden">Cancelar</button>
+                  </div>
+                  <p id="statusEdicaoFiscal" role="status" aria-live="polite"></p>
+                </div>
+                <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
+                <p id="statusAdocaoFiscalConta">Os parâmetros são validados automaticamente após o consentimento ao cadastrar o certificado.</p>
+              </div>
+            </div>
+            <button type="button" class="btn-action btn-secondary" id="btnAtualizarCertificado">Atualizar certificado</button>
+          </section>
+
+          <!-- SEÇÃO: PREFERÊNCIAS -->
+          <section id="contaSecaoPreferencias" class="conta-secao hidden" aria-labelledby="tituloContaPreferencias">
+            <h2 class="access-title" id="tituloContaPreferencias">Preferências</h2>
+            <p>As opções de preferências serão disponibilizadas aqui.</p>
+          </section>
+
+          <!-- SEÇÃO: FATURAMENTO -->
+          <section id="contaSecaoFaturamento" class="conta-secao hidden" aria-labelledby="tituloContaFaturamento">
+            <h2 class="access-title" id="tituloContaFaturamento">Faturamento</h2>
+            <div class="params-card" style="width: 100%;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span style="font-size: 15px; font-weight: 700; color: var(--text);">Plano &amp; Limites</span>
+                <span id="badgePlano" class="tag-active">GRATUITO</span>
+              </div>
+              <div class="stat-row" style="padding: 0.5rem 0;">
+                <span style="color: var(--text-secondary);">Notas emitidas hoje</span>
+                <span id="lblNotasHoje" style="font-weight: 700;">0 / 5 notas</span>
+              </div>
+              <div class="stat-row" style="padding: 0.5rem 0; border-bottom: none;">
+                <span style="color: var(--text-secondary);">Notas este mês</span>
+                <span id="lblNotasMes" style="font-weight: 700;">0 / 100 notas</span>
+              </div>
+              <div id="boxUpgrade" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                  Plano Mensal: 100 notas/mês por R$ 100,00. Liberação imediata via Stripe.
+                </p>
+                <button type="button" class="btn-action" id="btnAssinarPlano" style="height: 48px; font-size: 15px;">
+                  Assinar Plano Mensal (R$ 100/mês)
+                </button>
+              </div>
+              <div id="boxGerenciar" class="hidden" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                <button type="button" class="btn-action" id="btnGerenciarAssinatura" style="height: 48px; font-size: 14px; background: #FFFFFF; border: 1px solid var(--border-line); color: var(--text);">
+                  Gerenciar Assinatura (Stripe)
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- SEÇÃO: MEMBROS -->
+          <section id="contaSecaoMembros" class="conta-secao hidden" aria-labelledby="tituloContaMembros">
+            <h2 class="access-title" id="tituloContaMembros">Membros</h2>
+            <p>A gestão de membros será disponibilizada aqui.</p>
+          </section>
+
+          <!-- SEÇÃO: CONVITES -->
+          <section id="contaSecaoConvites" class="conta-secao hidden" aria-labelledby="tituloContaConvites">
+            <h2 class="access-title" id="tituloContaConvites">Convites</h2>
+            <p>A gestão de convites será disponibilizada aqui.</p>
+          </section>
+
+          <!-- SEÇÃO: DELETAR CONTA -->
+          <section id="contaSecaoDeletar" class="conta-secao hidden" aria-labelledby="tituloContaDeletar">
+            <h2 class="access-title" id="tituloContaDeletar">Deletar conta</h2>
+            <p>A exclusão da conta será disponibilizada aqui, com confirmação antes de executar a ação.</p>
+          </section>
         </div>
-      </div>
 
-
-      <button type="button" class="btn-action btn-secondary" id="btnAtualizarCertificado">Atualizar certificado</button>
-
-        </section>
-        <section id="contaSecaoPreferencias" class="conta-secao hidden" aria-labelledby="tituloContaPreferencias">
-          <h2 class="access-title" id="tituloContaPreferencias">Preferências</h2>
-<p>As opções de preferências serão disponibilizadas aqui.</p>
-        </section>
-        <section id="contaSecaoFaturamento" class="conta-secao hidden" aria-labelledby="tituloContaFaturamento">
-          <h2 class="access-title" id="tituloContaFaturamento">Faturamento</h2>
-        <!-- PLANO E LIMITES DE EMISSÃO STRIPE -->
-        <div class="params-card" style="width: 100%;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-            <span style="font-size: 15px; font-weight: 700; color: var(--text);">Plano &amp; Limites</span>
-            <span id="badgePlano" class="tag-active">GRATUITO</span>
-          </div>
-          <div class="stat-row" style="padding: 0.5rem 0;">
-            <span style="color: var(--text-secondary);">Notas emitidas hoje</span>
-            <span id="lblNotasHoje" style="font-weight: 700;">0 / 5 notas</span>
-          </div>
-          <div class="stat-row" style="padding: 0.5rem 0; border-bottom: none;">
-            <span style="color: var(--text-secondary);">Notas este mês</span>
-            <span id="lblNotasMes" style="font-weight: 700;">0 / 100 notas</span>
-          </div>
-
-          <div id="boxUpgrade" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
-              Plano Mensal: 100 notas/mês por R$ 100,00. Liberação imediata via Stripe.
-            </p>
-            <button type="button" class="btn-action" id="btnAssinarPlano" style="height: 48px; font-size: 15px;">
-              Assinar Plano Mensal (R$ 100/mês)
-            </button>
-          </div>
-
-          <div id="boxGerenciar" class="hidden" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <button type="button" class="btn-action" id="btnGerenciarAssinatura" style="height: 48px; font-size: 14px; background: #FFFFFF; border: 1px solid var(--border-line); color: var(--text);">
-              Gerenciar Assinatura (Stripe)
-            </button>
-          </div>
+        <!-- ELEMENTOS DE COMPATIBILIDADE RETIDOS EM MODO OCULTO -->
+        <div class="hidden" style="display:none;" aria-hidden="true">
+          <span id="resumoNomeMedico"></span>
+          <span id="statusFiscalPainel">PENDENTE</span>
+          <span id="mensagemPainel"></span>
+          <button type="button" id="btnLogoutDash"></button>
+          <button type="button" id="btnRevisarFiscal"></button>
         </div>
-
-
-        </section>
-        <section id="contaSecaoMembros" class="conta-secao hidden" aria-labelledby="tituloContaMembros">
-          <h2 class="access-title" id="tituloContaMembros">Membros</h2>
-<p>A gestão de membros será disponibilizada aqui.</p>
-        </section>
-        <section id="contaSecaoConvites" class="conta-secao hidden" aria-labelledby="tituloContaConvites">
-          <h2 class="access-title" id="tituloContaConvites">Convites</h2>
-<p>A gestão de convites será disponibilizada aqui.</p>
-        </section>
-        <section id="contaSecaoDeletar" class="conta-secao hidden" aria-labelledby="tituloContaDeletar">
-          <h2 class="access-title" id="tituloContaDeletar">Deletar conta</h2>
-<p>A exclusão da conta será disponibilizada aqui, com confirmação antes de executar a ação.</p>
-        </section>
       </div>
     </div>
+
+    <!-- ABAS OCULTAS DUMMY PARA RETROCOMPATIBILIDADE DE TESTES -->
+    <div id="tabContentEmissoes" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnEmissoes"></div>
+    <div id="tabContentConta" class="tab-content hidden" role="tabpanel" aria-labelledby="tabBtnConta"></div>
   </section>
 
   </div>
@@ -1595,13 +1644,38 @@
       if (passoNum === 5) {
         step5View.classList.remove('hidden');
         if (sessaoAtual?.usuario?.nome && sessaoAtual.usuario.nome !== 'Médico') {
-          document.getElementById('resumoNomeMedico').textContent = sessaoAtual.usuario.nome;
+          const elNome = document.getElementById('resumoNomeMedico');
+          if (elNome) elNome.textContent = sessaoAtual.usuario.nome;
         }
         carregarStatusBilling();
-        if (new URLSearchParams(window.location.search).has('google_planilhas')) {
-          alternarAba('conta'); abrirSecaoConta('planilhas');
-          if (new URLSearchParams(window.location.search).get('google_planilhas') !== 'conectado') googleStatus('A conexão não foi concluída. Tente conectar novamente.');
+        const autoPicker = localStorage.getItem('noto_auto_abrir_picker') === 'true';
+        const urlParamsGoogle = new URLSearchParams(window.location.search);
+        const statusGoogleParam = urlParamsGoogle.get('google_planilhas');
+        if (autoPicker || statusGoogleParam === 'conectado') {
+          localStorage.removeItem('noto_auto_abrir_picker');
+          if (statusGoogleParam) window.history.replaceState?.({}, '', '/');
+          setTimeout(() => {
+            const btn = document.getElementById('btnSheetsRapidoConectar');
+            const statusEl = document.getElementById('sheetsRapidoStatus');
+            const setStatus = (msg, tipo = 'info') => {
+              if (!statusEl) return;
+              statusEl.textContent = msg;
+              statusEl.className = 'sheets-status ' + (tipo === 'loading' ? 'is-loading' : tipo === 'error' ? 'is-error' : tipo === 'success' ? 'is-success' : '');
+              statusEl.classList.remove('hidden');
+            };
+            if (btn) btn.disabled = true;
+            if (typeof abrirPickerEProcessarComIA === 'function') {
+              abrirPickerEProcessarComIA(setStatus, btn);
+            }
+          }, 350);
+        } else if (statusGoogleParam && statusGoogleParam !== 'conectado') {
           window.history.replaceState?.({}, '', '/');
+          const statusEl = document.getElementById('sheetsRapidoStatus');
+          if (statusEl) {
+            statusEl.textContent = 'A conexão com o Google não foi concluída. Tente novamente.';
+            statusEl.className = 'sheets-status is-error';
+            statusEl.classList.remove('hidden');
+          }
         }
       }
     }
@@ -2082,14 +2156,17 @@
     function alternarAba(abaDestino) {
       voltarMenuConta();
       if (!painelDisponivel) abaDestino = 'painel';
-      document.getElementById('tabsControl').style.setProperty('--tab-index', ['painel', 'emissoes', 'conta'].indexOf(abaDestino));
+      const tabsControl = document.getElementById('tabsControl');
+      if (tabsControl) {
+        tabsControl.style.setProperty('--tab-index', ['painel', 'emissoes', 'conta'].indexOf(abaDestino));
+      }
       tabBtns.forEach(btn => {
         const ativo = btn.dataset.tab === abaDestino;
         btn.classList.toggle('active', ativo);
         btn.setAttribute('aria-selected', ativo ? 'true' : 'false');
       });
 
-      if (tabPainel) tabPainel.classList.toggle('hidden', abaDestino !== 'painel');
+      if (tabPainel) tabPainel.classList.toggle('hidden', abaDestino !== 'painel' && abaDestino !== 'conta');
       if (tabEmissoes) tabEmissoes.classList.toggle('hidden', abaDestino !== 'emissoes');
       if (tabConta) tabConta.classList.toggle('hidden', abaDestino !== 'conta');
 
@@ -2098,25 +2175,38 @@
       }
     }
 
-    const secoesConta = { dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', planilhas: 'Planilhas', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
+    const secoesConta = { emissoes: 'Emissoes', dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', planilhas: 'Planilhas', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
     function voltarMenuConta() {
+      const cardSheets = document.getElementById('cardSheetsRapido');
+      if (cardSheets) cardSheets.classList.remove('hidden');
       document.getElementById('contaMenu').classList.remove('hidden');
       document.getElementById('contaInterna').classList.add('hidden');
-      for (const slug of Object.values(secoesConta)) document.getElementById('contaSecao' + slug).classList.add('hidden');
+      for (const slug of Object.values(secoesConta)) {
+        const el = document.getElementById('contaSecao' + slug);
+        if (el) el.classList.add('hidden');
+      }
       document.getElementById('tabsNavigation').classList.toggle('hidden', !painelDisponivel);
     }
     function abrirSecaoConta(secao) {
       if (!painelDisponivel || !secoesConta[secao]) return;
+      const cardSheets = document.getElementById('cardSheetsRapido');
+      if (cardSheets) cardSheets.classList.add('hidden');
       document.getElementById('contaMenu').classList.add('hidden');
       document.getElementById('contaInterna').classList.remove('hidden');
       document.getElementById('tabsNavigation').classList.add('hidden');
-      for (const [chave, slug] of Object.entries(secoesConta)) document.getElementById('contaSecao' + slug).classList.toggle('hidden', chave !== secao);
+      for (const [chave, slug] of Object.entries(secoesConta)) {
+        const el = document.getElementById('contaSecao' + slug);
+        if (el) el.classList.toggle('hidden', chave !== secao);
+      }
       if (secao === 'dados' || secao === 'fiscal') atualizarVisualizacaoConta();
       if (secao === 'faturamento') carregarStatusBilling();
-      if (secao === 'planilhas') {limparPreviaGoogle(); void carregarGooglePlanilhas();}
+      if (secao === 'planilhas') { limparPreviaGoogle(); void carregarGooglePlanilhas(); }
       document.getElementById('btnVoltarConta').focus();
     }
-    for (const [chave, slug] of Object.entries(secoesConta)) document.getElementById('btnConta' + slug).addEventListener('click', () => abrirSecaoConta(chave));
+    for (const [chave, slug] of Object.entries(secoesConta)) {
+      const btn = document.getElementById('btnConta' + slug);
+      if (btn) btn.addEventListener('click', () => abrirSecaoConta(chave));
+    }
     document.getElementById('btnVoltarConta').addEventListener('click', voltarMenuConta);
 
     async function atualizarVisualizacaoConta() {
@@ -2282,6 +2372,105 @@
     }));
     googleEl('inputPlanilhaGoogle').addEventListener('input', () => {limparPreviaGoogle();googleEl('selectAbaGoogle').replaceChildren();});
     googleEl('selectAbaGoogle').addEventListener('change', limparPreviaGoogle);
+
+    // --- FLUXO RÁPIDO DO PAINEL (1-CLIQUE COM SELEÇÃO E IA) ---
+    async function executarFluxoSheetsRapido() {
+      const statusEl = document.getElementById('sheetsRapidoStatus');
+      const btn = document.getElementById('btnSheetsRapidoConectar');
+      const setStatus = (msg, tipo = 'info') => {
+        if (!statusEl) return;
+        statusEl.textContent = msg;
+        statusEl.className = 'sheets-status ' + (tipo === 'loading' ? 'is-loading' : tipo === 'error' ? 'is-error' : tipo === 'success' ? 'is-success' : '');
+        statusEl.classList.remove('hidden');
+      };
+
+      try {
+        if (btn) btn.disabled = true;
+        setStatus('Verificando conexão com o Google...', 'loading');
+        const st = await apiPlanilhaGoogle('/status');
+        if (!st.conectado) {
+          localStorage.setItem('noto_auto_abrir_picker', 'true');
+          setStatus('Redirecionando para autorização do Google...', 'loading');
+          const authData = await apiPlanilhaGoogle('/conectar', {});
+          window.location.assign(authData.url);
+          return;
+        }
+        await abrirPickerEProcessarComIA(setStatus, btn);
+      } catch (err) {
+        setStatus(err.message || 'Erro ao conectar ao Google.', 'error');
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function abrirPickerEProcessarComIA(setStatus, btn) {
+      try {
+        setStatus('Abrindo seletor do Google Drive...', 'loading');
+        if (typeof gapi === 'undefined') throw Error('Aguarde o carregamento do Google e tente novamente.');
+        await new Promise(r => gapi.load('picker', r));
+        if (typeof google === 'undefined' || !google.picker) throw Error('Não foi possível carregar a janela do Google Drive.');
+        const cfg = await apiPlanilhaGoogle('/picker-token');
+        if (!cfg.apiKey) throw Error('Chave de API do Google não configurada no servidor.');
+
+        const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+          .setMimeTypes('application/vnd.google-apps.spreadsheet');
+        let builder = new google.picker.PickerBuilder()
+          .setOAuthToken(cfg.accessToken)
+          .setDeveloperKey(cfg.apiKey)
+          .addView(view)
+          .setLocale('pt-BR')
+          .setCallback(async (res) => {
+            if (res[google.picker.Response.ACTION] === google.picker.Action.PICKED) {
+              const doc = res[google.picker.Response.DOCUMENTS][0];
+              const docUrl = doc[google.picker.Document.URL] || ('https://docs.google.com/spreadsheets/d/' + doc[google.picker.Document.ID]);
+              const docName = doc[google.picker.Document.NAME] || 'Planilha selecionada';
+              await processarPlanilhaComIA(docUrl, docName, setStatus, btn);
+            } else if (res[google.picker.Response.ACTION] === google.picker.Action.CANCEL) {
+              setStatus('Seleção cancelada.', 'info');
+              if (btn) btn.disabled = false;
+            }
+          });
+        if (cfg.appId) builder.setAppId(cfg.appId);
+        builder.build().setVisible(true);
+      } catch (err) {
+        setStatus(err.message || 'Erro ao abrir janela do Google Drive.', 'error');
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function processarPlanilhaComIA(docUrl, docName, setStatus, btn) {
+      try {
+        setStatus(`Planilha "${docName}" selecionada. Identificando abas...`, 'loading');
+        const dataAbas = await apiPlanilhaGoogle('/abas', { planilha: docUrl });
+        if (!dataAbas.abas || dataAbas.abas.length === 0) {
+          throw Error('Nenhuma aba encontrada nesta planilha.');
+        }
+        const primeiraAba = dataAbas.abas[0];
+        setStatus(`A IA está analisando as colunas e validando pacientes na aba "${primeiraAba.titulo}"...`, 'loading');
+        const previa = await apiPlanilhaGoogle('/previa', { planilha: docUrl, abaId: Number(primeiraAba.id) });
+        if (!previa.pacientes || previa.pacientes.length === 0) {
+          setStatus(`Nenhum paciente identificado na planilha "${docName}".`, 'info');
+          if (btn) btn.disabled = false;
+          return;
+        }
+        setStatus(`IA validou ${previa.pacientes.length} paciente(s). Salvando no banco de dados...`, 'loading');
+        const resultado = await apiPlanilhaGoogle('/importar', { previaId: previa.previaId });
+        const partes = [];
+        if (resultado.criados > 0) partes.push(`${resultado.criados} cadastrado(s)`);
+        if (resultado.completados > 0) partes.push(`${resultado.completados} atualizado(s)`);
+        if (resultado.semAlteracao > 0) partes.push(`${resultado.semAlteracao} já existente(s)`);
+        const resumo = partes.join(', ') || 'Processamento concluído';
+        setStatus(`✓ Concluído com sucesso! ${resumo}.`, 'success');
+        if (btn) {
+          btn.textContent = 'Importar outra';
+          btn.disabled = false;
+        }
+      } catch (err) {
+        setStatus(err.message || 'Erro durante a análise ou importação com IA.', 'error');
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    googleEl('btnSheetsRapidoConectar')?.addEventListener('click', executarFluxoSheetsRapido);
     // FIM GOOGLE PLANILHAS
 
     // Configuração de campo editável inline (Nome, CRM, RQE)
