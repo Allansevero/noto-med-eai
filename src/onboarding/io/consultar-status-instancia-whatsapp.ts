@@ -41,7 +41,10 @@ export async function consultarStatusInstanciaWhatsapp(
     }
 
     const data = await res.json().catch(() => ({}));
-    const state = data?.instance?.state || 'connecting';
+    const state = data?.instance?.state;
+    if (!['open', 'close', 'connecting'].includes(state)) {
+      return { ok: false, conectado: false, status: 'erro', detalhe: 'Estado da conexão não reconhecido.' };
+    }
 
     if (state === 'open') {
       await pool.query(

@@ -73,3 +73,13 @@ describe('consultarStatusInstanciaWhatsapp', () => {
     }
   });
 });
+
+it('resposta sem estado reconhecido não indica desconexão como fato', async () => {
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ instance: { state: 'unknown' } }) }) as any;
+  try {
+    const resultado = await consultarStatusInstanciaWhatsapp({ query: async () => assert.fail('Estado desconhecido não altera banco') } as any,
+      { medicoId: 'medico', evolutionUrl: 'https://evolution.test', evolutionApiKey: 'teste' });
+    assert.equal(resultado.ok, false); assert.equal(resultado.status, 'erro');
+  } finally { globalThis.fetch = fetchOriginal; }
+});

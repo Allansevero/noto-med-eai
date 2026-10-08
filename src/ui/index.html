@@ -916,6 +916,9 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+    #cardWhatsappPainel { margin-bottom: 1.25rem; }
+    #btnWhatsappPainel.is-connected,
+    #btnWhatsappPainel.is-connected:hover { background: #DDDDDF !important; color: var(--text-secondary) !important; opacity: 1; }
     .sheets-status {
       margin-top: 0.95rem;
       padding: 0.75rem 0.95rem;
@@ -1169,6 +1172,24 @@
 
           <!-- CENTRAL: CONTEÚDO PRINCIPAL (600px) -->
           <div class="painel-central">
+            <div id="cardWhatsappPainel" class="sheets-card">
+              <div class="sheets-card-main">
+                <div class="sheets-card-left">
+                  <div class="sheets-logo-wrapper" aria-hidden="true">
+                    <svg width="34" height="34" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M16 2a14 14 0 0 0-12 21L2 30l7-2a14 14 0 1 0 7-26Z" fill="#25D366"/>
+                      <path d="M10 8c-1 0-2 2-2 3 0 5 6 11 11 11 2 0 4-2 4-3l-4-2-2 2c-3-1-5-3-6-6l2-2-2-3h-1Z" fill="#fff"/>
+                    </svg>
+                  </div>
+                  <div class="sheets-info-wrapper">
+                    <span class="sheets-title">WhatsApp</span>
+                    <span class="sheets-subtitle" id="whatsappPainelStatus" role="status" aria-live="polite">Verificando conexão...</span>
+                  </div>
+                </div>
+                <button type="button" class="sheets-btn-conectar" id="btnWhatsappPainel" disabled>Verificando...</button>
+              </div>
+            </div>
+
             <!-- TÍTULO DA SEÇÃO EM CAIXA ALTA -->
             <div class="secao-titulo-integracoes">INTEGRAÇÕES</div>
 
@@ -1455,6 +1476,7 @@
       sessaoAtual = null;
       limparPreviaGoogle(); googleEl('resultadoImportacaoGoogle').replaceChildren();
       pararPollingConexao();
+      pararStatusWhatsappPainel();
 
       // Limpa os formulários
       inputTelefone.value = '';
@@ -1716,6 +1738,7 @@
     function mostrarPasso(passoNum) {
       hideAlert(alertBox); hideAlert(alertOnboarding);
       painelDisponivel = passoNum === 5;
+      if (!painelDisponivel) pararStatusWhatsappPainel();
       document.body.classList.toggle('onboarding-active', !painelDisponivel);
       document.getElementById('tabsNavigation').classList.toggle('hidden', !painelDisponivel);
       alternarAba('painel');
@@ -1728,6 +1751,7 @@
       if (passoNum === 4) step4View.classList.remove('hidden');
       if (passoNum === 5) {
         step5View.classList.remove('hidden');
+        void iniciarStatusWhatsappPainel();
         if (sessaoAtual?.usuario?.nome && sessaoAtual.usuario.nome !== 'Médico') {
           const elNome = document.getElementById('resumoNomeMedico');
           if (elNome) elNome.textContent = sessaoAtual.usuario.nome;
@@ -2119,6 +2143,59 @@
 
     document.getElementById('btnIniciarWhatsapp').addEventListener('click', () => iniciarConexaoWhatsapp());
     document.getElementById('btnConectarQr').addEventListener('click', () => iniciarConexaoWhatsapp('qrcode'));
+    // INICIO STATUS WHATSAPP
+    let intervaloStatusWhatsapp = null;
+    let geracaoStatusWhatsapp = 0;
+    let consultaStatusWhatsappPendente = false;
+    function pararStatusWhatsappPainel() {
+      clearInterval(intervaloStatusWhatsapp);
+      intervaloStatusWhatsapp = null;
+      geracaoStatusWhatsapp++;
+      consultaStatusWhatsappPendente = false;
+    }
+    async function atualizarStatusWhatsappPainel() {
+      if (!painelDisponivel || document.hidden || !sessaoAtual?.tokenAcesso || consultaStatusWhatsappPendente) return;
+      const geracao = geracaoStatusWhatsapp;
+      const sessao = sessaoAtual;
+      consultaStatusWhatsappPendente = true;
+      const btn = document.getElementById('btnWhatsappPainel');
+      const status = document.getElementById('whatsappPainelStatus');
+      try {
+        const res = await fetch('/api/whatsapp/status', {
+          headers: { Authorization: 'Bearer ' + sessao.tokenAcesso },
+          cache: 'no-store', signal: AbortSignal.timeout(10000)
+        });
+        const data = await res.json();
+        if (geracao !== geracaoStatusWhatsapp || sessao !== sessaoAtual || !painelDisponivel) return;
+        if (!res.ok || !data.ok || typeof data.conectado !== 'boolean') throw Error('consulta');
+        btn.textContent = data.conectado ? 'Conectado' : 'Conectar';
+        btn.disabled = data.conectado;
+        btn.classList.toggle('is-connected', data.conectado);
+        status.textContent = data.conectado ? 'Seu WhatsApp está conectado.' : 'WhatsApp desconectado. Conecte para retomar a emissão pela conversa.';
+        document.getElementById('avisoConexaoWhatsappPainel').hidden = !whatsappJaVinculado || data.conectado;
+      } catch {
+        if (geracao !== geracaoStatusWhatsapp || sessao !== sessaoAtual || !painelDisponivel) return;
+        btn.textContent = 'Conectar'; btn.disabled = false;
+        btn.classList.toggle('is-connected', false);
+        status.textContent = 'Não foi possível verificar a conexão do WhatsApp. Tentaremos novamente.';
+      } finally {
+        if (geracao === geracaoStatusWhatsapp) consultaStatusWhatsappPendente = false;
+      }
+    }
+    function iniciarStatusWhatsappPainel() {
+      pararStatusWhatsappPainel();
+      const btn = document.getElementById('btnWhatsappPainel');
+      btn.textContent = 'Verificando...'; btn.disabled = true;
+      btn.classList.toggle('is-connected', false);
+      document.getElementById('whatsappPainelStatus').textContent = 'Verificando conexão...';
+      intervaloStatusWhatsapp = setInterval(atualizarStatusWhatsappPainel, 15000);
+      return atualizarStatusWhatsappPainel();
+    }
+    document.getElementById('btnWhatsappPainel').addEventListener('click', () => mostrarPasso(4));
+    document.addEventListener?.('visibilitychange', () => { if (!document.hidden) void atualizarStatusWhatsappPainel(); });
+    window.addEventListener?.('focus', () => { void atualizarStatusWhatsappPainel(); });
+    // FIM STATUS WHATSAPP
+
     document.getElementById('btnReconectarWhatsappPainel').addEventListener('click', () => mostrarPasso(4));
     document.getElementById('btnVoltarPainelWhatsapp').addEventListener('click', () => carregarFluxoOnboarding());
 
@@ -2266,6 +2343,7 @@
     function voltarMenuConta() {
       const cardSheets = document.getElementById('cardSheetsRapido');
       if (cardSheets) cardSheets.classList.remove('hidden');
+      document.getElementById('cardWhatsappPainel').classList.remove('hidden');
       document.getElementById('contaMenu').classList.remove('hidden');
       document.getElementById('contaInterna').classList.add('hidden');
       for (const slug of Object.values(secoesConta)) {
@@ -2278,6 +2356,7 @@
       if (!painelDisponivel || !secoesConta[secao]) return;
       const cardSheets = document.getElementById('cardSheetsRapido');
       if (cardSheets) cardSheets.classList.add('hidden');
+      document.getElementById('cardWhatsappPainel').classList.add('hidden');
       document.getElementById('contaMenu').classList.add('hidden');
       document.getElementById('contaInterna').classList.remove('hidden');
       document.getElementById('tabsNavigation').classList.add('hidden');

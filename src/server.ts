@@ -1,3 +1,4 @@
+import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { randomUUID } from 'node:crypto';
 import {diagnosticoEntradaWebhook,diagnosticoResultadoWebhook,diagnosticoErroWebhook} from './whatsapp/diagnostico-webhook.js';
 import {criarRouterGooglePlanilhas} from './integracoes/google-planilhas/router.js';
@@ -148,6 +149,14 @@ export function criarAppExpress() {
       res.sendFile(join(__dirname, 'ui', 'desenvolvedor-fiscal.html'));
     });
   }
+
+  app.use('/api/whatsapp', criarRouterStatusWhatsapp({
+    pool,
+    autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
+    consultar: medicoId => consultarStatusInstanciaWhatsapp(pool, {
+      medicoId, evolutionUrl: config.evolutionApiUrl, evolutionApiKey: config.evolutionGlobalApiKey
+    })
+  }));
 
   app.use('/api/integracoes/google-planilhas', criarRouterGooglePlanilhas({
     pool, google: config.googleClientId && config.googleClientSecret && config.googleRedirectUri
