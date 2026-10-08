@@ -179,6 +179,11 @@ export function criarAppExpress() {
     res.sendFile(join(__dirname, 'ui', 'privacidade.html'));
   });
 
+  // Verificação de propriedade do domínio no Google Search Console
+  app.get('/google7e12f4f1b60db1c4.html', (_req: Request, res: Response) => {
+    res.sendFile(join(__dirname, 'ui', 'google7e12f4f1b60db1c4.html'));
+  });
+
   // Rota de Solicitação de OTP (WhatsApp)
   app.post('/api/auth/otp/solicitar', async (req: Request, res: Response) => {
     try {
