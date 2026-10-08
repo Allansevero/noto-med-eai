@@ -36,15 +36,17 @@ test('worker suspende solicitação sem consumir tentativas nem chamar agente fi
   assert.deepEqual(acoes, ['suspender:sol', 'pedir:med']);
 });
 
-test('emissor retém nota anterior mesmo com nome e CRM válidos até confirmação na conversa', async () => {
+test('emissor com cadastro completo avança à validação fiscal sem confirmação antiga', async () => {
   const consultas: string[]=[];
   const pool={query:async(sql:string)=>{
     consultas.push(sql);
     if(sql.includes('from medicos'))return {rows:[{nome_completo:'Ana Silva',crm:'123/RS',aguardando_confirmacao_medico:true}]};
-    throw Error('Não pode acessar dados de emissão');
+    if(sql.includes('from medico_perfil_fiscal'))return {rows:[]};
+    throw Error('Consulta inesperada');
   }} as any;
   const res=await new PostgresEmissorDpsService(pool,'fake').emitir(item);
   assert.equal(res.sucesso,false);
-  assert.equal((res as any).dadosProfissionaisPendentes,true);
-  assert.equal(consultas.length,1);
+  assert.notEqual((res as any).dadosProfissionaisPendentes,true);
+  assert.match((res as any).erro,/Perfil fiscal não cadastrado/);
+  assert.equal(consultas.length,2);
 });

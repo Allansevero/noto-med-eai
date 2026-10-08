@@ -88,41 +88,27 @@ test('falha na transação não envia mensagem de sucesso e conversa desconhecid
 });
 
 
-test('solicitação anterior com perfil completo pede confirmação e nem Conta nem oi liberam', async()=>{
+test('Conta libera notas antigas com perfil completo sem pedir confirmação', async()=>{
  const id='11111111-1111-4111-8111-111111111111';
  const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true});
- await a.service.solicitar(id);assert.equal(a.envios.length,1);assert.match(a.envios[0].texto,/pode emitir/i);
- await a.service.solicitar(id);assert.equal(a.envios.length,1);
- assert.equal(await a.service.retomar(id),0);assert.equal(a.updates.length,0);
- const res=await a.service.processarResposta({medicoId:id,mensagemId:'oi',texto:'oi',mensagemEm:new Date('2026-10-07T10:00:00Z')} as any);
- assert.equal(res.tratada,true);assert.equal(a.updates.length,0);assert.equal(a.revisao().estado,'enviado');
-});
-test('confirmação explícita e recente libera pendências anteriores apenas uma vez', async()=>{
- const id='11111111-1111-4111-8111-111111111111';
- const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true});
- await a.service.solicitar(id);
- await a.service.processarResposta({medicoId:id,mensagemId:'antiga',texto:'pode emitir',mensagemEm:new Date('2026-10-06T10:00:00Z')} as any);
- assert.equal(a.updates.length,0);
- await a.service.processarResposta({medicoId:id,mensagemId:'sem-data',texto:'pode emitir'});assert.equal(a.updates.length,0);
- await a.service.processarResposta({medicoId:id,mensagemId:'confirmacao',texto:'pode emitir',mensagemEm:new Date()} as any);
- assert.equal(a.updates.length,1);assert.equal(a.revisao().estado,'confirmado');
- await a.service.processarResposta({medicoId:id,mensagemId:'confirmacao',texto:'pode emitir',mensagemEm:new Date()} as any);
+ assert.equal(await a.service.retomar(id),1);
+ assert.equal(await a.service.retomar(id),0);
  assert.equal(a.updates.length,1);
+ assert.equal(a.envios.length,0);
 });
-test('dados profissionais recebidos não autorizam sozinhos a emissão do lote anterior', async()=>{
+test('completar dados no WhatsApp libera o lote antigo sem segunda autorização',async()=>{
  const id='11111111-1111-4111-8111-111111111111';
  const a=ambiente({pendente:true,confirmacao:true});
  await a.service.processarResposta({medicoId:id,mensagemId:'nome',texto:'Ana Silva'});
+ assert.equal(a.updates.length,0);
  await a.service.processarResposta({medicoId:id,mensagemId:'crm',texto:'123/RS'});
- assert.equal(a.medico().crm,'123/RS');assert.equal(a.updates.length,0);assert.equal(a.revisao().estado,'enviado');
- assert.match(a.envios.at(-1).texto,/pode emitir/i);
+ assert.equal(a.updates.length,1);
+ assert.ok(a.envios.every(e=>!e.texto.includes('pode emitir')));
 });
-
-test('mensagem do mesmo segundo mas anterior à captura não autoriza a retomada',async()=>{
- const id='11111111-1111-4111-8111-111111111111';
- const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true,capturadaEm:new Date('2026-10-07T10:00:00.900Z')});
- await a.service.processarResposta({medicoId:id,mensagemId:'replay-segundo',texto:'pode emitir',mensagemEm:new Date('2026-10-07T10:00:00.000Z')} as any);
- assert.equal(a.updates.length,0);assert.notEqual(a.revisao().estado,'confirmado');
+test('cadastro incompleto continua retido mesmo com autorização anterior',async()=>{
+ const a=ambiente({confirmacao:true});
+ assert.equal(await a.service.retomar('11111111-1111-4111-8111-111111111111'),0);
+ assert.equal(a.updates.length,0);
 });
 
 test('falhas nos primeiros vinte avisos não impedem o próximo médico de ser atendido',async(t)=>{
@@ -150,8 +136,9 @@ test('comunicação de dado faltando delega o contexto para IA sem mensagem fixa
  await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(a.pendencia(),null);
  await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(chamadas,2);assert.equal(a.envios.length,0);
  });
- test('falha de geração da confirmação restaura pendência, não libera notas',async()=>{
- let chamadas=0;const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true,comunicador:{enviar:async()=>{chamadas++;return {sucesso:false,envioIniciado:false};}}});
- await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(a.revisao().estado,'pendente');
- await a.service.solicitar('11111111-1111-4111-8111-111111111111');assert.equal(chamadas,2);assert.equal(a.updates.length,0);assert.equal(a.envios.length,0);
- });
+test('falha na IA não impede retomada de cadastro já completo',async()=>{
+ let chamadas=0;
+ const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true,comunicador:{enviar:async()=>{chamadas++;return {sucesso:false,envioIniciado:false};}}});
+ assert.equal(await a.service.retomar('11111111-1111-4111-8111-111111111111'),1);
+ assert.equal(chamadas,0);
+});
