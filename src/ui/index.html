@@ -2322,6 +2322,12 @@
         method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
+      if (res.status === 401) {
+        // A cached user profile is not proof that its access token is still valid.
+        efetuarLogout();
+        showAlert('Sua sessão expirou ou não é mais válida. Entre novamente com o código enviado pelo WhatsApp.', true, alertBox);
+        throw Error('Entre novamente no Noto para acessar sua planilha. Sua conexão Google foi mantida.');
+      }
       const data = await res.json().catch(() => { throw Error('O servidor não respondeu corretamente (HTTP ' + res.status + '). Tente novamente em instantes.'); });
       if (!res.ok || !data.ok) throw Error(data.detalhe || 'Não foi possível concluir a operação.');
       return data;
