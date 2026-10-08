@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import {diagnosticoEntradaWebhook,diagnosticoResultadoWebhook,diagnosticoErroWebhook} from './whatsapp/diagnostico-webhook.js';
 import {criarRouterGooglePlanilhas} from './integracoes/google-planilhas/router.js';
 import {GooglePlanilhasClient} from './integracoes/google-planilhas/google-client.js';
 import {NvidiaMapeadorColunas} from './integracoes/google-planilhas/nvidia-mapeador-colunas.js';
@@ -583,6 +585,9 @@ export function criarAppExpress() {
 
   // Rota Webhook da Evolution API (suporta rota direta e subrotas com eventos)
   const webhookHandler = async (req: Request, res: Response) => {
+    const referencia=randomUUID(),inicio=Date.now();
+    console.info('[Webhook Evolution]',{etapa:'recebido',referencia,...diagnosticoEntradaWebhook(req.body)});
+    try {
     const tokenRecebido =
       (req.headers['apikey'] as string) ||
       (req.headers['x-webhook-secret'] as string) ||
@@ -620,12 +625,17 @@ export function criarAppExpress() {
       }
     });
 
+    console.info('[Webhook Evolution]',{etapa:'concluido',referencia,duracaoMs:Date.now()-inicio,...diagnosticoResultadoWebhook(resultado)});
     if (!resultado.ok) {
       const status = resultado.motivo === 'autenticacao_invalida' ? 401 : 400;
       return res.status(status).json(resultado);
     }
 
     return res.json(resultado);
+    } catch (erro) {
+      console.error('[Webhook Evolution]',{etapa:'falha',referencia,duracaoMs:Date.now()-inicio,...diagnosticoErroWebhook(erro)});
+      return res.status(500).json({ok:false,motivo:'falha_processamento',referencia});
+    }
   };
 
   app.post('/webhook/evolution', webhookHandler);

@@ -141,7 +141,7 @@ describe('processarMensagemWebhook', () => {
       message: { conversation: MODELO_EMISSAO_TREINO.replace('[preecha]', '350,00').replace('[preecha]', '01/10/2026') }
     } };
     const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
-    assert.deepStrictEqual(res, { ok: true, acao: 'descartada' });
+    assert.deepStrictEqual(res, { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_oficial' });
     assert.equal(repo.solicitacoes.length, 0);
     assert.equal(repo.pacientes.length, 0);
     assert.equal(repo.conversas.length, 0);

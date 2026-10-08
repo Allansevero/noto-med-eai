@@ -53,6 +53,7 @@ export type ResultadoProcessarWebhook =
       ok: true;
       acao: 'conversa_oficial' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
+      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido';
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
 
@@ -68,7 +69,7 @@ export async function processarMensagemWebhook(
   const conexao = conexaoWebhookSchema.safeParse(payloadBruto);
   if (conexao.success) {
     if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
-    if (!deps.aoAtualizarConexao) return { ok: true, acao: 'descartada' };
+    if (!deps.aoAtualizarConexao) return { ok: true, acao: 'descartada', motivoDescarte: 'sem_tratador_conexao' };
     await deps.aoAtualizarConexao({ instancia: conexao.data.instance, state: conexao.data.data.state });
     return { ok: true, acao: 'conexao_atualizada' };
   }
@@ -79,7 +80,7 @@ export async function processarMensagemWebhook(
     return { ok: true, acao: resultado.acao, detalhe: resultado };
   }
   if (ehEventoSincronizacaoAuxiliar(payloadBruto)) {
-    return { ok: true, acao: 'descartada' };
+    return { ok: true, acao: 'descartada', motivoDescarte: 'sincronizacao_auxiliar' };
   }
 
   const parsed = webhookEvolutionSchema.safeParse(payloadBruto);
@@ -92,14 +93,15 @@ export async function processarMensagemWebhook(
     extrairTelefoneJid(jidAlternativo) ||
     extrairTelefoneJid(jidPrincipal);
   const texto = extrairTextoMensagem(payload.data);
-  if (!telefone || !texto) return { ok: true, acao: 'descartada' };
+  if (!telefone) return { ok: true, acao: 'descartada', motivoDescarte: 'contato_nao_identificado' };
+  if (!texto) return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_sem_texto' };
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };
 
   // O modelo enviado pelo Noto Oficial ensina o comando; não é uma emissão.
   if (payload.data.key.fromMe && (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
-    return { ok: true, acao: 'descartada' };
+    return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_oficial' };
   }
 
   const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
@@ -203,12 +205,12 @@ async function rotearMensagem(
   }
 
   // Se não for do médico, mensagens comuns do paciente não disparam comandos
-  if (!fromMe) return { ok: true, acao: 'descartada' };
+  if (!fromMe) return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_recebida_do_paciente' };
 
   // 3. Comandos rápidos do médico
   const modelos = await deps.repositorio.buscarRespostasRapidasMedico(conversa.medicoId);
   const casamento = casarRespostaRapida(texto, true, modelos);
-  if (!casamento.casou) return { ok: true, acao: 'descartada' };
+  if (!casamento.casou) return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
 
   if (casamento.tipo === 'agendado') {
     const res = await processarComandoAgendado(conversa, [texto], {
