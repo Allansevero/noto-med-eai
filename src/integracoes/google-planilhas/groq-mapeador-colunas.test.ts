@@ -46,3 +46,20 @@ describe('GroqMapeadorColunas', () => {
     finally { interceptacao.mock.restore(); }
   });
 });
+
+it('recupera HTTP 400 somente quando cada cabeçalho tem significado inequívoco', async()=>{
+ const logs:unknown[]=[];const warning=mock.method(console,'warn',(...args:unknown[])=>{logs.push(args);});
+ const chamada=mock.method(globalThis,'fetch',async()=>Response.json({error:{code:'json_validate_failed',message:'segredo do paciente'}},{status:400}));
+ try{
+  const mapa=await new GroqMapeadorColunas('chave','openai/gpt-oss-120b').mapear(['Nome completo','CPF','E-mail','WhatsApp']);
+  assert.deepEqual(mapa,{nome:0,cpf:1,email:2,telefone:3});
+  assert.equal(chamada.mock.callCount(),1);
+  assert.match(JSON.stringify(logs),/json_validate_failed/);
+  assert.doesNotMatch(JSON.stringify(logs),/segredo|chave|paciente/);
+ }finally{chamada.mock.restore();warning.mock.restore();}
+});
+it('HTTP 400 não permite escolher entre duas colunas de telefone',async()=>{
+ const chamada=mock.method(globalThis,'fetch',async()=>Response.json({error:{code:'json_validate_failed'}},{status:400}));
+ try{await assert.rejects(new GroqMapeadorColunas('chave','modelo').mapear(['Nome','Telefone','WhatsApp']),/400/);}
+ finally{chamada.mock.restore();}
+});
