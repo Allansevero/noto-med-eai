@@ -68,7 +68,19 @@ export async function importarPacientesPlanilha(
     const cpfInformado = texto(paciente.cpf);
     const telefone = paciente.telefone;
     if (!Array.isArray(paciente.pendencias) || paciente.pendencias.length > 0) {
-      ignorar('Linha com pendências de validação.'); continue;
+      const motivos: Record<string, string> = {
+        nome_invalido: 'Nome inválido.',
+        cpf_invalido: 'CPF inválido.',
+        email_invalido: 'E-mail inválido.',
+        telefone_invalido: 'Telefone inválido. Informe um número brasileiro com DDD.',
+        telefone_ausente: 'Telefone ausente. Informe o WhatsApp do paciente com DDD.',
+        telefone_cpf_conflitante: 'O mesmo telefone aparece com CPFs diferentes na planilha.',
+        cpf_telefones_conflitantes: 'O mesmo CPF aparece com telefones diferentes na planilha.',
+      };
+      const detalhes = Array.isArray(paciente.pendencias)
+        ? [...new Set(paciente.pendencias.map(codigo => Object.hasOwn(motivos, codigo) ? motivos[codigo] : 'Linha com pendências de validação.'))]
+        : ['Linha com pendências de validação.'];
+      ignorar(detalhes.join(' ')); continue;
     }
     if (typeof telefone !== 'string' || !/^55\d{10,11}$/.test(telefone)) {
       ignorar('Telefone brasileiro válido é obrigatório.'); continue;

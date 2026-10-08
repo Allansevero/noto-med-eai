@@ -2547,14 +2547,24 @@
           if (btn) btn.disabled = false;
           return;
         }
-        setStatus(`IA validou ${previa.pacientes.length} paciente(s). Salvando no banco de dados...`, 'loading');
+        setStatus(`Encontrados ${previa.pacientes.length} registros. Importando os pacientes que passaram pela validação...`, 'loading');
         const resultado = await apiPlanilhaGoogle('/importar', { previaId: previa.previaId });
         const partes = [];
         if (resultado.criados > 0) partes.push(`${resultado.criados} cadastrado(s)`);
         if (resultado.completados > 0) partes.push(`${resultado.completados} atualizado(s)`);
         if (resultado.semAlteracao > 0) partes.push(`${resultado.semAlteracao} já existente(s)`);
-        const resumo = partes.join(', ') || 'Processamento concluído';
-        setStatus(`✓ Concluído com sucesso! ${resumo}.`, 'success');
+        const ignorados = Array.isArray(resultado.ignorados) ? resultado.ignorados : [];
+        const salvos = resultado.criados + resultado.completados;
+        const resumo = partes.join(', ');
+        if (ignorados.length) {
+          const motivos = ignorados.map(item => `Linha ${item.linha}: ${item.motivo}`).join(' ');
+          const situacao = salvos > 0 ? `Importação parcial: ${resumo}.` : `Nenhum paciente novo foi salvo ou atualizado.${resumo ? ' ' + resumo + '.' : ''}`;
+          setStatus(`${situacao} ${ignorados.length} linha(s) não importada(s). ${motivos} Corrija as linhas indicadas e selecione a planilha novamente.`, salvos > 0 ? 'info' : 'error');
+        } else if (salvos > 0 || resultado.semAlteracao > 0) {
+          setStatus(`Importação concluída: ${resumo}.`, 'success');
+        } else {
+          setStatus('Nenhum paciente foi salvo. Confira os dados da planilha e tente novamente.', 'error');
+        }
         if (btn) {
           btn.textContent = 'Importar outra';
           btn.disabled = false;

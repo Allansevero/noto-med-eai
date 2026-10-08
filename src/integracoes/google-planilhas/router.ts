@@ -155,7 +155,11 @@ export function criarRouterGooglePlanilhas(deps:Deps){
    const dados=JSON.parse(p.dados) as ResultadoExtracaoPlanilha;
    const resultado=await importarPacientesPlanilha(client,med,dados.pacientes,deps.encryptionKey,deps.pepper);
    await client.query("update google_planilhas_previas set estado='importada',resultado=$3::jsonb where medico_id=$1 and id=$2",[med,id,JSON.stringify(resultado)]);
-   await client.query('commit');r.json({ok:true,...resultado});
+   await client.query('commit');
+   console.info('[Google Planilhas]', {etapa:'importar_pacientes', resultado:'concluido',
+    criados:resultado.criados, completados:resultado.completados,
+    semAlteracao:resultado.semAlteracao, ignorados:resultado.ignorados.length});
+   r.json({ok:true,...resultado});
   }catch(e){await client.query('rollback');throw e;}finally{client.release();}
  }));
  router.delete('/conexao',proteger(async(_q,r)=>{
@@ -173,4 +177,3 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  }));
  return router;
 }
-
