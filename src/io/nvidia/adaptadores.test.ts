@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import type { ContextoMensagemNoto } from '../../conversa/comunicador-noto.js';
+import { ErroNvidiaChat } from './chat-client.js';
 
 async function adaptadores() {
   const modulo = await import('./adaptadores.js').catch(() => null);
@@ -45,6 +46,34 @@ test('NVIDIA rejeita mensagens e decisões inválidas ou incompletas', async t =
   await assert.rejects(new NvidiaGeradorMensagemNoto('chave', 'modelo').gerar(contexto));
   fake.mock.mockImplementation(async () => resposta({ acao: 'alterar_regime', causa: 'x', justificativa: 'x', acaoNecessaria: 'x' }));
   await assert.rejects(new NvidiaDecisorFiscal('chave', 'modelo').decidir({}));
+});
+
+test('redação preserva o diagnóstico HTTP da NVIDIA sem expor resposta ou chave', async t => {
+  const { NvidiaGeradorMensagemNoto } = await adaptadores();
+  const fake = t.mock.method(globalThis, 'fetch', async () => new Response('corpo privado', {status:429}));
+  for(const status of [429,500,503]) {
+    fake.mock.mockImplementation(async()=>new Response('corpo privado',{status}));
+    await assert.rejects(new NvidiaGeradorMensagemNoto('chave-privada').gerar(contexto), (erro: unknown) => {
+      assert.ok(erro instanceof ErroNvidiaChat);
+      assert.equal(erro.codigo,'IA_HTTP_ERRO');assert.equal(erro.statusHttp,status);
+      assert.doesNotMatch(erro.message+JSON.stringify(erro),/corpo privado|chave-privada/);
+      return true;
+    });
+  }
+});
+
+test('redação distingue falha de conexão de resposta inválida', async t => {
+  const { NvidiaGeradorMensagemNoto } = await adaptadores();
+  const fake = t.mock.method(globalThis,'fetch',async()=>{throw Error('endereço e credenciais privados');});
+  await assert.rejects(new NvidiaGeradorMensagemNoto('chave').gerar(contexto), {codigo:'IA_CONEXAO_FALHOU'});
+  for(const content of ['conteúdo privado sem JSON',{mensagens:[]},{mensagens:['x'.repeat(501)]}]) {
+    fake.mock.mockImplementation(async()=>resposta(content));
+    await assert.rejects(new NvidiaGeradorMensagemNoto('chave').gerar(contexto),(erro:unknown)=>{
+      assert.ok(erro instanceof ErroNvidiaChat);assert.equal(erro.codigo,'IA_RESPOSTA_INVALIDA');
+      assert.doesNotMatch(erro.message+JSON.stringify(erro),/conteúdo privado|xxx/);return true;
+    });
+  }
+  await assert.rejects(new NvidiaGeradorMensagemNoto(' ').gerar(contexto),{codigo:'IA_NAO_CONFIGURADA'});
 });
 
 test('NVIDIA extrai usando o parser existente e não faz fallback para Groq', async t => {

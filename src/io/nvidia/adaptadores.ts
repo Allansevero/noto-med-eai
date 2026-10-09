@@ -20,7 +20,7 @@ const decisaoSchema = z.object({
 export class NvidiaGeradorMensagemNoto implements GeradorMensagemNoto {
   constructor(private readonly apiKey: string, private readonly modelo = modeloPadrao) {}
   async gerar(contexto: ContextoMensagemNoto): Promise<string[]> {
-    if (!this.apiKey.trim()) throw new Error('Gerador de mensagens do Noto não configurado');
+    if (!this.apiKey.trim()) throw new ErroNvidiaChat('IA_NAO_CONFIGURADA');
     try {
       const guia = await carregarGuia();
       const content = await completarNvidia(this.apiKey, this.modelo, [
@@ -28,7 +28,12 @@ export class NvidiaGeradorMensagemNoto implements GeradorMensagemNoto {
         { role: 'user', content: JSON.stringify(contexto) }
       ]);
       return mensagensSchema.parse(JSON.parse(content)).mensagens;
-    } catch { throw new Error('Não foi possível gerar a mensagem do Noto'); }
+    } catch (erro) {
+      if (erro instanceof ErroNvidiaChat) throw erro;
+      if (erro instanceof SyntaxError || erro instanceof z.ZodError)
+        throw new ErroNvidiaChat('IA_RESPOSTA_INVALIDA');
+      throw new Error('Não foi possível gerar a mensagem do Noto');
+    }
   }
 }
 
