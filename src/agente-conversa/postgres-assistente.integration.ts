@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import pg from 'pg';
 import { readFile } from 'node:fs/promises';
+import { iniciarAssistenteConectado } from './iniciar-assistente-conectado.js';
+import { GerenciadorConversaOnboarding } from './gerenciador-conversa-onboarding.js';
 import { PostgresAssistente } from './postgres-assistente.js';
 const url = process.env.NOTO_TEST_DATABASE_URL;
 if (
@@ -46,6 +48,42 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
       usr,
       'Médico X'
     ]);
+    await p.query(`create table whatsapp_instancias(medico_id uuid,oficial boolean,status text);
+      insert into whatsapp_instancias values('${med}',false,'conectado');`);
+    let geracoes = 0,
+      envios = 0;
+    const gerenciador = new GerenciadorConversaOnboarding({} as any, {
+      gerar: async () => {
+        if (++geracoes === 1) throw Error('falha de geração');
+        return ['Olá, sou Noto. Qual seu nome completo?'];
+      }
+    });
+    const bootstrap = {
+      pool: p,
+      gerenciador,
+      salvarEstado: async () => {},
+      instanciaNome: 'assistente',
+      enviar: {
+        enviarTexto: async () => {
+          envios++;
+          return { sucesso: true };
+        }
+      }
+    };
+    await assert.rejects(
+      iniciarAssistenteConectado(bootstrap, med),
+      /falha de geração/
+    );
+    assert.equal(envios, 0);
+    await p.query("update auditoria set criado_em=now()-interval '2 minutes'");
+    await iniciarAssistenteConectado(bootstrap, med);
+    assert.equal(
+      envios,
+      1,
+      'falha antes do transporte permite preparação novamente'
+    );
+    await iniciarAssistenteConectado(bootstrap, med);
+    assert.equal(envios, 1, 'confirmação impede repetir boas-vindas');
     const repo = new PostgresAssistente(p);
     await Promise.all(
       Array.from({ length: 5 }, () =>
@@ -132,26 +170,78 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
     await p.query(`create function falhar_turno() returns trigger language plpgsql as $$ begin
       if new.decisao->>'assunto'='falha sintetica' then raise exception 'falha sintetica'; end if;return new;end $$;
       create trigger falhar_turno before update on noto_assistente_turnos for each row execute function falhar_turno();`);
-    await assert.rejects(repo.aplicar(r3!,{crmInformado:'54321/RS'},
-      {intencao:'registrar',ritmo:'manter',assunto:'falha sintetica',acoes:[]},[]),/falha sintetica/);
-    assert.equal((await p.query('select crm from medicos')).rows[0].crm,'12345/RS');
-    assert.equal((await p.query('select versao from noto_assistente_sessoes')).rows[0].versao,r3!.versao);
-    await repo.aplicar(r3!,{}, {intencao:'pausar',ritmo:'pausar',assunto:'pausa',acoes:[]},[]);
-    assert.equal(r3!.estado.pausado,true);
-    await repo.falhar(r3!);await repo.liberar(r3!);
-    assert.equal(await repo.reservar(med),null,'backoff bloqueia mensagens posteriores');
-    await p.query("update noto_assistente_turnos set proxima_tentativa_em=now() where mensagem_id='m3'");
-    const retomado=(await repo.reservar(med))!;
-    assert.equal(retomado.turno.estado,'aplicado','retoma redação sem repetir gravação');
-    assert.equal(retomado.estado.pausado,true);
-    await repo.prepararResposta(retomado,['Primeira confirmada.','Segunda incerta.']);
-    await repo.iniciarEnvio(retomado);await repo.confirmarMensagem(retomado,1);await repo.falhar(retomado);await repo.liberar(retomado);
-    const historico=await repo.historico(med,'999999');
-    assert.ok(historico.some(x=>x.texto==='Primeira confirmada.'));
-    assert.ok(!historico.some(x=>x.texto==='Segunda incerta.'));
-    assert.ok(historico.length<=20);
-    await repo.registrarApresentacao(med,{etapa:'apresentacao'},['Olá.'],'assistente','bem-vindo');
-    assert.equal((await p.query('select estado from noto_assistente_sessoes')).rows[0].estado.pausado,true,'bootstrap tardio preserva progresso');
+    await assert.rejects(
+      repo.aplicar(
+        r3!,
+        { crmInformado: '54321/RS' },
+        {
+          intencao: 'registrar',
+          ritmo: 'manter',
+          assunto: 'falha sintetica',
+          acoes: []
+        },
+        []
+      ),
+      /falha sintetica/
+    );
+    assert.equal(
+      (await p.query('select crm from medicos')).rows[0].crm,
+      '12345/RS'
+    );
+    assert.equal(
+      (await p.query('select versao from noto_assistente_sessoes')).rows[0]
+        .versao,
+      r3!.versao
+    );
+    await repo.aplicar(
+      r3!,
+      {},
+      { intencao: 'pausar', ritmo: 'pausar', assunto: 'pausa', acoes: [] },
+      []
+    );
+    assert.equal(r3!.estado.pausado, true);
+    await repo.falhar(r3!);
+    await repo.liberar(r3!);
+    assert.equal(
+      await repo.reservar(med),
+      null,
+      'backoff bloqueia mensagens posteriores'
+    );
+    await p.query(
+      "update noto_assistente_turnos set proxima_tentativa_em=now() where mensagem_id='m3'"
+    );
+    const retomado = (await repo.reservar(med))!;
+    assert.equal(
+      retomado.turno.estado,
+      'aplicado',
+      'retoma redação sem repetir gravação'
+    );
+    assert.equal(retomado.estado.pausado, true);
+    await repo.prepararResposta(retomado, [
+      'Primeira confirmada.',
+      'Segunda incerta.'
+    ]);
+    await repo.iniciarEnvio(retomado);
+    await repo.confirmarMensagem(retomado, 1);
+    await repo.falhar(retomado);
+    await repo.liberar(retomado);
+    const historico = await repo.historico(med, '999999');
+    assert.ok(historico.some((x) => x.texto === 'Primeira confirmada.'));
+    assert.ok(!historico.some((x) => x.texto === 'Segunda incerta.'));
+    assert.ok(historico.length <= 20);
+    await repo.registrarApresentacao(
+      med,
+      { etapa: 'apresentacao' },
+      ['Olá.'],
+      'assistente',
+      'bem-vindo'
+    );
+    assert.equal(
+      (await p.query('select estado from noto_assistente_sessoes')).rows[0]
+        .estado.pausado,
+      true,
+      'bootstrap tardio preserva progresso'
+    );
   } finally {
     if (p) await p.end();
     await admin.query(`drop schema if exists ${schema} cascade`);

@@ -27,6 +27,7 @@ export interface AppConfig {
   nvidiaApiKey?: string;
   nvidiaModel?: string;
   nvidiaVisionModel?: string;
+  assistenteContextualAtivo?: boolean;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
   treinoOnboardingAtivo?: boolean;
@@ -77,6 +78,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
     nvidiaVisionModel: env['NVIDIA_VISION_MODEL']?.trim() || env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
+    assistenteContextualAtivo: env['ASSISTENTE_CONTEXTUAL_ATIVO'] === 'true',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
     treinoOnboardingAtivo: env['TREINO_ONBOARDING_ATIVO'] === 'true',

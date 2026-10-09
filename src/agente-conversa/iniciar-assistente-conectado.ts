@@ -12,6 +12,7 @@ export async function iniciarAssistenteConectado(deps: {
   salvarEstado: (medicoId: string, estado: EstadoAssistenteMedico) => Promise<void>;
   enviar: EnviarMensagemPaciente;
   instanciaNome: string;
+  aoConfirmarApresentacao?: (medicoId:string, estado:EstadoAssistenteMedico, mensagens:string[], chave:string) => Promise<void>;
 }, medicoId: string): Promise<void> {
   const client = await deps.pool.connect();
   let medico: { nome_completo?: string; telefone: string; conectado: boolean };
@@ -28,9 +29,15 @@ export async function iniciarAssistenteConectado(deps: {
       await client.query('commit');
       return;
     }
-    const anterior = await client.query(`select id from auditoria
+    const anterior = await client.query(`select id from auditoria a
       where entidade = 'medicos' and entidade_id = $1
         and acao in ('estado_onboarding_assistente', 'reserva_apresentacao_assistente')
+        and (acao = 'estado_onboarding_assistente' or not (
+          coalesce((select r.dados_novos->>'estado' = 'falha_preparacao' and r.criado_em < now()-interval '1 minute'
+            from auditoria r where r.entidade_id=$1 and r.acao='resultado_apresentacao_assistente'
+              and r.dados_novos->>'reservaId'=a.id::text order by r.criado_em desc limit 1),false)
+          and (select count(*) from auditoria r where r.entidade_id=$1 and r.acao='reserva_apresentacao_assistente') < 3
+        ))
       limit 1`, [medicoId]);
     if (anterior.rows.length) {
       await client.query('commit');
@@ -73,6 +80,7 @@ export async function iniciarAssistenteConectado(deps: {
     }
     await deps.salvarEstado(medicoId, resposta.novoEstado);
     await registrar('enviado');
+    await deps.aoConfirmarApresentacao?.(medicoId, resposta.novoEstado, resposta.mensagensEnviar, reservaId);
     console.info('[Onboarding Assistente]', { medicoId, estado: 'enviado', mensagensConfirmadas });
   } catch (erro) {
     await registrar(envioIniciado ? 'incerto' : 'falha_preparacao');

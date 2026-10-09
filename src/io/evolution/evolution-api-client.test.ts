@@ -61,3 +61,15 @@ describe('EvolutionApiClient OTP', () => {
     }
   });
 });
+
+it('envio de texto tem prazo limitado e falha sem confirmar entrega',async t=>{
+ let sinal:AbortSignal|null|undefined;
+ t.mock.method(globalThis,'fetch',async(_url:unknown,init?:RequestInit)=>{
+  sinal=init?.signal;
+  throw new Error('timeout sintético');
+ });
+ const client=new EvolutionApiClient('https://evolution.exemplo.com','chave','oficial');
+ const resposta=await client.enviarTexto({instanciaNome:'assistente',contatoTelefone:'5511999998888',texto:'Teste'});
+ assert.equal(resposta.sucesso,false);
+ assert.ok(sinal,'envio precisa de AbortSignal');
+});

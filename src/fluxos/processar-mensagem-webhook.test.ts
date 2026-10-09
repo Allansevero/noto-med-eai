@@ -634,4 +634,21 @@ describe('processarMensagemWebhook', () => {
   assert.equal(envios, 1);
 });
 
+  it('encaminha turno contextual uma vez; descarta grupos, replay antigo e falta de segredo',async()=>{
+    const repo=new AtendimentoRepositorioMemoria();
+    repo.medico={id:'med-assist-1',telefone:'5551993527271',nomeCompleto:'Médico X',especialidade:null,crm:null,rqe:null,ctribNacPadrao:'041601'};
+    const entradas:unknown[]=[];
+    const deps={...criarDeps(repo),instanciaAssistenteNome:'notomed_assistente',processarConversaAssistente:async(e:unknown)=>{entradas.push(e);return {estado:'registrado'};},
+      gerenciadorAssistente:{processarMensagemMedico:async()=>{throw Error('não usar legado');}} as any,
+      enviarMensagemAssistente:{enviarTexto:async()=>{throw Error('agente é dono do envio');}}};
+    const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'contexto-1'},message:{conversation:'Por que CRM?'}}};
+    assert.equal((await processarMensagemWebhook(payload,segredo,deps)).ok,true);
+    assert.deepEqual(entradas,[{medicoId:'med-assist-1',instancia:'notomed_assistente',mensagemId:'contexto-1',texto:'Por que CRM?'}]);
+    await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,remoteJid:'123@g.us',remoteJidAlt:'5551993527271@s.whatsapp.net'}}},segredo,deps);
+    await processarMensagemWebhook({...payload,data:{...payload.data,messageTimestamp:1}},segredo,deps);
+    await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,fromMe:true}}},segredo,deps);
+    assert.deepEqual(await processarMensagemWebhook(payload,null,{...deps,segredoConfigurado:''}),{ok:false,motivo:'autenticacao_invalida'});
+    assert.equal(entradas.length,1);
+  });
+
 });

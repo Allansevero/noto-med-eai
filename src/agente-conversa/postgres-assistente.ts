@@ -275,7 +275,14 @@ export class PostgresAssistente {
         [medicoId]
       )
     ).rows;
+    const resultados = (
+      await this.pool.query(
+        'select resultados from noto_assistente_turnos where medico_id=$1 and resultados is not null order by sequencia desc limit 3',
+        [medicoId]
+      )
+    ).rows.map((x) => x.resultados);
     return {
+      resultadosAnteriores: resultados,
       telefone: m.telefone,
       quantidadePacientes: p.total,
       solicitacoes: notas

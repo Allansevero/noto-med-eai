@@ -58,6 +58,8 @@ import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal
 import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
 import { CfmBuscarMedicoOnlineProvider } from './medico/io/buscar-medico-online.js';
 import { FerramentasAssistenteNoto } from './agente-conversa/ferramentas-assistente-noto.js';
+import { PostgresAssistente } from './agente-conversa/postgres-assistente.js';
+import { AgenteAssistente } from './agente-conversa/agente-assistente.js';
 import { criarDisparadorAssistente } from './agente-conversa/iniciar-assistente-conectado.js';
 import { GerenciadorConversaOnboarding } from './agente-conversa/gerenciador-conversa-onboarding.js';
 
@@ -103,8 +105,23 @@ export function criarAppExpress() {
   );
   const ia = criarServicosIa(config);
   const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente, ia.geradorMensagem);
+  const memoriaAssistente = new PostgresAssistente(pool);
+  const agenteAssistente = new AgenteAssistente(memoriaAssistente, ia.decisorAssistente, ia.geradorMensagem,
+    evolutionAssistantClient, config.evolutionAssistantInstanceName);
+  if (config.assistenteContextualAtivo && process.env.NODE_ENV !== 'test') {
+    let recuperando = false;
+    const timer = setInterval(() => {
+      if (recuperando) return;
+      recuperando = true;
+      void agenteAssistente.recuperar().catch(() => console.warn('[Assistente contextual] Falha na recuperação; confira migrate:assistente e configuração.'))
+        .finally(() => { recuperando = false; });
+    }, 5000);
+    timer.unref();
+    console.info('[Assistente contextual] Memória e fila ativadas.');
+  }
   const iniciarAssistente = criarDisparadorAssistente({ pool, gerenciador: gerenciadorOnboarding,
     salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
+    aoConfirmarApresentacao: config.assistenteContextualAtivo ? (id, estado, mensagens, chave) => memoriaAssistente.registrarApresentacao(id, estado, mensagens, config.evolutionAssistantInstanceName, chave) : undefined,
     enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
   const dispararAssistente = (medicoId: string) => {
     if (!config.evolutionAssistantUrl || !config.evolutionAssistantApiKey || !config.evolutionAssistantInstanceName) {
@@ -663,6 +680,7 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         gerenciadorAssistente: gerenciadorOnboarding,
+        processarConversaAssistente: config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
         async aoAtualizarConexao(evento) {
           if (
             evento.instancia === config.evolutionOfficialInstanceName ||
