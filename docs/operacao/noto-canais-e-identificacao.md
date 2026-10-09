@@ -21,3 +21,11 @@ Manter as duas instâncias com nomes distintos e a configuração Evolution/NVID
 A consulta de produção foi somente de leitura, sem mensagens, emissões ou alteração de dados.
 
 Verificação da entrega: 744 testes aprovados, typecheck aprovado e seis testes de integração PostgreSQL local aprovados. Revisão independente concluída; o achado de duplicação em respostas de data foi reproduzido antes da correção e passou depois. Nenhum teste enviou mensagens ou emitiu notas reais.
+
+## Diagnóstico da resposta recebida após a correção
+
+A resposta de 09/10/2026 às 02h30 (Brasília) foi vinculada ao médico e registrada na fila. As três tentativas terminaram em `falha`, sem decisão persistida nem mensagem confirmada. O log anterior mostrava apenas `analisando` e descartava a exceção; isso não permite distinguir falha na decisão da IA de falha na gravação. Uma reprodução isolada da decisão pela NVIDIA interpretou o nome, sem executar gravações ou enviar WhatsApp. A causa específica em produção ainda precisa ser capturada.
+
+O assistente passa a salvar em `diagnostico` a fase e uma categoria segura de erro, e a emitir os mesmos campos no log. Exemplos: `decidir:IA_HTTP_ERRO_429`, `decidir:JSON_INVALIDO` e `gravar_dados:BANCO_23505`. Não registra mensagens, detalhes SQL ou corpos do provedor. Entregas incertas continuam marcadas como `ENTREGA_INCERTA`, sem reenvio automático.
+
+Não há migração. Após o deploy, enviar uma nova mensagem ao assistente: o turno anterior esgotou suas três tentativas e não será reativado automaticamente. Consultar o novo turno e os campos `fase` e `codigo` para concluir o diagnóstico. Esta alteração melhora a identificação da falha; não constitui confirmação de que a resposta em produção voltou a funcionar.

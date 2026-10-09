@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AgenteAssistente } from './agente-assistente.js';
+import { ErroNvidiaChat } from '../io/nvidia/chat-client.js';
 import type { PostgresAssistente, Reserva } from './postgres-assistente.js';
 import type { ContextoMensagemNoto } from '../conversa/comunicador-noto.js';
 function fixture(fase = 'analisando') {
@@ -251,4 +252,35 @@ test('apresentação inicial segue a fila e guia sem executar decisão de cadast
   assert.equal(f.contexto()?.dados.apresentacaoInicial, true);
   assert.equal(f.contexto()?.medico.nome, null);
   assert.ok(f.eventos.includes('confirmar'));
+});
+
+test('falha de gravação preserva etapa e SQLSTATE sem registrar mensagem ou dados pessoais', async (t) => {
+  const f = fixture();
+  const logs: unknown[] = [];
+  t.mock.method(console, 'warn', (...args: unknown[]) => logs.push(args));
+  f.repo.aplicar = async () => { throw Object.assign(new Error('segredo e nome do paciente'), {code:'23505', detail:'CPF privado'}); };
+  let diagnostico: unknown;
+  f.repo.falhar = async (...args: unknown[]) => { diagnostico = args[1]; };
+  await new AgenteAssistente(f.repo, f.decisor, f.gerador, {enviarTexto:async()=>{throw Error('não enviar');}}, 'assistente').processar('m');
+  assert.equal(diagnostico, 'gravar_dados:BANCO_23505');
+  assert.match(JSON.stringify(logs), /gravar_dados/);
+  assert.match(JSON.stringify(logs), /BANCO_23505/);
+  assert.doesNotMatch(JSON.stringify(logs), /segredo|paciente|CPF privado/);
+});
+
+test('falhas da decisão distinguem HTTP, JSON e erro desconhecido sem expor resposta bruta', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  for (const [erro, esperado] of [
+    [new ErroNvidiaChat('IA_HTTP_ERRO', 429), 'IA_HTTP_ERRO_429'],
+    [new SyntaxError('resposta privada'), 'JSON_INVALIDO'],
+    [Object.assign(new Error('privado'), {code:'segredo'}), 'PROCESSAMENTO_FALHOU']
+  ] as const) {
+    const f = fixture();
+    f.decisor.decidir = async () => { throw erro; };
+    let diagnostico: unknown;
+    f.repo.falhar = async (...args: unknown[]) => { diagnostico = args[1]; };
+    await new AgenteAssistente(f.repo, f.decisor, f.gerador, {enviarTexto:async()=>{throw Error('não enviar');}}, 'assistente').processar('m');
+    assert.equal(diagnostico, 'decidir:' + esperado);
+    assert.ok(!f.eventos.includes('aplicar'));
+  }
 });

@@ -326,10 +326,11 @@ export class PostgresAssistente {
       [r.medicoId, r.token]
     );
   }
-  async falhar(r: Reserva) {
+  async falhar(r: Reserva, diagnostico = 'PROCESSAMENTO_FALHOU') {
     await this.mudar(
       r,
-      `update noto_assistente_turnos set estado=case when estado='enviando' then 'incerto' when tentativas>=3 then 'falha' when estado='analisando' then 'pendente' else estado end,diagnostico=case when estado='enviando' then 'ENTREGA_INCERTA' else 'PROCESSAMENTO_FALHOU' end,proxima_tentativa_em=now()+interval '1 minute' where id=$1`
+      `update noto_assistente_turnos set estado=case when estado='enviando' then 'incerto' when tentativas>=3 then 'falha' when estado='analisando' then 'pendente' else estado end,diagnostico=case when estado='enviando' then 'ENTREGA_INCERTA' else $2 end,proxima_tentativa_em=now()+interval '1 minute',atualizado_em=now() where id=$1`,
+      [diagnostico]
     );
   }
   async historico(medicoId: string, antes: string) {
