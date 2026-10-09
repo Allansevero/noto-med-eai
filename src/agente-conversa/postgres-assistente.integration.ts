@@ -14,7 +14,7 @@ if (
   throw Error(
     'Use PostgreSQL local dedicado de teste em NOTO_TEST_DATABASE_URL'
   );
-test('reserva concorrente, gravação atômica, ordem, histórico e envio incerto em PostgreSQL real', async () => {
+test('reserva concorrente, gravação atômica, ordem, histórico e envio incerto em PostgreSQL real', async (t) => {
   const admin = new pg.Pool({ connectionString: url });
   const schema = 'assistente_' + Date.now();
   let p: pg.Pool | undefined;
@@ -229,18 +229,151 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
     assert.ok(historico.some((x) => x.texto === 'Primeira confirmada.'));
     assert.ok(!historico.some((x) => x.texto === 'Segunda incerta.'));
     assert.ok(historico.length <= 20);
-    await repo.registrarApresentacao(
-      med,
-      { etapa: 'apresentacao' },
-      ['Olá.'],
-      'assistente',
-      'bem-vindo'
+    await p.query(`create table pacientes(id uuid,medico_id uuid);
+      create table solicitacoes_nota(id uuid,medico_id uuid,status text,criado_em timestamptz);`);
+    const criarMedico = async (n: number) => {
+      const id = '00000000-0000-4000-8000-' + String(n).padStart(12, '0');
+      const u = '00000000-0000-4000-8000-' + String(n + 100).padStart(12, '0');
+      await p!.query('insert into usuarios values($1,true,$2,$3,now())', [
+        u,
+        'Médico X',
+        '5511999991234'
+      ]);
+      await p!.query('insert into medicos values($1,$2,$3,$4,null,now())', [
+        id,
+        u,
+        'Médico X',
+        '12345/RS'
+      ]);
+      return id;
+    };
+    await t.test(
+      'revisão: conversa legada concluída preserva progresso sem usar nome provisório',
+      async () => {
+        const id = await criarMedico(10);
+        await p!.query(
+          `insert into auditoria(acao,entidade,entidade_id,dados_novos) values('estado_onboarding_assistente','medicos',$1,'{"etapa":"concluido","janelaDataCorte":"2026-01-01"}')`,
+          [id]
+        );
+        await repo.enfileirar({
+          medicoId: id,
+          instancia: 'assistente',
+          mensagemId: 'legado',
+          texto: 'Olá'
+        });
+        const r = (await repo.reservar(id))!;
+        const estado = await repo.aplicar(
+          r,
+          {},
+          {
+            intencao: 'responder',
+            ritmo: 'manter',
+            assunto: 'conversa',
+            acoes: []
+          },
+          []
+        );
+        assert.equal(estado.etapa, 'concluido');
+        assert.equal(estado.nomeConfirmado, undefined);
+        assert.equal(estado.identidadePendente, true);
+        await repo.liberar(r);
+      }
     );
-    assert.equal(
-      (await p.query('select estado from noto_assistente_sessoes')).rows[0]
-        .estado.pausado,
-      true,
-      'bootstrap tardio preserva progresso'
+    await t.test(
+      'revisão: perfil editado fora da conversa é o cadastro atual do contexto',
+      async () => {
+        const id = await criarMedico(11);
+        await p!.query(
+          `insert into noto_assistente_sessoes(medico_id,estado) values($1,$2)`,
+          [
+            id,
+            JSON.stringify({
+              etapa: 'concluido',
+              nomeConfirmado: 'Roberto Santos',
+              crmInformado: '12345/RS',
+              rqeInformado: null
+            })
+          ]
+        );
+        await p!.query(
+          "update medicos set nome_completo='Maria Santos',crm='54321/SP',rqe='789' where id=$1",
+          [id]
+        );
+        await repo.enfileirar({
+          medicoId: id,
+          instancia: 'assistente',
+          mensagemId: 'perfil',
+          texto: 'Qual CRM cadastrado?'
+        });
+        const r = (await repo.reservar(id))!;
+        assert.equal(r.estado.crmInformado, '54321/SP');
+        assert.equal(r.estado.rqeInformado, '789');
+        assert.equal(r.estado.nomeConfirmado, 'Maria Santos');
+        const panorama = await repo.panorama(id);
+        assert.deepEqual(panorama.cadastro, {
+          nome: 'Maria Santos',
+          crm: '54321/SP',
+          rqe: '789'
+        });
+        await repo.liberar(r);
+      }
+    );
+    await t.test(
+      'revisão: apresentação usa a mesma fila, não reinicia conversa nem perde confirmação parcial',
+      async () => {
+        const id = await criarMedico(12);
+        await p!.query(
+          "insert into whatsapp_instancias values($1,false,'conectado')",
+          [id]
+        );
+        await p!.query(
+          `insert into noto_assistente_sessoes(medico_id,estado) values($1,'{"etapa":"concluido","pausado":true}')`,
+          [id]
+        );
+        assert.equal(
+          await repo.enfileirarApresentacao(id, 'assistente'),
+          false
+        );
+        const novo = await criarMedico(13);
+        await p!.query(
+          "insert into whatsapp_instancias values($1,false,'conectado')",
+          [novo]
+        );
+        const insercoes = await Promise.all(
+          Array.from({ length: 5 }, () =>
+            repo.enfileirarApresentacao(novo, 'assistente')
+          )
+        );
+        assert.equal(insercoes.filter(Boolean).length, 1);
+        const r = (await repo.reservar(novo))!;
+        assert.equal(r.turno.texto, '');
+        await repo.aplicar(
+          r,
+          {},
+          {
+            intencao: 'responder',
+            ritmo: 'manter',
+            assunto: 'apresentação',
+            acoes: []
+          },
+          []
+        );
+        await repo.prepararResposta(r, ['Sou Noto.', 'Qual seu nome?']);
+        await repo.iniciarEnvio(r);
+        await repo.confirmarMensagem(r, 1);
+        await p!.query(
+          "update noto_assistente_sessoes set reservado_em=now()-interval '10 minutes' where medico_id=$1",
+          [novo]
+        );
+        assert.equal(await repo.reservar(novo), null);
+        assert.deepEqual(await repo.historico(novo, '999999'), [
+          { papel: 'noto', texto: 'Sou Noto.' }
+        ]);
+        assert.equal(
+          await repo.enfileirarApresentacao(novo, 'assistente'),
+          false
+        );
+      }
     );
   } finally {
     if (p) await p.end();

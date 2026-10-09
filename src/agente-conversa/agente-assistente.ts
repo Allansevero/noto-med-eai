@@ -29,6 +29,10 @@ export class AgenteAssistente {
     await this.processar(e.medicoId);
     return { estado: 'registrado' };
   }
+  async iniciarAoConectar(medicoId: string) {
+    await this.repo.enfileirarApresentacao(medicoId, this.instancia);
+    await this.processar(medicoId);
+  }
   async recuperar() {
     for (const id of await this.repo.pendentes()) await this.processar(id);
   }
@@ -46,14 +50,23 @@ export class AgenteAssistente {
           r.turno.sequencia
         );
         if (r.turno.estado === 'analisando') {
-          const decisao = decisaoAssistenteSchema.parse(
-            await this.decisor.decidir({
-              estado: r.estado,
-              mensagemRecebida: r.turno.texto,
-              historico,
-              panorama
-            })
-          );
+          const decisao =
+            r.turno.texto === '' &&
+            r.turno.mensagem_id.startsWith('apresentacao:')
+              ? decisaoAssistenteSchema.parse({
+                  intencao: 'responder',
+                  ritmo: 'manter',
+                  assunto: 'Apresentar Noto e pedir nome real',
+                  acoes: []
+                })
+              : decisaoAssistenteSchema.parse(
+                  await this.decisor.decidir({
+                    estado: r.estado,
+                    mensagemRecebida: r.turno.texto,
+                    historico,
+                    panorama
+                  })
+                );
           const { patch, resultados } = validarAcoes(
             decisao,
             r.turno.texto,
@@ -86,6 +99,9 @@ export class AgenteAssistente {
               historico,
               dados: {
                 fluxo: 'assistente_contextual',
+                apresentacaoInicial:
+                  r.turno.texto === '' &&
+                  r.turno.mensagem_id.startsWith('apresentacao:'),
                 estado: r.estado,
                 intencao: r.turno.decisao.intencao,
                 assunto: r.turno.decisao.assunto,

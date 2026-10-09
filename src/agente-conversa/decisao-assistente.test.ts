@@ -148,3 +148,73 @@ test('período mensal respeita fim do mês e data de Brasília', () => {
     '2026-02-28'
   );
 });
+
+test('revisão: negações e perguntas sem pontuação não confirmam valores', () => {
+  const casos = [
+    ['Meu CRM não é 12345/SP', { crm: '12345/SP' }],
+    ['Não use a data do comprovante', { preferencia: 'mesma_do_comprovante' }],
+    [
+      'Quero entender se 2 meses inclui setembro',
+      { periodo: { quantidade: 2, unidade: 'meses' } }
+    ],
+    [
+      'Gostaria de saber se posso usar 2 meses',
+      { periodo: { quantidade: 2, unidade: 'meses' } }
+    ]
+  ];
+  for (const [texto, dados] of casos)
+    assert.deepEqual(
+      validarAcoes(decisao(dados, String(texto)) as any, String(texto), {
+        etapa: 'aguardando_crm'
+      }).patch,
+      {}
+    );
+});
+test('revisão: recusar RQE não bloqueia a opção de seguir sem ele', () => {
+  for (const texto of [
+    'Não quero informar RQE',
+    'Prefiro não informar RQE',
+    'Não tenho RQE'
+  ]) {
+    assert.deepEqual(
+      validarAcoes(decisao({ rqe: null }, texto) as any, texto, {
+        etapa: 'aguardando_rqe_opcional'
+      }).patch,
+      { rqeInformado: null }
+    );
+  }
+});
+test('revisão: aceita declaração explícita separada de dúvida na mesma mensagem', () => {
+  const texto =
+    'Meu nome é Roberto Santos. Meu CRM é 12345/RS. Por que pedem CRM?';
+  assert.deepEqual(
+    validarAcoes(
+      decisao(
+        { nome: 'Roberto Santos', crm: '12345/RS' },
+        'Meu nome é Roberto Santos. Meu CRM é 12345/RS.'
+      ) as any,
+      texto,
+      { etapa: 'apresentacao' }
+    ).patch,
+    { nomeConfirmado: 'Roberto Santos', crmInformado: '12345/RS' }
+  );
+});
+
+test('recusa de outro dado não dispensa RQE e confirmação de período aceita há dois meses', () => {
+  assert.deepEqual(
+    validarAcoes(
+      decisao({ rqe: null }, 'Não tenho CRM') as any,
+      'Não tenho CRM',
+      { etapa: 'aguardando_rqe_opcional' }
+    ).patch,
+    {}
+  );
+  const texto = 'Há dois meses';
+  assert.ok(
+    validarAcoes(
+      decisao({ periodo: { quantidade: 2, unidade: 'meses' } }, texto) as any,
+      texto,
+      { etapa: 'aguardando_janela_tempo' }
+    ).patch.janelaDataCorte
+  );
+});

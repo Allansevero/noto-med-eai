@@ -232,3 +232,22 @@ test('envio parcial confirma só primeira mensagem e interrompe sem repetir', as
   assert.equal(n, 2);
   assert.deepEqual(f.eventos, ['iniciar', 'confirmar', 'falhar', 'liberar']);
 });
+
+test('apresentação inicial segue a fila e guia sem executar decisão de cadastro', async () => {
+  const f = fixture();
+  f.r.estado = { etapa: 'apresentacao' };
+  f.r.turno.texto = '';
+  f.r.turno.mensagem_id = 'apresentacao:m';
+  f.repo.enfileirarApresentacao = async () => true;
+  await new AgenteAssistente(
+    f.repo,
+    f.decisor,
+    f.gerador,
+    { enviarTexto: async () => ({ sucesso: true }) },
+    'assistente'
+  ).iniciarAoConectar('m');
+  assert.ok(!f.eventos.includes('decidir'));
+  assert.equal(f.contexto()?.dados.apresentacaoInicial, true);
+  assert.equal(f.contexto()?.medico.nome, null);
+  assert.ok(f.eventos.includes('confirmar'));
+});

@@ -57,6 +57,7 @@ export const decisaoAssistenteSchema = z
 export type DecisaoAssistente = z.infer<typeof decisaoAssistenteSchema>;
 export type EstadoContextual = EstadoAssistenteMedico & {
   pausado?: boolean;
+  identidadePendente?: boolean;
   preferencia?: 'mesma_do_comprovante' | 'perguntar_uma_a_uma';
 };
 export interface ContextoDecisaoAssistente {
@@ -77,7 +78,7 @@ const normal = (s: string) =>
     .trim();
 const pergunta = (s: string) =>
   /[?？]/.test(s) ||
-  /^(?:por que|porque|como|qual|quais|o que|sera que|preciso mesmo)\b/.test(
+  /(?:^(?:por que|porque|como|qual|quais|o que|sera que|preciso mesmo|posso|podemos|poderia|devo|seria|tem como|voce pode|vc pode|da para|e possivel)\b|\b(?:quero entender|gostaria de saber|tenho duvida|queria saber)\b)/.test(
     normal(s)
   );
 const dataBrasilia = (d: Date) =>
@@ -114,14 +115,24 @@ export function validarAcoes(
 } {
   const patch: Partial<EstadoContextual> = {},
     resultados: Array<{ campo: string; estado: string }> = [];
-  if (
-    decisao.intencao !== 'registrar' ||
-    pergunta(texto) ||
-    /\b(talvez|hipotese|exemplo|colega|nome do paciente|crm do paciente|se eu|nao quero|nao usar|nao sei|nao lembro)\b/.test(
-      normal(texto)
-    )
-  )
-    return { patch, resultados };
+  if (decisao.intencao !== 'registrar') return { patch, resultados };
+  // Validar a frase completa de origem impede que a IA recorte só o valor de uma negação.
+  const frases = (texto.match(/[^.!?;,\n]+[.!?;,]?/gu) || []).map(normal);
+  const incerta = (f: string) =>
+    pergunta(f) ||
+    /\b(talvez|hipotese|exemplo|se eu|se usar|e se|se fosse|seria|poderia|suponha|nao sei|nao lembro)\b/.test(
+      f
+    );
+  const terceiros = (f: string) =>
+    /\b(paciente|colega|irmao|esposa|amigo)\b/.test(f);
+  const afirmada = (predicado: (f: string) => boolean, profissional = false) =>
+    frases.some(
+      (f) =>
+        !incerta(f) &&
+        !/\bnao\b/.test(f) &&
+        (!profissional || !terceiros(f)) &&
+        predicado(f)
+    );
   for (const a of decisao.acoes) {
     if (!normal(texto).includes(normal(a.evidencia))) {
       resultados.push({ campo: 'evidencia', estado: 'rejeitada' });
@@ -136,7 +147,15 @@ export function validarAcoes(
     if (d.nome !== undefined)
       aplicar(
         'nome',
-        nomeProfissionalValido(d.nome) && e.includes(normal(d.nome)),
+        nomeProfissionalValido(d.nome) &&
+          e.includes(normal(d.nome)) &&
+          afirmada(
+            (f) =>
+              f.includes(normal(d.nome!)) &&
+              (/\b(sou|me chamo|meu nome|nome completo)\b/.test(f) ||
+                f.startsWith(normal(d.nome!))),
+            true
+          ),
         () => {
           patch.nomeConfirmado = d.nome!.trim().replace(/\s+/g, ' ');
         }
@@ -149,7 +168,19 @@ export function validarAcoes(
         'crm',
         !!crm &&
           numerosTexto.includes(partes![0]) &&
-          (!partes![1] || new RegExp('\\b' + partes![1] + '\\b', 'i').test(e)),
+          (!partes![1] ||
+            new RegExp('\\b' + partes![1] + '\\b', 'i').test(e)) &&
+          afirmada(
+            (f) =>
+              Array.from(f.matchAll(/\d+/g), (m) => m[0]).includes(
+                partes![0]
+              ) &&
+              (!partes![1] ||
+                new RegExp('\\b' + partes![1] + '\\b', 'i').test(f)) &&
+              (/\bcrm\b/.test(f) ||
+                (/^[\d\s/\-a-z]+[.;,]?$/.test(f) && f.startsWith(partes![0]))),
+            true
+          ),
         () => {
           patch.crmInformado = crm!;
         }
@@ -159,10 +190,32 @@ export function validarAcoes(
       const valido =
         d.rqe === null
           ? (estado.etapa === 'aguardando_rqe_opcional' || /\brqe\b/.test(e)) &&
-            /\b(nao|sem|pular|dispenso|prefiro nao)\b/.test(e)
+            /\b(nao|sem|pular|dispenso|prefiro nao)\b/.test(e) &&
+            frases.some((f) => {
+              if (incerta(f) || terceiros(f)) return false;
+              const referencia =
+                /\brqe\b/.test(f) ||
+                (estado.etapa === 'aguardando_rqe_opcional' &&
+                  !/\b(crm|nome|periodo|data)\b/.test(f));
+              return (
+                referencia &&
+                (/\b(nao quero|nao tenho|nao possuo|prefiro nao|sem rqe|seguir sem|dispenso|pular|nao informar|nao incluir)\b/.test(
+                  f
+                ) ||
+                  /^nao[.;,]?$/.test(f))
+              );
+            })
           : /^\d{1,12}$/.test(d.rqe) &&
             /[1-9]/.test(d.rqe) &&
-            Array.from(e.matchAll(/\d+/g), (m) => m[0]).includes(d.rqe);
+            Array.from(e.matchAll(/\d+/g), (m) => m[0]).includes(d.rqe) &&
+            afirmada(
+              (f) =>
+                Array.from(f.matchAll(/\d+/g), (m) => m[0]).includes(d.rqe!) &&
+                (/\brqe\b/.test(f) ||
+                  (estado.etapa === 'aguardando_rqe_opcional' &&
+                    /^\d+[.;,]?$/.test(f))),
+              true
+            );
       aplicar('rqe', valido, () => {
         patch.rqeInformado = d.rqe;
       });
@@ -181,7 +234,16 @@ export function validarAcoes(
             : 'dias';
       aplicar(
         'periodo',
-        n === d.periodo.quantidade && unidade === d.periodo.unidade,
+        n === d.periodo.quantidade &&
+          unidade === d.periodo.unidade &&
+          afirmada(
+            (f) =>
+              f.includes(m![0]) &&
+              (/\b(quero|prefiro|usar|use|considerar|ultimos|ultimas|periodo|janela|vamos|ha|faz|desde)\b/.test(
+                f
+              ) ||
+                f.startsWith(m![0]))
+          ),
         () => {
           const dt = new Date(dataBrasilia(agora) + 'T12:00:00Z');
           const { quantidade: q, unidade: u } = d.periodo!;
@@ -207,7 +269,14 @@ export function validarAcoes(
         !Number.isNaN(date.getTime()) &&
           date.toISOString().slice(0, 10) === iso &&
           iso <= dataBrasilia(agora) &&
-          (e.includes(iso) || e.includes(`${dia}/${mes}/${ano}`)),
+          (e.includes(iso) || e.includes(`${dia}/${mes}/${ano}`)) &&
+          afirmada(
+            (f) =>
+              (f.includes(iso) || f.includes(`${dia}/${mes}/${ano}`)) &&
+              (/\b(desde|a partir|data corte|data de corte)\b/.test(f) ||
+                f.startsWith(iso) ||
+                f.startsWith(`${dia}/${mes}/${ano}`))
+          ),
         () => {
           patch.janelaDataCorte = iso;
         }
@@ -218,9 +287,22 @@ export function validarAcoes(
         d.preferencia === 'mesma_do_comprovante'
           ? /\b(comprovante|pagamento|mesma)\b/.test(e)
           : /\b(pergunt|confirm|paciente)/.test(e);
-      aplicar('preferencia', valido, () => {
-        patch.preferencia = d.preferencia;
-      });
+      aplicar(
+        'preferencia',
+        valido &&
+          afirmada(
+            (f) =>
+              /\b(prefiro|quero|usar|use|pode usar|vamos usar|mesma|confirmar|perguntar)\b/.test(
+                f
+              ) &&
+              (d.preferencia === 'mesma_do_comprovante'
+                ? /\b(comprovante|pagamento|mesma)\b/.test(f)
+                : /\b(pergunt|confirm|paciente)/.test(f))
+          ),
+        () => {
+          patch.preferencia = d.preferencia;
+        }
+      );
     }
   }
   return { patch, resultados };

@@ -26,21 +26,21 @@
 ### Task 1: Decisão contextual e validação de ações
 **Files:** src/agente-conversa/decisao-assistente.ts, src/io/nvidia/decisor-assistente.ts, testes correspondentes.
 **Interfaces:** DecisorAssistente.decidir(contexto) → DecisaoAssistente; validarAcoes(decisao, texto, estado) → patch validado/resultados.
-- [ ] Escrever e observar testes RED para dúvida, pausa, registro múltiplo, dados inventados, período/preferência ambíguos e guia/histórico NVIDIA.
-- [ ] Implementar schema fechado de intenções e ações, evidência explícita e validadores existentes.
-- [ ] Rodar testes GREEN e typecheck; commit.
+- [x] Escrever e observar testes RED para dúvida, pausa, registro múltiplo, dados inventados, período/preferência ambíguos e guia/histórico NVIDIA.
+- [x] Implementar schema fechado de intenções e ações, evidência explícita e validadores existentes.
+- [x] Rodar testes GREEN e typecheck; commit.
 
 ### Task 2: Persistência e processamento seguro
 **Files:** src/agente-conversa/postgres-assistente.ts, scripts/migrations/20261009-assistente-contextual.sql, scripts/migrar-assistente-contextual.mjs, teste com PostgreSQL real.
 **Interfaces:** enfileirar, reservar, aplicar, prepararResposta, registrarEnvio, falhar, liberar, historico, panorama; reservas com token e versão.
-- [ ] Escrever testes RED em PostgreSQL local para concorrência, duplicação, ordenação, expiração e falhas.
-- [ ] Implementar migração idempotente/RLS e reserva sem transação aberta durante HTTP; efeitos e estado no mesmo commit.
-- [ ] Rodar testes GREEN em PostgreSQL local; commit.
+- [x] Escrever testes RED em PostgreSQL local para concorrência, duplicação, ordenação, expiração e falhas.
+- [x] Implementar migração idempotente/RLS e reserva sem transação aberta durante HTTP; efeitos e estado no mesmo commit.
+- [x] Rodar testes GREEN em PostgreSQL local; commit.
 
 ### Task 3: Agente, webhook, memória e recuperação
 **Files:** src/agente-conversa/agente-assistente.ts, src/server.ts, src/config.ts, src/fluxos/processar-mensagem-webhook.ts, composição IA, prompt/guia, documentação de deploy e testes.
 **Interfaces:** AgenteAssistente.receber(entrada) e recuperar(); bootstrap confirma histórico de apresentação; resultados confirmados alimentam o gerador.
-- [ ] Escrever testes RED para casos da especificação, pós-onboarding, erro de IA/gravação, idempotência e transporte parcial.
-- [ ] Implementar duas chamadas limitadas, histórico, respostas guiadas e recuperação; flag explícita para ativar após migração.
-- [ ] Rodar suíte completa, typecheck e testes PostgreSQL; revisar branch em contexto novo; corrigir achados importantes com RED→GREEN.
-- [ ] Atualizar PR #3 e publicar branch para deploy, sem incorporar ou executar migração em produção.
+- [x] Escrever testes RED para casos da especificação, pós-onboarding, erro de IA/gravação, idempotência e transporte parcial.
+- [x] Implementar duas chamadas limitadas, histórico, respostas guiadas e recuperação; flag explícita para ativar após migração.
+- [x] Rodar suíte completa, typecheck e testes PostgreSQL; revisar branch em contexto novo; corrigir achados importantes com RED→GREEN.
+- [x] Atualizar PR #3 e publicar branch para deploy, sem incorporar ou executar migração em produção.

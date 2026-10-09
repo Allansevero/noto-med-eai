@@ -121,14 +121,15 @@ export function criarAppExpress() {
   }
   const iniciarAssistente = criarDisparadorAssistente({ pool, gerenciador: gerenciadorOnboarding,
     salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
-    aoConfirmarApresentacao: config.assistenteContextualAtivo ? (id, estado, mensagens, chave) => memoriaAssistente.registrarApresentacao(id, estado, mensagens, config.evolutionAssistantInstanceName, chave) : undefined,
     enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
   const dispararAssistente = (medicoId: string) => {
     if (!config.evolutionAssistantUrl || !config.evolutionAssistantApiKey || !config.evolutionAssistantInstanceName) {
       console.warn('[Onboarding Assistente]', { medicoId, estado: 'configuracao_incompleta' });
       return;
     }
-    iniciarAssistente(medicoId);
+    if(config.assistenteContextualAtivo){
+      void agenteAssistente.iniciarAoConectar(medicoId).catch(()=>console.warn('[Assistente contextual]',{medicoId,etapa:'apresentacao',estado:'falha_registrada'}));
+    }else iniciarAssistente(medicoId);
   };
   const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
   const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);

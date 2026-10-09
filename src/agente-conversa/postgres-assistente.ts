@@ -1,4 +1,8 @@
 import type pg from 'pg';
+import {
+  nomeProfissionalValido,
+  normalizarCrm
+} from '../conta/validar-dados-emissao.js';
 import { randomUUID } from 'node:crypto';
 import {
   proximaEtapa,
@@ -53,10 +57,89 @@ export class PostgresAssistente {
       e.mensagemId.length > 200
     )
       throw Error('ENTRADA_INVALIDA');
-    await this.pool.query(
-      `insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto) values($1,$2,$3,$4) on conflict(instancia,mensagem_id) do nothing`,
-      [e.medicoId, e.instancia, e.mensagemId, e.texto]
+    await this.transacao(async (c) => {
+      await this.inicializarSessao(c, e.medicoId);
+      await c.query(
+        `insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto) values($1,$2,$3,$4) on conflict(instancia,mensagem_id) do nothing`,
+        [e.medicoId, e.instancia, e.mensagemId, e.texto]
+      );
+    });
+  }
+  private async inicializarSessao(c: pg.PoolClient, medicoId: string) {
+    const anterior = (
+      await c.query(
+        `select dados_novos from auditoria where entidade='medicos' and entidade_id=$1 and acao='estado_onboarding_assistente' order by criado_em desc limit 1`,
+        [medicoId]
+      )
+    ).rows[0]?.dados_novos;
+    const estado: EstadoContextual = anterior ?? { etapa: 'apresentacao' };
+    // Progresso legado não prova que o nome inicial era a identidade declarada.
+    if (!nomeProfissionalValido(estado.nomeConfirmado)) {
+      delete estado.nomeConfirmado;
+      estado.identidadePendente = true;
+    }
+    return c.query(
+      'insert into noto_assistente_sessoes(medico_id,estado) values($1,$2) on conflict do nothing returning medico_id',
+      [medicoId, JSON.stringify(estado)]
     );
+  }
+  async enfileirarApresentacao(
+    medicoId: string,
+    instancia: string
+  ): Promise<boolean> {
+    return this.transacao(async (c) => {
+      const conectado = await c.query(
+        `select m.id from medicos m join usuarios u on u.id=m.usuario_id where m.id=$1 and u.ativo=true
+      and exists(select 1 from whatsapp_instancias w where w.medico_id=m.id and w.oficial=false and w.status='conectado')`,
+        [medicoId]
+      );
+      if (!conectado.rowCount) return false;
+      const anterior = await c.query(
+        `select id from auditoria a where entidade='medicos' and entidade_id=$1
+      and acao in ('estado_onboarding_assistente','reserva_apresentacao_assistente') and (acao='estado_onboarding_assistente' or not
+        coalesce((select r.dados_novos->>'estado'='falha_preparacao' and r.criado_em<now()-interval '1 minute' from auditoria r
+          where r.entidade_id=$1 and r.acao='resultado_apresentacao_assistente' and r.dados_novos->>'reservaId'=a.id::text order by r.criado_em desc limit 1),false)) limit 1`,
+        [medicoId]
+      );
+      if (anterior.rowCount) return false;
+      // A criação da sessão é a trava comum ao primeiro webhook e à apresentação.
+      if (!(await this.inicializarSessao(c, medicoId)).rowCount) return false;
+      await c.query(
+        `insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto) values($1,$2,$3,'') on conflict do nothing`,
+        [medicoId, instancia, 'apresentacao:' + medicoId]
+      );
+      return true;
+    });
+  }
+  private async reconciliarPerfil(
+    c: pg.PoolClient,
+    medicoId: string,
+    estado: EstadoContextual
+  ) {
+    const m = (
+      await c.query('select nome_completo,crm,rqe from medicos where id=$1', [
+        medicoId
+      ])
+    ).rows[0];
+    const novo = { ...estado };
+    const crm = normalizarCrm(m.crm);
+    if (crm) novo.crmInformado = crm;
+    else delete novo.crmInformado;
+    if (
+      m.rqe !== null ||
+      novo.rqeInformado !== undefined ||
+      novo.etapa === 'concluido'
+    )
+      novo.rqeInformado = m.rqe;
+    if (novo.nomeConfirmado) {
+      if (nomeProfissionalValido(m.nome_completo))
+        novo.nomeConfirmado = m.nome_completo;
+      else {
+        delete novo.nomeConfirmado;
+        novo.identidadePendente = true;
+      }
+    }
+    return novo;
   }
   async reservar(medicoId: string): Promise<Reserva | null> {
     return this.transacao(async (c) => {
@@ -65,10 +148,7 @@ export class PostgresAssistente {
         [medicoId]
       );
       if (!ativo.rowCount) return null;
-      await c.query(
-        `insert into noto_assistente_sessoes(medico_id,estado) values($1,coalesce((select dados_novos from auditoria where entidade='medicos' and entidade_id=$1 and acao='estado_onboarding_assistente' order by criado_em desc limit 1),'{"etapa":"apresentacao"}'::jsonb)) on conflict do nothing`,
-        [medicoId]
-      );
+      await this.inicializarSessao(c, medicoId);
       const s = (
         await c.query(
           `select *, reservado_em>now()-interval '5 minutes' as ocupada from noto_assistente_sessoes where medico_id=$1 for update`,
@@ -76,6 +156,7 @@ export class PostgresAssistente {
         )
       ).rows[0];
       if (s.reserva && s.ocupada) return null;
+      s.estado = await this.reconciliarPerfil(c, medicoId, s.estado);
       if (!s.estado.preferencia) {
         const pref = (
           await c.query(
@@ -105,8 +186,8 @@ export class PostgresAssistente {
       }
       const token = randomUUID();
       await c.query(
-        'update noto_assistente_sessoes set reserva=$2,reservado_em=now() where medico_id=$1',
-        [medicoId, token]
+        'update noto_assistente_sessoes set reserva=$2,reservado_em=now(),estado=$3 where medico_id=$1',
+        [medicoId, token, JSON.stringify(s.estado)]
       );
       t.estado = t.estado === 'pendente' ? 'analisando' : t.estado;
       await c.query(
@@ -149,23 +230,30 @@ export class PostgresAssistente {
         )
       ).rows[0];
       if (!m) throw Error('MEDICO_INATIVO');
-      await c.query(
-        `update medicos set nome_completo=coalesce($2,nome_completo),crm=coalesce($3,crm),rqe=case when $5 then $4 else rqe end,atualizado_em=now() where id=$1`,
-        [
-          r.medicoId,
-          patch.nomeConfirmado ?? null,
-          patch.crmInformado ?? null,
-          patch.rqeInformado ?? null,
-          patch.rqeInformado !== undefined
-        ]
-      );
+      if (
+        patch.nomeConfirmado !== undefined ||
+        patch.crmInformado !== undefined ||
+        patch.rqeInformado !== undefined
+      )
+        await c.query(
+          `update medicos set nome_completo=coalesce($2,nome_completo),crm=coalesce($3,crm),rqe=case when $5 then $4 else rqe end,atualizado_em=now() where id=$1`,
+          [
+            r.medicoId,
+            patch.nomeConfirmado ?? null,
+            patch.crmInformado ?? null,
+            patch.rqeInformado ?? null,
+            patch.rqeInformado !== undefined
+          ]
+        );
       if (patch.nomeConfirmado)
         await c.query(
           'update usuarios set nome=$2,atualizado_em=now() where id=$1',
           [m.usuario_id, patch.nomeConfirmado]
         );
       const novo: EstadoContextual = { ...s.estado, ...patch };
-      novo.etapa = proximaEtapa(novo);
+      if (s.estado.etapa !== 'concluido' && Object.keys(patch).length)
+        novo.etapa = proximaEtapa(novo);
+      if (patch.nomeConfirmado) novo.identidadePendente = false;
       if (decisao.ritmo === 'pausar') novo.pausado = true;
       if (decisao.ritmo === 'retomar') novo.pausado = false;
       if (patch.preferencia)
@@ -258,7 +346,7 @@ export class PostgresAssistente {
   async panorama(medicoId: string) {
     const m = (
       await this.pool.query(
-        'select u.telefone from medicos m join usuarios u on u.id=m.usuario_id where m.id=$1 and u.ativo=true',
+        'select u.telefone,m.nome_completo,m.crm,m.rqe from medicos m join usuarios u on u.id=m.usuario_id where m.id=$1 and u.ativo=true',
         [medicoId]
       )
     ).rows[0];
@@ -281,7 +369,21 @@ export class PostgresAssistente {
         [medicoId]
       )
     ).rows.map((x) => x.resultados);
+    const sessao = (
+      await this.pool.query(
+        'select estado from noto_assistente_sessoes where medico_id=$1',
+        [medicoId]
+      )
+    ).rows[0]?.estado;
     return {
+      cadastro: {
+        nome:
+          sessao?.nomeConfirmado && nomeProfissionalValido(m.nome_completo)
+            ? m.nome_completo
+            : null,
+        crm: m.crm,
+        rqe: m.rqe
+      },
       resultadosAnteriores: resultados,
       telefone: m.telefone,
       quantidadePacientes: p.total,
@@ -294,29 +396,5 @@ export class PostgresAssistente {
         `select distinct medico_id from noto_assistente_turnos where estado in ('pendente','analisando','aplicado','preparado','enviando') and proxima_tentativa_em<=now() limit 20`
       )
     ).rows.map((x) => x.medico_id as string);
-  }
-  async registrarApresentacao(
-    medicoId: string,
-    estado: EstadoContextual,
-    mensagens: string[],
-    instancia: string,
-    chave: string
-  ) {
-    await this.transacao(async (c) => {
-      await c.query(
-        'insert into noto_assistente_sessoes(medico_id,estado) values($1,$2) on conflict do nothing',
-        [medicoId, JSON.stringify(estado)]
-      );
-      await c.query(
-        `insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto,estado,mensagens,confirmadas) values($1,$2,$3,'','concluido',$4,$5) on conflict do nothing`,
-        [
-          medicoId,
-          instancia,
-          'apresentacao:' + chave,
-          JSON.stringify(mensagens),
-          mensagens.length
-        ]
-      );
-    });
   }
 }

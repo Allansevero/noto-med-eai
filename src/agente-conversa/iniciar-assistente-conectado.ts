@@ -12,7 +12,6 @@ export async function iniciarAssistenteConectado(deps: {
   salvarEstado: (medicoId: string, estado: EstadoAssistenteMedico) => Promise<void>;
   enviar: EnviarMensagemPaciente;
   instanciaNome: string;
-  aoConfirmarApresentacao?: (medicoId:string, estado:EstadoAssistenteMedico, mensagens:string[], chave:string) => Promise<void>;
 }, medicoId: string): Promise<void> {
   const client = await deps.pool.connect();
   let medico: { nome_completo?: string; telefone: string; conectado: boolean };
@@ -80,7 +79,6 @@ export async function iniciarAssistenteConectado(deps: {
     }
     await deps.salvarEstado(medicoId, resposta.novoEstado);
     await registrar('enviado');
-    await deps.aoConfirmarApresentacao?.(medicoId, resposta.novoEstado, resposta.mensagensEnviar, reservaId);
     console.info('[Onboarding Assistente]', { medicoId, estado: 'enviado', mensagensConfirmadas });
   } catch (erro) {
     await registrar(envioIniciado ? 'incerto' : 'falha_preparacao');
