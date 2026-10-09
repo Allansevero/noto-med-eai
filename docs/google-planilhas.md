@@ -71,6 +71,32 @@ exige nova autorização; `ACESSO_RECUSADO` exige conferir a conta e a seleção
 do arquivo. Esses diagnósticos são distintos de um `502` HTML retornado pelo
 proxy: nesse caso, confira os logs do serviço e sua disponibilidade.
 
+Quando o retorno da autorização mostra “A conexão com o Google não foi concluída”,
+procure o log `[Google Planilhas]` com `rota: '/callback'`. Ele identifica a etapa
+sem registrar URL, código de autorização, cookie ou tokens:
+
+- `COOKIE_AUSENTE`: o navegador não devolveu o cookie da conexão. Confira se o
+  usuário iniciou a autorização no mesmo domínio do `GOOGLE_REDIRECT_URI` e
+  concluiu no mesmo navegador, sem apagar os cookies.
+- `ESTADO_INVALIDO`: o retorno não corresponde à tentativa aberta nesse navegador;
+  recomece a conexão em uma única aba.
+- `ESTADO_EXPIRADO_OU_UTILIZADO`: o prazo de dez minutos terminou ou o retorno já
+  foi consumido; inicie outra conexão.
+- `AUTORIZACAO_RECUSADA` ou `AUTORIZACAO_FALHOU`: o Google devolveu um erro de
+  autorização. Confira a tela de consentimento, os usuários de teste e as
+  políticas da conta Google antes de tentar novamente.
+- `RECONECTAR`, `CONEXAO_FALHOU` ou `HTTP_ERRO` em `trocar_codigo`: confira o
+  status HTTP e a configuração OAuth do serviço.
+- `REFRESH_TOKEN_AUSENTE`: o Google não entregou o token de renovação exigido
+  pela integração; confira a autorização offline da conta.
+- `CONEXAO_SUPERADA`: outra conexão ou desconexão alterou a tentativa; use a mais
+  recente.
+- `BANCO_ERRO`: a gravação ou leitura falhou; `codigoBanco` contém apenas um
+  SQLSTATE conhecido, para investigação da equipe.
+
+Esses logs distinguem falhas para investigação; não demonstram que uma conexão
+real com erro foi corrigida. Não compartilhe a URL completa do retorno OAuth.
+
 Referência: https://developers.google.com/workspace/drive/picker/guides/web-picker
 
 ## NVIDIA no mapeamento das colunas
