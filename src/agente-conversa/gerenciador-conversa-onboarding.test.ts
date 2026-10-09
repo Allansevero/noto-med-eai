@@ -171,3 +171,11 @@ test('pedirCpfPaciente envia mensagem humanizada sem dizer que é IA', async () 
   assert.match(msg, /Para eu emitir sua nota fiscal da consulta, você poderia me confirmar seu CPF por favor\?/);
   assert.doesNotMatch(msg, /sou uma IA|inteligência artificial|assistente virtual|robô/i);
 });
+
+
+test('prepara apresentação sem avançar estado antes da confirmação de entrega', async () => {
+  const { gerenciador, queries } = mockAmbiente();
+  const resposta = await (gerenciador.iniciarAoConectar as any)('med-1', 'Roberto Santos', 'SP', { persistirEstado: false });
+  assert.equal(resposta.mensagensEnviar.length, 2);
+  assert.equal(queries.filter(q => q.sql.includes('insert into auditoria')).length, 0);
+});

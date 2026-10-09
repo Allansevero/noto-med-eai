@@ -112,16 +112,26 @@ export async function processarMensagemWebhook(
         medicoId: medico.id,
         textoRecebido: texto
       });
+      let mensagensConfirmadas = 0;
       if (deps.enviarMensagemAssistente) {
         for (const msg of resp.mensagensEnviar) {
-          await deps.enviarMensagemAssistente.enviarTexto({
+          const envio = await deps.enviarMensagemAssistente.enviarTexto({
             instanciaNome: deps.instanciaAssistenteNome,
             contatoTelefone: telefone,
             texto: msg
           });
+          if (!envio.sucesso) {
+            const statusHttp = /^HTTP (\d{3})\b/.exec(envio.erro || '')?.[1];
+            console.warn('[Onboarding Assistente]', { etapa: 'resposta', estado: 'envio_nao_confirmado',
+              mensagensConfirmadas, ...(statusHttp ? { statusHttp: Number(statusHttp) } : {}) });
+            return { ok: true, acao: 'conversa_assistente', detalhe: { ...resp,
+              envio: { sucesso: false, mensagensConfirmadas } } };
+          }
+          mensagensConfirmadas++;
         }
       }
-      return { ok: true, acao: 'conversa_assistente', detalhe: resp };
+      return { ok: true, acao: 'conversa_assistente', detalhe: { ...resp,
+        envio: { sucesso: mensagensConfirmadas === resp.mensagensEnviar.length, mensagensConfirmadas } } };
     }
     return { ok: true, acao: 'conversa_assistente' };
   }

@@ -610,5 +610,28 @@ describe('processarMensagemWebhook', () => {
       assert.strictEqual(res.motivoDescarte, 'mensagem_enviada_pelo_assistente');
     }
   });
+
+  it('registra falha de resposta do assistente e interrompe a sequência de mensagens', async () => {
+  const repo = new AtendimentoRepositorioMemoria();
+  repo.medico = { id: 'med-assist-1', telefone: '5551993527271', nomeCompleto: 'Roberto Santos',
+    especialidade: null, crm: null, rqe: null, ctribNacPadrao: '041601' };
+  let envios = 0;
+  const resultado = await processarMensagemWebhook({
+    event: 'messages.upsert', instance: 'notomed_assistente', data: {
+      key: { remoteJid: '5551993527271@s.whatsapp.net', fromMe: false, id: 'assist-falha' },
+      message: { conversation: 'Roberto Santos' }
+    }
+  }, segredo, { ...criarDeps(repo), instanciaAssistenteNome: 'notomed_assistente',
+    gerenciadorAssistente: { processarMensagemMedico: async () => ({
+      novoEstado: { etapa: 'confirmacao_crm_rqe' }, mensagensEnviar: ['Primeira resposta', 'Segunda resposta']
+    }) } as any,
+    enviarMensagemAssistente: { enviarTexto: async () => {
+      envios++; return { sucesso: false, erro: 'HTTP 401: chave de teste rejeitada' };
+    }}
+  });
+  assert.equal(resultado.ok, true);
+  if (resultado.ok) assert.deepEqual(resultado.detalhe.envio, { sucesso: false, mensagensConfirmadas: 0 });
+  assert.equal(envios, 1);
 });
 
+});

@@ -53,7 +53,8 @@ export class GerenciadorConversaOnboarding {
   async iniciarAoConectar(
     medicoId: string,
     nomeCompleto?: string,
-    uf?: string
+    uf?: string,
+    opcoes: { persistirEstado?: boolean } = {}
   ): Promise<RespostaProcessamentoOnboarding> {
     const mensagens: string[] = [];
     mensagens.push('Olá, doutor(a)! Sou o assistente do Noto. Estou aqui para cuidar da emissão das suas notas fiscais de consultas direto pelo WhatsApp.');
@@ -70,7 +71,9 @@ export class GerenciadorConversaOnboarding {
       resp = await this.avancarParaBuscaCrm(medicoId, nomeCompleto, uf, mensagens);
     }
 
-    await this.ferramentas.salvarEstadoOnboarding(medicoId, resp.novoEstado);
+    if (opcoes.persistirEstado !== false) {
+      await this.ferramentas.salvarEstadoOnboarding(medicoId, resp.novoEstado);
+    }
     return resp;
   }
 
