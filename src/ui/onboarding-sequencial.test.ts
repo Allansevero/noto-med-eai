@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-function tela() {
+function tela(sessaoSalva: string | null = null) {
   const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
   const nodes = new Map<string, any>();
   function node(id: string, classes = '') {
@@ -30,12 +30,12 @@ function tela() {
   const status: any = { passos: { passo1Nome: false, passo3CertificadoValido: false }, liberadoParaEmitir: false };
   const contexto = vm.createContext({ document: { getElementById: node, createElement() { return node('created' + nodes.size); }, body: node('body', 'onboarding-active'),
     querySelectorAll(s: string) { return s === '.otp-digit' ? otp : tabs; } },
-    localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} }, window: { location: { search: '' }, history: {} },
+    localStorage: { getItem() { return sessaoSalva; }, setItem() {}, removeItem() {} }, window: { location: { search: '' }, history: {} },
     URLSearchParams, FileReader, Uint8Array, btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
     setTimeout() {}, clearInterval() {}, setInterval(fn: any) { intervalos.push(fn); return intervalos.length; }, console,
     async fetch(url: string, opcoes?: any) {
       pedidos.push({ url, body: opcoes?.body ? JSON.parse(opcoes.body) : undefined });
-      return { ok: true, async json() { return url.includes('/verificar') ? { ok: true, sessao: { usuario: { usuarioId: 'user', medicoId: 'med' } } }
+      return { ok: true, async json() { return url.includes('/verificar') ? { ok: true, sessao: { tokenAcesso: 'token', usuario: { usuarioId: 'user', medicoId: 'med' } } }
         : url.includes('/status?') ? { ok: true, status } : { ok: true, medicoId: 'med' }; } };
     } });
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)![1], contexto);
@@ -253,4 +253,41 @@ test('falha ao renovar QR suspende renovação mas continua verificando a conex�
   conectado = true;
   await t.intervalos.at(-1)!();
   assert.equal(vm.runInContext('pollingConexaoId', t.contexto), null);
+});
+
+ test('refresh com armazenamento inválido ou sem token mantém login', () => {
+  for (const salvo of ['{invalido', JSON.stringify({ usuario: { medicoId: 'med' } })]) {
+    const t = tela(salvo);
+    assert.equal(t.node('cardAuth').classList.contains('hidden'), false);
+    assert.equal(t.node('cardOnboarding').classList.contains('hidden'), true);
+    assert.equal(t.pedidos.length, 0);
+  }
+});
+test('sessão rejeitada e falha de rede não abrem certificado', async () => {
+  for (const codigo of [401, 403, 500]) {
+    const t = tela();
+    t.contexto.fetch = async (_url: string, opcoes: any) => {
+      assert.equal(opcoes.headers.Authorization, 'Bearer token');
+      return { ok: false, status: codigo, json: async () => ({ ok: false }) };
+    };
+    await vm.runInContext('sessaoAtual = { tokenAcesso: "token", usuario: { medicoId: "med" } }; carregarFluxoOnboarding()', t.contexto);
+    assert.equal(t.node('cardAuth').classList.contains('hidden'), false);
+    assert.equal(t.node('cardOnboarding').classList.contains('hidden'), true);
+  }
+});
+
+test('refresh com sessão válida restaura etapa consultada no servidor', async () => {
+  const t = tela(JSON.stringify({ tokenAcesso: 'token', usuario: { medicoId: 'med' } }));
+  await vm.runInContext('carregarFluxoOnboarding()', t.contexto);
+  assert.equal(t.node('cardAuth').classList.contains('hidden'), true);
+  assert.equal(t.node('cardOnboarding').classList.contains('hidden'), false);
+  assert.equal(t.node('step3View').classList.contains('hidden'), false);
+});
+test('queda de rede durante restauração não simula certificado pendente', async () => {
+  const t = tela();
+  t.contexto.fetch = async () => { throw new Error('offline'); };
+  await vm.runInContext('sessaoAtual = { tokenAcesso: "token", usuario: { medicoId: "med" } }; carregarFluxoOnboarding()', t.contexto);
+  assert.equal(t.node('cardAuth').classList.contains('hidden'), false);
+  assert.equal(t.node('cardOnboarding').classList.contains('hidden'), true);
+  assert.match(t.node('alertBox').textContent, /Não foi possível carregar/);
 });
