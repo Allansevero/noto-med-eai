@@ -643,7 +643,7 @@ describe('processarMensagemWebhook', () => {
       enviarMensagemAssistente:{enviarTexto:async()=>{throw Error('agente é dono do envio');}}};
     const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'contexto-1'},message:{conversation:'Por que CRM?'}}};
     assert.equal((await processarMensagemWebhook(payload,segredo,deps)).ok,true);
-    assert.deepEqual(entradas,[{medicoId:'med-assist-1',instancia:'notomed_assistente',mensagemId:'contexto-1',texto:'Por que CRM?'}]);
+    assert.deepEqual(entradas,[{medicoId:'med-assist-1',instancia:'notomed_assistente',mensagemId:'contexto-1',texto:'Por que CRM?',contatoTelefone:'5551993527271',chaveMensagem:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'contexto-1'}}]);
     await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,remoteJid:'123@g.us',remoteJidAlt:'5551993527271@s.whatsapp.net'}}},segredo,deps);
     await processarMensagemWebhook({...payload,data:{...payload.data,messageTimestamp:1}},segredo,deps);
     await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,fromMe:true}}},segredo,deps);

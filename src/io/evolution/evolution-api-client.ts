@@ -1,3 +1,4 @@
+import type { LeitorMensagemWhatsApp, ParamsLeitura } from '../../whatsapp/marcar-mensagem-lida.js';
 /**
  * Cliente HTTP para a Evolution API na VPS Hostinger (Easypanel).
  * Implementa envio de mensagens de texto e envio de DANFSe (PDF) via WhatsApp
@@ -22,7 +23,7 @@ import type {
 } from '../../whatsapp/enviar-pdf-danfse.js';
 
 export class EvolutionApiClient
-  implements EnviarOtpWhatsapp, EnviarMensagemPaciente, EnviarPdfDanfse
+  implements EnviarOtpWhatsapp, EnviarMensagemPaciente, EnviarPdfDanfse, LeitorMensagemWhatsApp
 {
   constructor(
     private readonly baseUrl: string,
@@ -30,6 +31,22 @@ export class EvolutionApiClient
     private readonly instanciaOficialNome: string,
     private readonly instanciaSomenteOtp?: string
   ) {}
+
+  async marcarLida(params: ParamsLeitura): Promise<{ sucesso: boolean; erro?: string }> {
+    const chave = params.chaveMensagem;
+    if (params.instanciaNome === (this.instanciaSomenteOtp || this.instanciaOficialNome) || !chave || chave.fromMe ||
+        !params.instanciaNome || !chave.id || chave.id !== params.mensagemId || !/^\d+@(s\.whatsapp\.net|lid)$/.test(chave.remoteJid))
+      return { sucesso: false, erro: 'LEITURA_NAO_PERMITIDA' };
+    try {
+      const resp = await fetch(`${this.baseUrl.replace(/\/$/, '')}/chat/markMessageAsRead/${encodeURIComponent(params.instanciaNome)}`, {
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(3000),
+        headers: { 'Content-Type': 'application/json', apikey: this.apiKey },
+        body: JSON.stringify({ readMessages: [{ id: chave.id, remoteJid: chave.remoteJid, fromMe: false }] })
+      });
+      await resp.body?.cancel().catch(() => {});
+      return resp.ok ? { sucesso: true } : { sucesso: false, erro: `EVOLUTION_HTTP_${resp.status}` };
+    } catch { return { sucesso: false, erro: 'EVOLUTION_LEITURA_INDISPONIVEL' }; }
+  }
 
   async enviar(params: EnviarOtpParams): Promise<ResultadoEnvioOtp> {
     const texto = formatarMensagemOtp(params.codigo);

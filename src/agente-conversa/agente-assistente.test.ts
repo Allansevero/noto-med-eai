@@ -284,3 +284,47 @@ test('falhas da decisão distinguem HTTP, JSON e erro desconhecido sem expor res
     assert.ok(!f.eventos.includes('aplicar'));
   }
 });
+
+test('leitura inicia após persistir entrada, em paralelo e sem bloquear resposta quando falha', async () => {
+  const f = fixture();
+  f.repo.enfileirar = async () => { f.eventos.push('entrada'); return true; };
+  const leitor = { marcarLida: async () => { f.eventos.push('ler'); throw new Error('offline'); } };
+  await new (AgenteAssistente as any)(f.repo, f.decisor, f.gerador,
+    { enviarTexto: async () => { f.eventos.push('enviar'); return { sucesso: true }; } }, 'assistente', leitor)
+    .receber({ medicoId: 'm', instancia: 'assistente', mensagemId: 'e1', texto: 'Olá', contatoTelefone: '5511999999999',
+      chaveMensagem: { id: 'e1', remoteJid: '5511999999999@s.whatsapp.net', fromMe: false } });
+  assert.ok(f.eventos.indexOf('entrada') < f.eventos.indexOf('ler'));
+  assert.equal(f.eventos.includes('enviar'), true);
+});
+test('resposta superada por nova mensagem não é enviada', async () => {
+  const f = fixture();
+  (f.repo as any).temMensagemPosterior = async () => true;
+  (f.repo as any).descartarRespostaSuperada = async () => { f.eventos.push('superada'); };
+  await new AgenteAssistente(f.repo, f.decisor, f.gerador,
+    { enviarTexto: async () => { throw new Error('resposta antiga não deve sair'); } }, 'assistente').processar('m');
+  assert.equal(f.eventos.includes('superada'), true);
+  assert.equal(f.eventos.includes('falhar'), false);
+});
+
+test('redação que pede CRM salvo é corrigida uma vez antes de enviar', async () => {
+  const f = fixture(); let geracoes = 0; const enviadas: string[] = [];
+  f.gerador.gerar = async c => {
+    geracoes++;
+    if (geracoes === 1) return ['Me passa o CRM com a UF?'];
+    assert.deepEqual((c.dados.correcaoResposta as any).codigos, ['CRM_JA_SALVO']);
+    return ['O CRM vai na descrição da consulta.'];
+  };
+  await new AgenteAssistente(f.repo, f.decisor, f.gerador,
+    { enviarTexto: async e => { enviadas.push(e.texto); return { sucesso: true }; } }, 'assistente').processar('m');
+  assert.equal(geracoes, 2);
+  assert.deepEqual(enviadas, ['O CRM vai na descrição da consulta.']);
+});
+test('duas respostas incoerentes não chegam ao usuário nem reaplicam dados', async () => {
+  const f = fixture(); let geracoes = 0;
+  f.gerador.gerar = async () => { geracoes++; return ['Me passa o CRM com a UF?']; };
+  await new AgenteAssistente(f.repo, f.decisor, f.gerador,
+    { enviarTexto: async () => { throw Error('não enviar resposta incoerente'); } }, 'assistente').processar('m');
+  assert.equal(geracoes, 2);
+  assert.equal(f.eventos.filter(e => e === 'aplicar').length, 1);
+  assert.equal(f.eventos.includes('falhar'), true);
+});

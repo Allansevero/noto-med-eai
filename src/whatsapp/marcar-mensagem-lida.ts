@@ -4,13 +4,15 @@
  * está sendo processada.
  */
 
+export interface ChaveMensagemLeitura { id: string; remoteJid: string; remoteJidAlt?: string; fromMe: boolean }
+export interface ParamsLeitura { instanciaNome: string; mensagemId: string; contatoTelefone: string; chaveMensagem?: ChaveMensagemLeitura }
 export interface LeitorMensagemWhatsApp {
-  marcarLida(params: { instanciaNome: string; mensagemId: string; contatoTelefone: string }): Promise<{ sucesso: boolean; erro?: string }>;
+  marcarLida(params: ParamsLeitura): Promise<{ sucesso: boolean; erro?: string }>;
 }
 
 export async function marcarMensagemLida(
   leitor: LeitorMensagemWhatsApp,
-  params: { instanciaNome: string; mensagemId: string; contatoTelefone: string }
+  params: ParamsLeitura
 ): Promise<{ sucesso: boolean; erro?: string }> {
   if (!params.mensagemId || !params.instanciaNome || !params.contatoTelefone) {
     return { sucesso: false, erro: 'parametros_obrigatorios_ausentes' };
@@ -18,7 +20,7 @@ export async function marcarMensagemLida(
 
   try {
     return await leitor.marcarLida(params);
-  } catch (err: any) {
-    return { sucesso: false, erro: err?.message || 'erro_ao_marcar_lida' };
+  } catch {
+    return { sucesso: false, erro: 'erro_ao_marcar_lida' };
   }
 }

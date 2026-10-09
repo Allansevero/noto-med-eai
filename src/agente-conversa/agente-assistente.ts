@@ -1,3 +1,6 @@
+import { inconsistenciasResposta } from './coerencia-resposta.js';
+import { contextualizarResposta } from './contexto-resposta.js';
+import { marcarMensagemLida, type LeitorMensagemWhatsApp } from '../whatsapp/marcar-mensagem-lida.js';
 import { z } from 'zod';
 import { ErroNvidiaChat } from '../io/nvidia/chat-client.js';
 import { diagnosticoErroWebhook } from '../whatsapp/diagnostico-webhook.js';
@@ -10,7 +13,7 @@ import type {
   PostgresAssistente,
   EntradaTurno
 } from './postgres-assistente.js';
-import type { GeradorMensagemNoto } from '../conversa/comunicador-noto.js';
+import type { ContextoMensagemNoto, GeradorMensagemNoto } from '../conversa/comunicador-noto.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 function codigoFalha(erro: unknown): string {
   if (erro instanceof ErroNvidiaChat) {
@@ -35,12 +38,17 @@ export class AgenteAssistente {
     private decisor: DecisorAssistente,
     private gerador: GeradorMensagemNoto,
     private enviar: EnviarMensagemPaciente,
-    private instancia: string
+    private instancia: string,
+    private leitor?: LeitorMensagemWhatsApp
   ) {}
   async receber(e: EntradaTurno) {
     if (e.instancia !== this.instancia) throw Error('INSTANCIA_INVALIDA');
-    await this.repo.enfileirar(e);
-    await this.processar(e.medicoId);
+    const nova = await this.repo.enfileirar(e);
+    const leitura = nova && this.leitor && e.chaveMensagem && e.contatoTelefone
+      ? marcarMensagemLida(this.leitor, { instanciaNome: e.instancia, mensagemId: e.mensagemId, contatoTelefone: e.contatoTelefone, chaveMensagem: e.chaveMensagem })
+        .then(resultado => console.info('[Assistente contextual]', { medicoId: e.medicoId, fase: 'marcar_lida', sucesso: resultado.sucesso, codigo: resultado.erro }))
+      : Promise.resolve();
+    await Promise.all([leitura, this.processar(e.medicoId)]);
     return this.repo.resultado(e);
   }
   async iniciarAoConectar(medicoId: string) {
@@ -64,6 +72,7 @@ export class AgenteAssistente {
           medicoId,
           r.turno.sequencia
         );
+        r.estado = contextualizarResposta(r.estado, historico, r.turno.texto);
         if (r.turno.estado === 'analisando') {
           fase = 'decidir';
           const decisao =
@@ -101,10 +110,13 @@ export class AgenteAssistente {
             }))
           );
         }
+        if (r.turno.estado === 'aplicado' && await this.repo.temMensagemPosterior?.(r)) {
+          await this.repo.descartarRespostaSuperada(r);
+          continue;
+        }
         if (r.turno.estado === 'aplicado') {
           fase = 'redigir';
-          const mensagens = mensagensSchema.parse(
-            await this.gerador.gerar({
+          const contextoResposta: ContextoMensagemNoto = {
               evento: 'conversa',
               destinatario: 'medico',
               medico: {
@@ -123,7 +135,8 @@ export class AgenteAssistente {
                   r.turno.mensagem_id.startsWith('apresentacao:'),
                 estado: r.estado,
                 intencao: r.turno.decisao.intencao,
-                assunto: r.turno.decisao.assunto,
+                assunto: r.turno.resultados.some((x: any) => ['rejeitado', 'rejeitada'].includes(x.estado))
+                  ? 'Responder usando os campos realmente salvos; não confirmar dados rejeitados nem pedir de novo campos já salvos.' : r.turno.decisao.assunto,
                 resultados: r.turno.resultados,
                 panorama,
                 ferramentasDisponiveis: [
@@ -131,12 +144,25 @@ export class AgenteAssistente {
                   'registrar_periodo',
                   'registrar_preferencia'
                 ],
+                proximoPasso: r.estado.etapa,
+                orientacaoPacientes: 'Após nome, CRM e escolha opcional de RQE, explique que pacientes podem ser importados pelas integrações disponíveis (planilha Google ou TribemD). Use quantidadePacientes real. Pergunte o período para procurar comprovantes; em seguida, a preferência para data da consulta na descrição. Só confirme coleta efetivamente registrada; não afirme que a busca ou emissão já iniciou.',
                 acoesFiscaisExecutadas: false
               }
-            })
-          );
+            };
+          let mensagens = mensagensSchema.parse(await this.gerador.gerar(contextoResposta));
+          const inconsistencias = inconsistenciasResposta(mensagens, r.estado, r.turno.resultados);
+          if (inconsistencias.length) {
+            mensagens = mensagensSchema.parse(await this.gerador.gerar({ ...contextoResposta,
+              dados: { ...contextoResposta.dados, correcaoResposta: { codigos: inconsistencias,
+                orientacao: 'Reescreva a resposta com base no estado salvo. Não peça campos já informados nem confirme campo rejeitado.' } } }));
+            if (inconsistenciasResposta(mensagens, r.estado, r.turno.resultados).length) throw Error('RESPOSTA_INCOERENTE');
+          }
           fase = 'salvar_resposta';
           await this.repo.prepararResposta(r, mensagens);
+        }
+        if (r.turno.confirmadas === 0 && await this.repo.temMensagemPosterior?.(r)) {
+          await this.repo.descartarRespostaSuperada(r);
+          continue;
         }
         fase = 'iniciar_envio';
         await this.repo.iniciarEnvio(r);

@@ -218,3 +218,36 @@ test('recusa de outro dado não dispensa RQE e confirmação de período aceita 
     ).patch.janelaDataCorte
   );
 });
+
+test('nome informado em resposta contextual aceita sim é sem confundir secretária', () => {
+  const estado: any = { etapa: 'apresentacao', perguntaPendente: 'nome_profissional', interlocutor: { papel: 'secretaria', nomeInformado: 'Emmy' } };
+  assert.deepEqual(validarAcoes(decisao({ nome: 'Renata Oliveira Guimarães' }, 'Sim, é Renata Oliveira Guimarães') as any,
+    'Sim, é Renata Oliveira Guimarães', estado).patch, { nomeConfirmado: 'Renata Oliveira Guimarães' });
+  assert.deepEqual(validarAcoes(decisao({ nome: 'Emellyn Antunes' }, 'me chamo Emellyn Antunes') as any,
+    'me chamo Emellyn Antunes', estado).patch, {});
+});
+test('dispensa natural de RQE usa a pergunta anterior mesmo com etapa antiga', () => {
+  for (const texto of ['Não precisa', 'Siga sem ele.', 'Pode seguir sem', 'Pode prosseguir']) {
+    assert.deepEqual(validarAcoes(decisao({ rqe: null }, texto) as any, texto,
+      { etapa: 'apresentacao', perguntaPendente: 'rqe' } as any).patch, { rqeInformado: null }, texto);
+    assert.deepEqual(validarAcoes(decisao({ rqe: null }, texto) as any, texto,
+      { etapa: 'aguardando_crm', perguntaPendente: 'crm' } as any).patch, {}, texto);
+  }
+});
+
+test('dispensa contextual aceita cortesia e negação natural mas não inverte intenção', () => {
+  const estado: any = { etapa: 'aguardando_rqe_opcional', perguntaPendente: 'rqe' };
+  for (const texto of ['Não precisa, obrigada', 'Por mim pode seguir sem ele', 'Acho que não precisa disso, pode seguir']) {
+    assert.deepEqual(validarAcoes(decisao({ rqe: null }, texto) as any, texto, estado).patch, { rqeInformado: null }, texto);
+  }
+  for (const texto of ['Não quero seguir sem RQE', 'Não dispenso o RQE', 'Será que não precisa?', 'Não precisa alterar o CRM']) {
+    assert.deepEqual(validarAcoes(decisao({ rqe: null }, texto) as any, texto, estado).patch, {}, texto);
+  }
+});
+
+test('pedir para manter RQE atual não é dispensa', () => {
+  for (const texto of ['Não precisa alterar o RQE', 'Não quero mudar o RQE', 'Pode manter o RQE']) {
+    assert.deepEqual(validarAcoes(decisao({ rqe: null }, texto) as any, texto,
+      { etapa: 'aguardando_rqe_opcional', perguntaPendente: 'rqe', rqeInformado: '987' } as any).patch, {}, texto);
+  }
+});

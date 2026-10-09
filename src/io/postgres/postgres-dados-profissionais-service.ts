@@ -11,7 +11,7 @@ type Medico = {id:string;usuario_id:string;nome_completo:string;crm:string|null;
 /** SQL fixo; destinatário é sempre o usuário do médico, nunca um paciente. */
 export class PostgresDadosProfissionaisService implements DadosProfissionaisService {
   private ultimoMedicoNotificado:string|null=null;
-  constructor(private readonly pool:pg.Pool, private readonly enviador:EnviarMensagemPaciente, private readonly instanciaOficialNome:string, private readonly comunicador?:ComunicadorNoto) {}
+  constructor(private readonly pool:pg.Pool, private readonly enviador:EnviarMensagemPaciente, private readonly instanciaOficialNome:string, private readonly comunicador?:ComunicadorNoto, private readonly assistenteContextualAtivo = false) {}
   private async transacao<T>(acao:(client:pg.PoolClient)=>Promise<T>):Promise<T> {
     const client = await this.pool.connect();
     try { await client.query('begin'); const resultado=await acao(client); await client.query('commit'); return resultado; }
@@ -26,6 +26,9 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
     const pedido=await this.transacao(async client=>{
       const medico=await this.medico(client,medicoId);
       if(!medico || dadosProfissionaisCompletos(medico) || !medico.telefone || !this.instanciaOficialNome) return null;
+      if (this.assistenteContextualAtivo && (await client.query(
+        'select medico_id from noto_assistente_sessoes where medico_id=$1', [medicoId]
+      )).rowCount) return null;
       const reserva=await client.query(`insert into dados_profissionais_pendencias (medico_id, estado)
         values ($1,'reservado') on conflict (medico_id) do update set estado='reservado', atualizado_em=now()
         where dados_profissionais_pendencias.estado='concluido' returning medico_id`,[medicoId]);

@@ -44,3 +44,9 @@ test('retorna erro se faltar parâmetro obrigatório sem disparar chamada', asyn
   assert.equal(chamadaFeita, false);
   assert.equal(res.sucesso, false);
 });
+
+test('exceção do transporte não expõe mensagem interna em diagnóstico de leitura', async () => {
+  const r = await marcarMensagemLida({ marcarLida: async () => { throw Error('corpo privado do transporte'); } },
+    { instanciaNome: 'assistente', mensagemId: 'msg', contatoTelefone: '5511999990000' });
+  assert.deepEqual(r, { sucesso: false, erro: 'erro_ao_marcar_lida' });
+});
