@@ -1,8 +1,8 @@
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { randomUUID } from 'node:crypto';
-import {diagnosticoEntradaWebhook,diagnosticoResultadoWebhook,diagnosticoErroWebhook} from './whatsapp/diagnostico-webhook.js';
-import {criarRouterGooglePlanilhas} from './integracoes/google-planilhas/router.js';
-import {GooglePlanilhasClient} from './integracoes/google-planilhas/google-client.js';
+import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
+import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
+import { GooglePlanilhasClient } from './integracoes/google-planilhas/google-client.js';
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
@@ -116,10 +116,10 @@ export function criarAppExpress() {
   const adnNfseClient = new AdnNfseClient();
   const stripeService = config.stripeSecretKey
     ? new StripeService({
-        secretKey: config.stripeSecretKey,
-        priceId: config.stripePriceId || 'price_1UFaloBMqkVPUWioDTWXIPv6',
-        webhookSecret: config.stripeWebhookSecret
-      })
+      secretKey: config.stripeSecretKey,
+      priceId: config.stripePriceId || 'price_1UFaloBMqkVPUWioDTWXIPv6',
+      webhookSecret: config.stripeWebhookSecret
+    })
     : undefined;
 
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
@@ -181,10 +181,10 @@ export function criarAppExpress() {
 
   app.use('/api/integracoes/google-planilhas', criarRouterGooglePlanilhas({
     pool, google: config.googleClientId && config.googleClientSecret && config.googleRedirectUri
-      ? new GooglePlanilhasClient({clientId:config.googleClientId,clientSecret:config.googleClientSecret,redirectUri:config.googleRedirectUri}) : undefined,
+      ? new GooglePlanilhasClient({ clientId: config.googleClientId, clientSecret: config.googleClientSecret, redirectUri: config.googleRedirectUri }) : undefined,
     mapeador: ia.mapeadorPlanilhas,
-    autenticar: async token => { const {data,error}=await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
-    encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??'',
+    autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
+    encryptionKey: config.encryptionKey, pepper: config.appPepper, redirectUri: config.googleRedirectUri ?? '',
     googleApiKey: config.googleApiKey,
     googleAppId: config.googleAppId,
     comunicador: comunicadorNoto
@@ -369,9 +369,11 @@ export function criarAppExpress() {
         || (titular.validoDe && titular.validoDe > new Date())) throw new Error('O certificado precisa estar válido e identificar seu titular.');
       const consulta = await adnNfseClient.buscarNfseMaisRecente(certificado.pfxBuffer, certificado.senhaCertificado, titular.documentoTitular);
       console.info('[ADN] Busca de referência concluída:', consulta.resumo);
-      const fiscal = await processarOnboardingXml({ pool, supabase: authAdminService.supabaseClient,
-        documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper },
-      medicoId, consulta.documento.xml);
+      const fiscal = await processarOnboardingXml({
+        pool, supabase: authAdminService.supabaseClient,
+        documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper
+      },
+        medicoId, consulta.documento.xml);
       const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
         medicoId, fiscal.parametros.dadosReformaTributaria.hash);
       if (adocaoFiscal.ok) dispararTreino(medicoId);
@@ -452,9 +454,11 @@ export function criarAppExpress() {
         if (err instanceof ErroAdocaoReferencia) return res.status(400).json({ ok: false, codigo: err.codigo, detalhe: err.message });
         return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos adotar a configuração completa dessa nota. Busque a referência novamente; se persistir, a equipe precisa analisar o caso antes de liberar a emissão.' });
       }
-      return res.status(400).json({ ok: false, detalhe: Array.isArray(err?.issues)
-        ? err.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ')
-        : err?.message || 'Erro ao confirmar parâmetros fiscais' });
+      return res.status(400).json({
+        ok: false, detalhe: Array.isArray(err?.issues)
+          ? err.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : err?.message || 'Erro ao confirmar parâmetros fiscais'
+      });
     }
   });
 
@@ -606,92 +610,91 @@ export function criarAppExpress() {
 
   // Rota Webhook da Evolution API (suporta rota direta e subrotas com eventos)
   const webhookHandler = async (req: Request, res: Response) => {
-    const referencia=randomUUID(),inicio=Date.now();
-    console.info('[Webhook Evolution]',{etapa:'recebido',referencia,...diagnosticoEntradaWebhook(req.body)});
+    const referencia = randomUUID(), inicio = Date.now();
+    console.info('[Webhook Evolution]', { etapa: 'recebido', referencia, ...diagnosticoEntradaWebhook(req.body) });
     try {
-    const tokenRecebido =
-      (req.headers['apikey'] as string) ||
-      (req.headers['x-webhook-secret'] as string) ||
-      (req.headers['authorization'] as string) ||
-      (req.query['secret'] as string) ||
-      (req.query['apikey'] as string) ||
-      (req.query['token'] as string);
+      const tokenRecebido =
+        (req.headers['apikey'] as string) ||
+        (req.headers['x-webhook-secret'] as string) ||
+        (req.headers['authorization'] as string) ||
+        (req.query['secret'] as string) ||
+        (req.query['apikey'] as string) ||
+        (req.query['token'] as string);
 
-    // Autentica com segredo do webhook ou API key global da Evolution (oficial ou assistente)
-    let segredoEsperado = config.evolutionWebhookSecret;
-    if (
-      tokenRecebido &&
-      (tokenRecebido === config.evolutionGlobalApiKey ||
-        tokenRecebido === config.evolutionWebhookSecret ||
-        tokenRecebido === config.evolutionAssistantApiKey ||
-        tokenRecebido === config.evolutionAssistantWebhookSecret)
-    ) {
-      segredoEsperado = tokenRecebido;
-    }
+      // Autentica com segredo do webhook ou API key global da Evolution (oficial ou assistente)
+      let segredoEsperado = config.evolutionWebhookSecret;
+      if (
+        tokenRecebido &&
+        (tokenRecebido === config.evolutionGlobalApiKey ||
+          tokenRecebido === config.evolutionWebhookSecret ||
+          tokenRecebido === config.evolutionAssistantApiKey ||
+          tokenRecebido === config.evolutionAssistantWebhookSecret)
+      ) {
+        segredoEsperado = tokenRecebido;
+      }
 
-    const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
-      repositorio: atendimentoRepo,
-      dadosProfissionais,
-      comunicadorNoto,
-      billingRepositorio: billingRepo,
-      enviarMensagemPaciente: evolutionClient,
-      iaService: ia.extrator,
-      consultaCpfProvider: hubCpfClient,
-      segredoConfigurado: segredoEsperado,
-      pepper: config.appPepper,
-      instanciaOficialNome: config.evolutionOfficialInstanceName,
-      instanciaAssistenteNome: config.evolutionAssistantInstanceName,
-      enviarMensagemAssistente: evolutionAssistantClient,
-      gerenciadorAssistente: gerenciadorOnboarding,
-      async aoAtualizarConexao(evento) {
-        if (
-          evento.instancia === config.evolutionOfficialInstanceName ||
-          evento.instancia === config.evolutionAssistantInstanceName
-        ) return;
-        const medicoId = await registrarConexaoWhatsapp(pool, evento);
-        if (medicoId) {
-          dispararTreino(medicoId);
-          // Aciona o Noto Assistente em seu container dedicado para conduzir o onboarding
-          try {
-            const medicoRow = (await pool.query(
-              `select m.id, m.nome_completo, m.uf, u.telefone
+      const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
+        repositorio: atendimentoRepo,
+        dadosProfissionais,
+        comunicadorNoto,
+        billingRepositorio: billingRepo,
+        enviarMensagemPaciente: evolutionClient,
+        iaService: ia.extrator,
+        consultaCpfProvider: hubCpfClient,
+        segredoConfigurado: segredoEsperado,
+        pepper: config.appPepper,
+        instanciaOficialNome: config.evolutionOfficialInstanceName,
+        instanciaAssistenteNome: config.evolutionAssistantInstanceName,
+        enviarMensagemAssistente: evolutionAssistantClient,
+        gerenciadorAssistente: gerenciadorOnboarding,
+        async aoAtualizarConexao(evento) {
+          if (
+            evento.instancia === config.evolutionOfficialInstanceName ||
+            evento.instancia === config.evolutionAssistantInstanceName
+          ) return;
+          const medicoId = await registrarConexaoWhatsapp(pool, evento);
+          if (medicoId) {
+            dispararTreino(medicoId);
+            // Aciona o Noto Assistente em seu container dedicado para conduzir o onboarding
+            try {
+              const medicoRow = (await pool.query(
+                `select m.id, m.nome_completo, u.telefone
                from medicos m
                join usuarios u on u.id = m.usuario_id
                where m.id = $1`,
-              [medicoId]
-            )).rows[0];
+                [medicoId]
+              )).rows[0];
 
-            if (medicoRow && medicoRow.telefone) {
-              const resp = await gerenciadorOnboarding.iniciarAoConectar(
-                medicoRow.id,
-                medicoRow.nome_completo,
-                medicoRow.uf
-              );
-              for (const msg of resp.mensagensEnviar) {
-                await evolutionAssistantClient.enviarTexto({
-                  instanciaNome: config.evolutionAssistantInstanceName,
-                  contatoTelefone: medicoRow.telefone,
-                  texto: msg
-                });
+              if (medicoRow && medicoRow.telefone) {
+                const resp = await gerenciadorOnboarding.iniciarAoConectar(
+                  medicoRow.id,
+                  medicoRow.nome_completo
+                );
+                for (const msg of resp.mensagensEnviar) {
+                  await evolutionAssistantClient.enviarTexto({
+                    instanciaNome: config.evolutionAssistantInstanceName,
+                    contatoTelefone: medicoRow.telefone,
+                    texto: msg
+                  });
+                }
               }
+            } catch (err) {
+              console.warn('[Onboarding Assistente] Erro ao iniciar ao conectar:', err);
             }
-          } catch (err) {
-            console.warn('[Onboarding Assistente] Erro ao iniciar ao conectar:', err);
           }
         }
+      });
+
+      console.info('[Webhook Evolution]', { etapa: 'concluido', referencia, duracaoMs: Date.now() - inicio, ...diagnosticoResultadoWebhook(resultado) });
+      if (!resultado.ok) {
+        const status = resultado.motivo === 'autenticacao_invalida' ? 401 : 400;
+        return res.status(status).json(resultado);
       }
-    });
 
-    console.info('[Webhook Evolution]',{etapa:'concluido',referencia,duracaoMs:Date.now()-inicio,...diagnosticoResultadoWebhook(resultado)});
-    if (!resultado.ok) {
-      const status = resultado.motivo === 'autenticacao_invalida' ? 401 : 400;
-      return res.status(status).json(resultado);
-    }
-
-    return res.json(resultado);
+      return res.json(resultado);
     } catch (erro) {
-      console.error('[Webhook Evolution]',{etapa:'falha',referencia,duracaoMs:Date.now()-inicio,...diagnosticoErroWebhook(erro)});
-      return res.status(500).json({ok:false,motivo:'falha_processamento',referencia});
+      console.error('[Webhook Evolution]', { etapa: 'falha', referencia, duracaoMs: Date.now() - inicio, ...diagnosticoErroWebhook(erro) });
+      return res.status(500).json({ ok: false, motivo: 'falha_processamento', referencia });
     }
   };
 
