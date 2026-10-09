@@ -144,3 +144,16 @@ describe('HubDesenvolvedorCpfClient', () => {
     }
   });
 });
+
+it('falhas do Hub não registram documento, token ou corpo externo nos logs', async () => {
+ const avisos:unknown[][]=[];const fetchOriginal=globalThis.fetch, warnOriginal=console.warn;
+ console.warn=(...args)=>{avisos.push(args);};
+ try{
+  globalThis.fetch=async()=>{throw Error('credencial-sintetica 12345678909');};
+  await new HubDesenvolvedorCpfClient('credencial-sintetica').consultar('12345678909');
+  globalThis.fetch=async()=>new Response(JSON.stringify({status:false,message:'credencial-sintetica 12345678909'}));
+  await new HubDesenvolvedorCpfClient('credencial-sintetica').consultar('12345678909');
+  assert.equal(JSON.stringify(avisos).includes('12345678909'),false);
+  assert.equal(JSON.stringify(avisos).includes('credencial-sintetica'),false);
+ }finally{globalThis.fetch=fetchOriginal;console.warn=warnOriginal;}
+});

@@ -49,6 +49,8 @@ export interface ProcessarWebhookDeps {
   instanciaOficialNome?: string;
   instanciaAssistenteNome?: string;
   enviarMensagemAssistente?: EnviarMensagemPaciente;
+  modoCadastro?: 'conversacional' | 'confirmacao';
+  processarConfirmacaoCadastro?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<{processado: boolean}>;
   processarConversaAssistente?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<unknown>;
   gerenciadorAssistente?: GerenciadorConversaOnboarding;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
@@ -112,18 +114,18 @@ export async function processarMensagemWebhook(
     if (payload.data.key.fromMe) {
       return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_assistente' };
     }
-    if(deps.processarConversaAssistente){
+    if(deps.processarConversaAssistente || deps.modoCadastro === 'confirmacao'){
       if(!deps.segredoConfigurado)return {ok:false,motivo:'autenticacao_invalida'};
       const timestamp = payload.data.messageTimestamp === undefined ? null : Number(payload.data.messageTimestamp);
       if (texto.length > 2000 || (timestamp !== null && (!Number.isFinite(timestamp) || timestamp < Date.now()/1000-86400 || timestamp > Date.now()/1000+60))) {
         return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
       }
     }
-    const medico=deps.processarConversaAssistente&&deps.repositorio.buscarMedicoAssistentePorTelefone
+    const medico=(deps.processarConversaAssistente || deps.processarConfirmacaoCadastro)&&deps.repositorio.buscarMedicoAssistentePorTelefone
       ?await deps.repositorio.buscarMedicoAssistentePorTelefone(telefone,payload.instance)
       :await deps.repositorio.buscarMedicoPorTelefone(telefone);
     if(medico&&deps.segredoConfigurado){
-      if(!deps.processarConversaAssistente&&deps.dadosProfissionais){
+      if(deps.modoCadastro !== 'confirmacao' && !deps.processarConversaAssistente&&deps.dadosProfissionais){
         const resposta=await deps.dadosProfissionais.processarResposta({medicoId:medico.id,texto,mensagemId:payload.data.key.id});
         if(resposta.tratada)return {ok:true,acao:'resposta_perfil_medico',detalhe:resposta};
       }
@@ -135,6 +137,10 @@ export async function processarMensagemWebhook(
         if(resposta.ok)return {ok:true,acao:'resposta_data_consulta',detalhe:resposta};
         if(resposta.motivo==='resposta_ja_processada')return {ok:true,acao:'descartada',motivoDescarte:'mensagem_duplicada'};
       }
+    }
+    if (medico && deps.modoCadastro === 'confirmacao') {
+      const detalhe = await deps.processarConfirmacaoCadastro?.({medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto, contatoTelefone: telefone, chaveMensagem: {id: payload.data.key.id, remoteJid: jidPrincipal, fromMe: false, ...(jidAlternativo ? {remoteJidAlt: jidAlternativo} : {})}});
+      return detalhe?.processado ? {ok:true,acao:'conversa_assistente',detalhe} : {ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido'};
     }
     if (medico && deps.processarConversaAssistente) {
       if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
