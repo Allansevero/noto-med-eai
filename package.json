@@ -22,7 +22,8 @@
     "migrate:assistente": "node scripts/migrar-assistente-contextual.mjs",
     "test:assistente-db": "node --import tsx --test src/agente-conversa/postgres-assistente.integration.ts",
     "migrate:cadastro": "node scripts/migrar-cadastro-certificado.mjs",
-    "test:cadastro-db": "node --import tsx --test src/cadastro/postgres-cadastro.integration.ts"
+    "test:cadastro-db": "node --import tsx --test src/cadastro/postgres-cadastro.integration.ts",
+    "retry:nota": "node scripts/reprocessar-nota.mjs"
   },
   "keywords": [
     "nfse",
