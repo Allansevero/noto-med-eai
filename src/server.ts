@@ -106,7 +106,7 @@ export function criarAppExpress() {
   const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente, ia.geradorMensagem);
   const memoriaAssistente = new PostgresAssistente(pool);
   const agenteAssistente = new AgenteAssistente(memoriaAssistente, ia.decisorAssistente, ia.geradorMensagem,
-    evolutionAssistantClient, config.evolutionAssistantInstanceName);
+    evolutionAssistantClient, config.evolutionAssistantInstanceName, evolutionAssistantClient);
   if (config.assistenteContextualAtivo && process.env.NODE_ENV !== 'test') {
     let recuperando = false;
     const timer = setInterval(() => {
@@ -132,7 +132,7 @@ export function criarAppExpress() {
   };
   const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
   const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,

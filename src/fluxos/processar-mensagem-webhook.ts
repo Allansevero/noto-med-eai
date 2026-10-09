@@ -139,7 +139,8 @@ export async function processarMensagemWebhook(
     if (medico && deps.processarConversaAssistente) {
       if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
       return { ok: true, acao: 'conversa_assistente', detalhe: await deps.processarConversaAssistente({
-        medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto
+        medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto,
+        contatoTelefone: telefone, chaveMensagem: { id: payload.data.key.id, remoteJid: jidPrincipal, fromMe: false, ...(jidAlternativo ? { remoteJidAlt: jidAlternativo } : {}) }
       }) };
     }
     if (medico && deps.gerenciadorAssistente) {

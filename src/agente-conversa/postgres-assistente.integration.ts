@@ -1,3 +1,7 @@
+import { AgenteAssistente } from './agente-assistente.js';
+import { NvidiaDecisorAssistente } from '../io/nvidia/decisor-assistente.js';
+import { NvidiaGeradorMensagemNoto } from '../io/nvidia/adaptadores.js';
+import { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import pg from 'pg';
@@ -411,6 +415,124 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
       await r.atualizarDataDescricaoSolicitacao({...entrada,solicitacaoId:b});
       assert.equal((await p!.query('select aguardando_data_consulta from solicitacoes_nota where id=$1',[b])).rows[0].aguardando_data_consulta,true);
       assert.equal((await p!.query('select count(*)::int as total from auditoria where acao=$1',['resposta_data_assistente'])).rows[0].total,1);
+    });
+    await t.test('conversa da secretária persiste nome, CRM invertido e dispensa natural e avança a pacientes/período', async t => {
+      const id = await criarMedico(20);
+      await p!.query('update medicos set crm=null where id=$1', [id]);
+      const respostas: Record<string, string[]> = {
+        apresentacao: ['Você pode me passar o nome completo da médica, como está nos documentos?'],
+        aguardando_crm: ['Me passa o CRM dela com a UF?'],
+        aguardando_rqe_opcional: ['Se quiser incluir também o RQE, me passa o número; se não, seguimos sem ele.'],
+        aguardando_janela_tempo: ['Você pode importar pacientes pelo Google Planilhas ou TribemD. De qual período quer procurar comprovantes?'],
+        perguntar_preferencia_data: ['Quer usar a data do comprovante na descrição ou confirmar a data da consulta?'],
+        concluido: ['Preferência registrada. Posso ajudar com mais alguma coisa?']
+      };
+      let quantidadeLeituras = 0;
+      const textosEnviados: string[] = [];
+      const mock = t.mock.method(globalThis, 'fetch', async (url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body));
+        if (String(url).includes('/chat/markMessageAsRead/')) {
+          quantidadeLeituras++; assert.equal(body.readMessages[0].remoteJid, '123456@lid');
+          return Response.json({ success: true });
+        }
+        if (String(url).includes('/message/sendText/')) {
+          textosEnviados.push(body.text); return Response.json({ key: { id: 'envio-' + textosEnviados.length } });
+        }
+        const contexto = JSON.parse(body.messages[1].content);
+        let content: unknown;
+        if (contexto.medico) {
+          if (contexto.dados.estado.crmInformado) assert.equal(contexto.medico.crm, '37341/RS');
+          content = { mensagens: respostas[contexto.dados.estado.etapa] };
+        } else {
+          const texto = contexto.mensagemRecebida;
+          const dados = texto.startsWith('Sim, é') ? { nome: 'Renata Oliveira Guimarães' }
+            : texto.startsWith('CRM/') ? { crm: texto }
+            : texto === 'Não precisa' ? { rqe: null }
+            : texto === 'Últimos 30 dias' ? { periodo: { quantidade: 30, unidade: 'dias' } }
+            : texto === 'Use a mesma data do comprovante' ? { preferencia: 'mesma_do_comprovante' } : null;
+          if (texto === 'Não precisa') assert.equal(contexto.estado.perguntaPendente, 'rqe');
+          content = { intencao: dados ? 'registrar' : 'responder', ritmo: 'manter', assunto: 'Responder ao contexto atual',
+            acoes: dados ? [{ ferramenta: 'registrar_dados', dados, evidencia: texto }] : [] };
+        }
+        return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(content) } }] });
+      });
+      try {
+        const enviar = new EvolutionApiClient('https://evolution.teste', 'teste', 'assistente', 'oficial');
+        let agente = new AgenteAssistente(new PostgresAssistente(p!), new NvidiaDecisorAssistente('teste'), new NvidiaGeradorMensagemNoto('teste'), enviar, 'assistente', enviar);
+        const mensagens = ['Olá, me chamo Emmy sou assistente da Dra.Renata Oliveira. Como podemos ajudar?', 'Sim, é Renata Oliveira Guimarães', 'CRM/RS 37341', 'Não precisa', 'Últimos 30 dias', 'Use a mesma data do comprovante'];
+        for (let i = 0; i < mensagens.length; i++) {
+          // Reconstruir o agente prova que identidade e assunto da pergunta não dependem da RAM.
+          agente = new AgenteAssistente(new PostgresAssistente(p!), new NvidiaDecisorAssistente('teste'), new NvidiaGeradorMensagemNoto('teste'), enviar, 'assistente', enviar);
+          await agente.receber({ medicoId: id, instancia: 'assistente', mensagemId: 'conversa-real-' + i, texto: mensagens[i], contatoTelefone: '5511999991234',
+            chaveMensagem: { id: 'conversa-real-' + i, remoteJid: '123456@lid', remoteJidAlt: '5511999991234@s.whatsapp.net', fromMe: false } });
+        }
+        assert.equal(quantidadeLeituras, 6);
+        assert.deepEqual((await p!.query('select nome_completo,crm,rqe from medicos where id=$1', [id])).rows[0],
+          { nome_completo: 'Renata Oliveira Guimarães', crm: '37341/RS', rqe: null });
+        assert.equal((await p!.query('select nome from usuarios where id=(select usuario_id from medicos where id=$1)', [id])).rows[0].nome, 'Renata Oliveira Guimarães');
+        const estado = (await p!.query('select estado from noto_assistente_sessoes where medico_id=$1', [id])).rows[0].estado;
+        assert.equal(estado.interlocutor.nomeInformado, 'Emmy'); assert.equal(estado.interlocutor.papel, 'secretaria');
+        assert.equal(estado.etapa, 'concluido'); assert.equal(estado.rqeInformado, null);
+        assert.equal(textosEnviados.filter(t => /Me passa o CRM/.test(t)).length, 1);
+        assert.ok(textosEnviados.some(t => /Google Planilhas/.test(t)));
+        assert.equal((await p!.query("select count(*)::int as n from noto_assistente_turnos where medico_id=$1 and estado<>'concluido'", [id])).rows[0].n, 0);
+        await agente.receber({ medicoId: id, instancia: 'assistente', mensagemId: 'conversa-real-5', texto: mensagens[5], contatoTelefone: '5511999991234',
+          chaveMensagem: { id: 'conversa-real-5', remoteJid: '123456@lid', fromMe: false } });
+        assert.equal(quantidadeLeituras, 6, 'replay não marca nem responde novamente');
+      } finally { mock.mock.restore(); }
+    });
+    await t.test('retomar conversa antiga revalida dados rejeitados sem repetir perguntas nem reenviar mensagens', async () => {
+      const id = await criarMedico(22);
+      await p!.query('update medicos set crm=null where id=$1', [id]);
+      const antigos = [
+        { texto: 'Olá, me chamo Emmy sou assistente da Dra.Renata Oliveira. Como podemos ajudar?', dados: null,
+          respostas: ['Você pode me passar o nome completo da médica, como está nos documentos?'] },
+        { texto: 'Sim, é Renata Oliveira Guimarães', dados: { nome: 'Renata Oliveira Guimarães' }, respostas: ['Me passa o CRM dela com a UF?'] },
+        { texto: 'CRM/RS 37341', dados: { crm: 'CRM/RS 37341' }, respostas: ['Se quiser incluir RQE, me passa o número; se não, seguimos sem ele.'] },
+        { texto: 'Não precisa', dados: { rqe: null }, respostas: ['Combinado. Seguimos sem RQE.'] }
+      ];
+      for (let i = 0; i < antigos.length; i++) {
+        const a = antigos[i];
+        await p!.query(`insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto,estado,decisao,resultados,mensagens,confirmadas)
+          values($1,'assistente',$2,$3,'concluido',$4,$5,$6,1)`, [id, 'antiga-' + i, a.texto,
+          JSON.stringify({ intencao: a.dados ? 'registrar' : 'esclarecer', ritmo: 'manter', assunto: 'Cadastro', acoes: a.dados ? [{ ferramenta: 'registrar_dados', dados: a.dados, evidencia: a.texto }] : [] }),
+          JSON.stringify(a.dados ? Object.keys(a.dados).map(campo => ({ campo, estado: 'rejeitado' })) : []), JSON.stringify(a.respostas)]);
+      }
+      const repo = new PostgresAssistente(p!);
+      await repo.enfileirar({ medicoId: id, instancia: 'assistente', mensagemId: 'continuar-cadastro', texto: 'Pode continuar' });
+      const r = (await repo.reservar(id))!;
+      assert.equal(r.estado.nomeConfirmado, 'Renata Oliveira Guimarães');
+      assert.equal(r.estado.crmInformado, '37341/RS'); assert.equal(r.estado.rqeInformado, null);
+      assert.equal(r.estado.etapa, 'aguardando_janela_tempo'); assert.equal(r.estado.interlocutor?.nomeInformado, 'Emmy');
+      assert.deepEqual((await p!.query('select nome_completo,crm from medicos where id=$1', [id])).rows[0], { nome_completo: 'Renata Oliveira Guimarães', crm: '37341/RS' });
+      await repo.liberar(r);
+      // Não substituir uma edição posterior do perfil por dados históricos.
+      await p!.query("update medicos set nome_completo='Outra Medica Confirmada',crm='12345/SP' where id=$1", [id]);
+      const r2 = (await new PostgresAssistente(p!).reservar(id))!;
+      assert.equal(r2.estado.nomeConfirmado, 'Outra Medica Confirmada'); assert.equal(r2.estado.crmInformado, '12345/SP');
+      assert.equal((await p!.query("select count(*)::int as n from auditoria where entidade_id=$1 and acao='revalidacao_dados_assistente'", [id])).rows[0].n, 1);
+      await repo.liberar(r2);
+    });
+    await t.test('mensagem nova durante redação supera pergunta antiga sem perder gravação anterior', async () => {
+      const id = await criarMedico(21);
+      await p!.query("update medicos set nome_completo='Renata Oliveira Guimarães' where id=$1", [id]);
+      await p!.query(`insert into auditoria(acao,entidade,entidade_id,dados_novos) values('estado_onboarding_assistente','medicos',$1,'{"etapa":"aguardando_rqe_opcional","nomeConfirmado":"Renata Oliveira Guimarães","crmInformado":"12345/RS"}')`, [id]);
+      const repo = new PostgresAssistente(p!);
+      const mensagens: string[] = [];
+      let chamadas = 0;
+      const agente = new AgenteAssistente(repo, { decidir: async c => ({ intencao: c.mensagemRecebida === 'Siga sem ele.' ? 'registrar' : 'esclarecer', ritmo: 'manter', assunto: 'RQE',
+        acoes: c.mensagemRecebida === 'Siga sem ele.' ? [{ ferramenta: 'registrar_dados', dados: { rqe: null }, evidencia: 'Siga sem ele.' }] : [] }) },
+        { gerar: async () => {
+          if (++chamadas === 1) {
+            await repo.enfileirar({ medicoId: id, instancia: 'assistente', mensagemId: 'nova-durante-redacao', texto: 'Siga sem ele.' });
+            return ['Sim para incluir RQE ou seguir sem ele?'];
+          }
+          return ['Seguindo sem RQE. Qual período de comprovantes quer considerar?'];
+        } }, { enviarTexto: async e => { mensagens.push(e.texto); return { sucesso: true }; } }, 'assistente');
+      await agente.receber({ medicoId: id, instancia: 'assistente', mensagemId: 'sim-antigo', texto: 'Sim' });
+      assert.deepEqual(mensagens, ['Seguindo sem RQE. Qual período de comprovantes quer considerar?']);
+      assert.equal((await p!.query("select diagnostico from noto_assistente_turnos where medico_id=$1 and mensagem_id='sim-antigo'", [id])).rows[0].diagnostico, 'RESPOSTA_SUPERADA');
+      assert.equal((await p!.query('select estado from noto_assistente_sessoes where medico_id=$1', [id])).rows[0].estado.rqeInformado, null);
     });
   } finally {
     if (p) await p.end();

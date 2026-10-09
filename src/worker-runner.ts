@@ -82,7 +82,7 @@ const notificadorAlertas: NotificadorAlertas = {
   }
 };
 
-const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto);
+const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo);
 const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
 let executando = true;
 

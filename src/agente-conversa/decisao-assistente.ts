@@ -58,6 +58,9 @@ export type DecisaoAssistente = z.infer<typeof decisaoAssistenteSchema>;
 export type EstadoContextual = EstadoAssistenteMedico & {
   pausado?: boolean;
   identidadePendente?: boolean;
+  validacaoContextoVersao?: number;
+  perguntaPendente?: 'nome_profissional' | 'crm' | 'rqe' | 'periodo' | 'preferencia' | null;
+  interlocutor?: { papel: 'medica' | 'secretaria' | 'desconhecido'; nomeInformado?: string };
   preferencia?: 'mesma_do_comprovante' | 'perguntar_uma_a_uma';
 };
 export interface ContextoDecisaoAssistente {
@@ -152,8 +155,10 @@ export function validarAcoes(
           afirmada(
             (f) =>
               f.includes(normal(d.nome!)) &&
+              (!((estado.interlocutor?.papel === 'secretaria' || /\b(secretaria|assistente|recepcao)\b/.test(f)) && /\b(me chamo|meu nome|sou)\b/.test(f))) &&
               (/\b(sou|me chamo|meu nome|nome completo)\b/.test(f) ||
-                f.startsWith(normal(d.nome!))),
+                f.startsWith(normal(d.nome!)) ||
+                (estado.perguntaPendente === 'nome_profissional' && /^(?:sim[, ]+)?(?:e|o nome dela e|o nome dele e)\s/.test(f))),
             true
           ),
         () => {
@@ -189,20 +194,22 @@ export function validarAcoes(
     if (d.rqe !== undefined) {
       const valido =
         d.rqe === null
-          ? (estado.etapa === 'aguardando_rqe_opcional' || /\brqe\b/.test(e)) &&
-            /\b(nao|sem|pular|dispenso|prefiro nao)\b/.test(e) &&
+          ? ((estado.perguntaPendente === 'rqe' || (estado.perguntaPendente === undefined && estado.etapa === 'aguardando_rqe_opcional')) || /\brqe\b/.test(e)) &&
+            /\b(nao|sem|pular|dispenso|prefiro nao|pode (?:seguir|prosseguir))\b/.test(e) &&
             frases.some((f) => {
-              if (incerta(f) || terceiros(f)) return false;
+              if (incerta(f) || terceiros(f) || /\b(?:nao (?:precisa|quero|vamos|pode) (?:alterar|mudar|mexer|trocar|apagar)|(?:pode |quero |prefiro )?manter)\b/.test(f) || /\b(?:nao (?:quero|prefiro|vamos|pode|podemos) (?:seguir|prosseguir) sem|nao (?:siga|segue|seguimos|dispenso)|quero incluir|prefiro incluir)\b/.test(f)) return false;
               const referencia =
                 /\brqe\b/.test(f) ||
-                (estado.etapa === 'aguardando_rqe_opcional' &&
-                  !/\b(crm|nome|periodo|data)\b/.test(f));
+                ((estado.perguntaPendente === 'rqe' || (estado.perguntaPendente === undefined && estado.etapa === 'aguardando_rqe_opcional')) &&
+                  !/\b(crm|nome|periodo|data|paciente)\b/.test(f));
               return (
                 referencia &&
                 (/\b(nao quero|nao tenho|nao possuo|prefiro nao|sem rqe|seguir sem|dispenso|pular|nao informar|nao incluir)\b/.test(
                   f
                 ) ||
-                  /^nao[.;,]?$/.test(f))
+                  /^nao[.;,]?$/.test(f) ||
+                  ((estado.perguntaPendente === 'rqe' || (estado.perguntaPendente === undefined && estado.etapa === 'aguardando_rqe_opcional')) &&
+                    /\b(?:nao precisa|(?:siga|segue|seguimos|pode seguir) sem(?: ele| ela| isso| rqe)?|pode prosseguir)\b/.test(f)))
               );
             })
           : /^\d{1,12}$/.test(d.rqe) &&

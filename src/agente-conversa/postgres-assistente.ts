@@ -1,3 +1,5 @@
+import { contextualizarResposta } from './contexto-resposta.js';
+import type { ChaveMensagemLeitura } from '../whatsapp/marcar-mensagem-lida.js';
 import type pg from 'pg';
 import {
   nomeProfissionalValido,
@@ -6,6 +8,8 @@ import {
 import { randomUUID } from 'node:crypto';
 import {
   proximaEtapa,
+  decisaoAssistenteSchema,
+  validarAcoes,
   type EstadoContextual,
   type DecisaoAssistente
 } from './decisao-assistente.js';
@@ -14,6 +18,8 @@ export interface EntradaTurno {
   instancia: string;
   mensagemId: string;
   texto: string;
+  contatoTelefone?: string;
+  chaveMensagem?: ChaveMensagemLeitura;
 }
 export interface Turno {
   id: string;
@@ -57,12 +63,13 @@ export class PostgresAssistente {
       e.mensagemId.length > 200
     )
       throw Error('ENTRADA_INVALIDA');
-    await this.transacao(async (c) => {
+    return this.transacao(async (c) => {
       await this.inicializarSessao(c, e.medicoId);
-      await c.query(
-        `insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto) values($1,$2,$3,$4) on conflict(instancia,mensagem_id) do nothing`,
+      const inserida = await c.query(
+        `insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto) values($1,$2,$3,$4) on conflict(instancia,mensagem_id) do nothing returning id`,
         [e.medicoId, e.instancia, e.mensagemId, e.texto]
       );
+      return !!inserida.rowCount;
     });
   }
   private async inicializarSessao(c: pg.PoolClient, medicoId: string) {
@@ -141,6 +148,54 @@ export class PostgresAssistente {
     }
     return novo;
   }
+  /** Reavalia somente propostas rejeitadas com a mensagem e a pergunta originais. Não reenvia turnos. */
+  private async revalidarRecebidos(c: pg.PoolClient, medicoId: string, sessao: { estado: EstadoContextual; versao: number }) {
+    if (sessao.estado.validacaoContextoVersao === 1) return;
+    const rows = (await c.query(
+      "select texto,decisao,resultados,mensagens,confirmadas from noto_assistente_turnos where medico_id=$1 and estado='concluido' order by sequencia desc limit 50", [medicoId]
+    )).rows.reverse();
+    let reconstruido: EstadoContextual = { etapa: 'apresentacao' };
+    const historico: Array<{ papel: 'medico' | 'noto'; texto: string }> = [];
+    const candidatos: Partial<EstadoContextual> = {};
+    for (const row of rows) {
+      reconstruido = contextualizarResposta(reconstruido, historico, row.texto);
+      const decisao = decisaoAssistenteSchema.safeParse(row.decisao);
+      if (decisao.success) {
+        const { patch } = validarAcoes(decisao.data, row.texto, reconstruido);
+        for (const campo of ['nomeConfirmado', 'crmInformado', 'rqeInformado'] as const) {
+          const origem = campo === 'nomeConfirmado' ? 'nome' : campo === 'crmInformado' ? 'crm' : 'rqe';
+          if (patch[campo] !== undefined && Array.isArray(row.resultados) && row.resultados.some((r: any) => r.campo === origem && r.estado === 'rejeitado'))
+            Object.assign(candidatos, { [campo]: patch[campo] });
+        }
+        reconstruido = { ...reconstruido, ...patch };
+        reconstruido.etapa = proximaEtapa(reconstruido);
+      }
+      if (row.texto) historico.push({ papel: 'medico', texto: row.texto });
+      for (const texto of row.mensagens.slice(0, row.confirmadas)) historico.push({ papel: 'noto', texto });
+    }
+    const medico = (await c.query('select usuario_id,nome_completo,crm,rqe from medicos where id=$1 for update', [medicoId])).rows[0];
+    const patch: Partial<EstadoContextual> = {};
+    if (!sessao.estado.nomeConfirmado && candidatos.nomeConfirmado &&
+        (!nomeProfissionalValido(medico.nome_completo) || medico.nome_completo === candidatos.nomeConfirmado)) patch.nomeConfirmado = candidatos.nomeConfirmado;
+    if (!sessao.estado.crmInformado && candidatos.crmInformado &&
+        (!normalizarCrm(medico.crm) || normalizarCrm(medico.crm) === candidatos.crmInformado)) patch.crmInformado = candidatos.crmInformado;
+    if (sessao.estado.rqeInformado === undefined && candidatos.rqeInformado !== undefined && medico.rqe === null) patch.rqeInformado = candidatos.rqeInformado;
+    const novo: EstadoContextual = { ...sessao.estado, ...patch, validacaoContextoVersao: 1 };
+    if (!novo.interlocutor && reconstruido.interlocutor) novo.interlocutor = reconstruido.interlocutor;
+    if (Object.keys(patch).length) {
+      if (patch.nomeConfirmado || patch.crmInformado || patch.rqeInformado !== undefined) {
+        await c.query('update medicos set nome_completo=coalesce($2,nome_completo),crm=coalesce($3,crm),rqe=case when $5 then $4 else rqe end,atualizado_em=now() where id=$1',
+          [medicoId, patch.nomeConfirmado ?? null, patch.crmInformado ?? null, patch.rqeInformado ?? null, patch.rqeInformado !== undefined]);
+        if (patch.nomeConfirmado) await c.query('update usuarios set nome=$2,atualizado_em=now() where id=$1', [medico.usuario_id, patch.nomeConfirmado]);
+      }
+      if (novo.etapa !== 'concluido') novo.etapa = proximaEtapa(novo);
+      if (patch.nomeConfirmado) novo.identidadePendente = false;
+      await c.query("insert into auditoria(acao,entidade,entidade_id,dados_novos) values('revalidacao_dados_assistente','medicos',$1,$2::jsonb)",
+        [medicoId, JSON.stringify({ versao: 1, campos: Object.keys(patch) })]);
+    }
+    await c.query('update noto_assistente_sessoes set estado=$2,versao=versao+1,atualizado_em=now() where medico_id=$1', [medicoId, JSON.stringify(novo)]);
+    sessao.estado = novo; sessao.versao++;
+  }
   async resultado(e:EntradaTurno){
     const r=(await this.pool.query('select estado,confirmadas,diagnostico from noto_assistente_turnos where medico_id=$1 and instancia=$2 and mensagem_id=$3',[e.medicoId,e.instancia,e.mensagemId])).rows[0];
     return r?{estado:r.estado,mensagensConfirmadas:r.confirmadas,diagnostico:r.diagnostico}:{estado:'nao_registrado'};
@@ -160,6 +215,7 @@ export class PostgresAssistente {
         )
       ).rows[0];
       if (s.reserva && s.ocupada) return null;
+      await this.revalidarRecebidos(c, medicoId, s);
       s.estado = await this.reconciliarPerfil(c, medicoId, s.estado);
       if (!s.estado.preferencia) {
         const pref = (
@@ -254,7 +310,7 @@ export class PostgresAssistente {
           'update usuarios set nome=$2,atualizado_em=now() where id=$1',
           [m.usuario_id, patch.nomeConfirmado]
         );
-      const novo: EstadoContextual = { ...s.estado, ...patch };
+      const novo: EstadoContextual = { ...s.estado, ...patch, interlocutor: r.estado.interlocutor, perguntaPendente: r.estado.perguntaPendente };
       if (s.estado.etapa !== 'concluido' && Object.keys(patch).length)
         novo.etapa = proximaEtapa(novo);
       if (patch.nomeConfirmado) novo.identidadePendente = false;
@@ -298,6 +354,16 @@ export class PostgresAssistente {
     r.turno.mensagens = m;
     r.turno.estado = 'preparado';
   }
+  async temMensagemPosterior(r: Reserva): Promise<boolean> {
+    return !!(await this.pool.query(
+      'select id from noto_assistente_turnos where medico_id=$1 and sequencia>$2 and texto<>\'\' limit 1',
+      [r.medicoId, r.turno.sequencia]
+    )).rowCount;
+  }
+  async descartarRespostaSuperada(r: Reserva) {
+    await this.mudar(r, `update noto_assistente_turnos set estado='concluido',mensagens='[]'::jsonb,confirmadas=0,diagnostico='RESPOSTA_SUPERADA',atualizado_em=now() where id=$1 and estado in ('aplicado','preparado') and confirmadas=0`);
+    r.turno.estado = 'concluido'; r.turno.mensagens = [];
+  }
   async iniciarEnvio(r: Reserva) {
     await this.mudar(
       r,
@@ -316,7 +382,7 @@ export class PostgresAssistente {
   async concluir(r: Reserva) {
     await this.mudar(
       r,
-      `update noto_assistente_turnos set estado='concluido' where id=$1 and estado='enviando' and confirmadas=jsonb_array_length(mensagens)`
+      `update noto_assistente_turnos set estado='concluido',diagnostico=null where id=$1 and estado='enviando' and confirmadas=jsonb_array_length(mensagens)`
     );
     r.turno.estado = 'concluido';
   }
