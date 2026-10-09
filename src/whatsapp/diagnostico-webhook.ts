@@ -16,6 +16,10 @@ export function diagnosticoResultadoWebhook(res:ResultadoProcessarWebhook):Recor
  const d=objeto(res.detalhe);
  const r:Record<string,unknown>={resultado:d.ok===false?'bloqueado':'processado',acao:res.acao};
  if(res.motivoDescarte)r.motivo=res.motivoDescarte;
+ if(res.acao==='conversa_assistente'){
+  if(typeof d.estado==='string'&&['pendente','analisando','aplicado','preparado','enviando','concluido','incerto','falha','nao_registrado'].includes(d.estado))r.estadoTurno=d.estado;
+  if(Number.isInteger(d.mensagensConfirmadas))r.mensagensConfirmadas=d.mensagensConfirmadas;
+ }
  if(res.acao==='comando_emissao'){
   if(typeof d.motivo==='string'&&['paciente_ausente','valor_indisponivel','medico_nao_encontrado','limite_atingido'].includes(d.motivo))r.motivo=d.motivo;
   if(d.fila===null||d.fila==='pronta'||d.fila==='pendente_cadastro')r.fila=d.fila;

@@ -1,6 +1,6 @@
 /**
  * Caso de uso: Processamento da resposta do médico com a data da consulta.
- * Quando o médico responde à pergunta enviada pelo WhatsApp oficial,
+ * Quando o médico responde à pergunta enviada pelo WhatsApp do assistente,
  * atualiza a descrição legal da NFS-e com a data informada e avança a fila
  * para 'pronta' (se paciente já possui CPF) ou 'pendente_cadastro'.
  */
@@ -13,6 +13,7 @@ import type { DadosProfissionaisService } from '../conta/dados-profissionais-ser
 
 export interface ProcessarRespostaDataDeps {
   repositorio: AtendimentoRepositorio;
+  medicoIdentificado?: import('../atendimento/atendimento-repositorio.js').MedicoDadosRegistro;
   comunicadorNoto?: ComunicadorNoto;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaOficialNome?: string;
@@ -33,7 +34,7 @@ export async function processarRespostaDataConsulta(
     return { ok: false, motivo: 'data_vazia' };
   }
 
-  const medico = await deps.repositorio.buscarMedicoPorTelefone(telefoneMedico);
+  const medico = deps.medicoIdentificado ?? await deps.repositorio.buscarMedicoPorTelefone(telefoneMedico);
   if (!medico) {
     return { ok: false, motivo: 'medico_nao_encontrado' };
   }

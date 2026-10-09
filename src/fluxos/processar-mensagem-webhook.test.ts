@@ -141,7 +141,7 @@ describe('processarMensagemWebhook', () => {
       message: { conversation: MODELO_EMISSAO_TREINO.replace('[preecha]', '350,00').replace('[preecha]', '01/10/2026') }
     } };
     const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
-    assert.deepStrictEqual(res, { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_oficial' });
+    assert.deepStrictEqual(res, { ok: true, acao: 'descartada', motivoDescarte: 'canal_oficial_somente_otp' });
     assert.equal(repo.solicitacoes.length, 0);
     assert.equal(repo.pacientes.length, 0);
     assert.equal(repo.conversas.length, 0);
@@ -404,7 +404,7 @@ describe('processarMensagemWebhook', () => {
 
     const payload = {
       event: 'messages.upsert',
-      instance: 'notomed_oficial',
+      instance: 'notomed_assistente',
       data: {
         key: {
           remoteJid: '5551993527271@s.whatsapp.net',
@@ -415,7 +415,7 @@ describe('processarMensagemWebhook', () => {
       }
     };
 
-    const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
+    const res = await processarMensagemWebhook(payload, segredo, {...criarDeps(repo),instanciaAssistenteNome:'notomed_assistente'});
     assert.strictEqual(res.ok, true);
     if (res.ok) {
       assert.strictEqual(res.acao, 'resposta_data_consulta');
@@ -648,6 +648,19 @@ describe('processarMensagemWebhook', () => {
     await processarMensagemWebhook({...payload,data:{...payload.data,messageTimestamp:1}},segredo,deps);
     await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,fromMe:true}}},segredo,deps);
     assert.deepEqual(await processarMensagemWebhook(payload,null,{...deps,segredoConfigurado:''}),{ok:false,motivo:'autenticacao_invalida'});
+    assert.equal(entradas.length,1);
+  });
+
+  it('telefone duplicado chega ao agente pelo vínculo confirmado; ausência de vínculo é descarte explícito',async()=>{
+    const repo=new AtendimentoRepositorioMemoria();repo.medico={id:'med-vinculado',telefone:'5551981680978',nomeCompleto:'Médico X',crm:null,rqe:null,especialidade:null,ctribNacPadrao:''};
+    let vinculado=true;const entradas:unknown[]=[];
+    const repositorio=Object.assign(repo,{buscarMedicoPorTelefone:async()=>null,buscarMedicoAssistentePorTelefone:async(telefone:string,instancia:string)=>{
+      assert.equal(telefone,'5551981680978');assert.equal(instancia,'notomed_assistente');return vinculado?repo.medico:null;
+    }});
+    const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551981680978@s.whatsapp.net',fromMe:false,id:'resposta-nome'},message:{conversation:'Roberto Santos'}}};
+    const deps={...criarDeps(repo),repositorio,instanciaAssistenteNome:'notomed_assistente',processarConversaAssistente:async(e:unknown)=>{entradas.push(e);return {estado:'concluido',mensagensConfirmadas:1};}};
+    assert.equal((await processarMensagemWebhook(payload,segredo,deps)).ok,true);assert.equal(entradas.length,1);
+    vinculado=false;assert.deepEqual(await processarMensagemWebhook(payload,segredo,deps),{ok:true,acao:'descartada',motivoDescarte:'medico_nao_identificado'});
     assert.equal(entradas.length,1);
   });
 

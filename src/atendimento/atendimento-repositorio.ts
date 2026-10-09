@@ -97,6 +97,7 @@ export interface AtendimentoRepositorio {
   }): Promise<{ id: string }>;
   buscarConsultasEmAberto(medicoId: string, pacienteId: string): Promise<ConsultaEmAbertoRegistro[]>;
   buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null>;
+  buscarMedicoAssistentePorTelefone?(telefone: string, instancia: string): Promise<MedicoDadosRegistro | null>;
   buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null>;
   criarSolicitacaoNota(params: {
     medicoId: string;

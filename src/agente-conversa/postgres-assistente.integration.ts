@@ -4,6 +4,7 @@ import pg from 'pg';
 import { readFile } from 'node:fs/promises';
 import { iniciarAssistenteConectado } from './iniciar-assistente-conectado.js';
 import { GerenciadorConversaOnboarding } from './gerenciador-conversa-onboarding.js';
+import { PostgresAtendimentoRepositorio } from '../io/postgres/postgres-atendimento-repositorio.js';
 import { PostgresAssistente } from './postgres-assistente.js';
 const url = process.env.NOTO_TEST_DATABASE_URL;
 if (
@@ -375,6 +376,25 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
         );
       }
     );
+
+    await t.test('telefone duplicado usa só conversa confirmada da instância e bloqueia ambiguidade real',async()=>{
+      await p!.query('alter table medicos add column especialidade text;create table medico_servicos_fiscais(id uuid default gen_random_uuid(),medico_id uuid,ctrib_nac text,padrao boolean,ativo boolean);');
+      const r=new PostgresAtendimentoRepositorio(p!,'chave teste');
+      const outro=await criarMedico(14);
+      await p!.query("update usuarios set telefone='5551981680978' where id in (select usuario_id from medicos where id=any($1::uuid[]))",[['00000000-0000-4000-8000-000000000013',outro]]);
+      // Mesmo telefone: somente o cadastro 13 tem apresentação confirmada.
+      const medico=(await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'))!;
+      assert.equal(medico.id,'00000000-0000-4000-8000-000000000013');
+      await p!.query("insert into medico_servicos_fiscais(medico_id,ctrib_nac,padrao,ativo) values($1,'041601',true,true),($1,'041601',true,true)",[medico.id]);
+      assert.equal((await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'))?.id,medico.id,'serviços repetidos não duplicam médico');
+      assert.equal(await r.buscarMedicoAssistentePorTelefone('5551981680978','outra-instancia'),null);
+      await p!.query(`insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto,estado,mensagens,confirmadas) values($1,'assistente','segunda-apresentacao','','concluido','["Oi."]',1)`,[outro]);
+      assert.equal(await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'),null,'duas conversas confirmadas continuam ambíguas');
+      await p!.query('update usuarios set ativo=false where id=(select usuario_id from medicos where id=$1)',[outro]);
+      assert.equal((await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'))?.id,medico.id);
+      await p!.query('update usuarios set ativo=false where id=(select usuario_id from medicos where id=$1)',[medico.id]);
+      assert.equal(await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'),null,'não escolher cadastro inativo');
+    });
   } finally {
     if (p) await p.end();
     await admin.query(`drop schema if exists ${schema} cascade`);

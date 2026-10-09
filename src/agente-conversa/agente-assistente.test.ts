@@ -38,6 +38,7 @@ function fixture(fase = 'analisando') {
   let contexto: ContextoMensagemNoto | undefined;
   const repo = {
     enfileirar: async () => {},
+    resultado:async()=>({estado:'concluido',mensagensConfirmadas:1}),
     reservar: async () => (reservado ? null : ((reservado = true), r)),
     historico: async () => [
       { papel: 'noto', texto: 'O CRM vai na descrição.' }

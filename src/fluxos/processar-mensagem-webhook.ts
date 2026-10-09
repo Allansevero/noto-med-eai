@@ -6,8 +6,8 @@
  * 3. Descarte seguro de mensagens de grupo e comuns (seções 2 e 3 do plano).
  */
 
-import type { ComunicadorNoto } from '../conversa/comunicador-noto.js';
 import { extrairDatasConsulta } from '../emissao/regras/extrair-datas-consulta.js';
+import type { ComunicadorNoto } from '../conversa/comunicador-noto.js';
 import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 import { validarWebhookSecret } from '../whatsapp/validar-webhook-secret.js';
 import { conexaoWebhookSchema } from '../whatsapp/payload-conexao-webhook-schema.js';
@@ -59,7 +59,7 @@ export type ResultadoProcessarWebhook =
       ok: true;
       acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
-      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido';
+      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido' | 'canal_oficial_somente_otp' | 'historico_assistente_ignorado' | 'medico_nao_identificado';
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
 
@@ -71,6 +71,10 @@ export async function processarMensagemWebhook(
   if (deps.segredoConfigurado && !validarWebhookSecret(tokenRecebido, deps.segredoConfigurado)) {
     return { ok: false, motivo: 'autenticacao_invalida' };
   }
+
+  const instanciaRecebida=payloadBruto&&typeof payloadBruto==='object'?(payloadBruto as Record<string,unknown>).instance:null;
+  if(instanciaRecebida===(deps.instanciaOficialNome||'notomed_oficial'))return {ok:true,acao:'descartada',motivoDescarte:'canal_oficial_somente_otp'};
+  if(instanciaRecebida===deps.instanciaAssistenteNome&&ehEventoHistorico(payloadBruto))return {ok:true,acao:'descartada',motivoDescarte:'historico_assistente_ignorado'};
 
   const conexao = conexaoWebhookSchema.safeParse(payloadBruto);
   if (conexao.success) {
@@ -108,13 +112,31 @@ export async function processarMensagemWebhook(
     if (payload.data.key.fromMe) {
       return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_assistente' };
     }
-    const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
-    if (medico && deps.processarConversaAssistente) {
-      if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
+    if(deps.processarConversaAssistente){
+      if(!deps.segredoConfigurado)return {ok:false,motivo:'autenticacao_invalida'};
       const timestamp = payload.data.messageTimestamp === undefined ? null : Number(payload.data.messageTimestamp);
       if (texto.length > 2000 || (timestamp !== null && (!Number.isFinite(timestamp) || timestamp < Date.now()/1000-86400 || timestamp > Date.now()/1000+60))) {
         return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
       }
+    }
+    const medico=deps.processarConversaAssistente&&deps.repositorio.buscarMedicoAssistentePorTelefone
+      ?await deps.repositorio.buscarMedicoAssistentePorTelefone(telefone,payload.instance)
+      :await deps.repositorio.buscarMedicoPorTelefone(telefone);
+    if(medico&&deps.segredoConfigurado){
+      if(!deps.processarConversaAssistente&&deps.dadosProfissionais){
+        const resposta=await deps.dadosProfissionais.processarResposta({medicoId:medico.id,texto,mensagemId:payload.data.key.id});
+        if(resposta.tratada)return {ok:true,acao:'resposta_perfil_medico',detalhe:resposta};
+      }
+      // Resposta explícita à data de uma nota, sem confundir perguntas ou período de onboarding.
+      if(/^(?:consulta (?:de|em) )?\d{1,2}\/\d{1,2}\/\d{4}/i.test(texto.trim())&&!texto.includes('?')&&
+        await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id)){
+        const resposta=await processarRespostaDataConsulta(telefone,texto,{repositorio:deps.repositorio,dadosProfissionais:deps.dadosProfissionais,
+          enviarMensagem:deps.enviarMensagemPaciente,comunicadorNoto:deps.comunicadorNoto,instanciaOficialNome:deps.instanciaAssistenteNome,medicoIdentificado:medico});
+        if(resposta.ok)return {ok:true,acao:'resposta_data_consulta',detalhe:resposta};
+      }
+    }
+    if (medico && deps.processarConversaAssistente) {
+      if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
       return { ok: true, acao: 'conversa_assistente', detalhe: await deps.processarConversaAssistente({
         medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto
       }) };
@@ -145,50 +167,14 @@ export async function processarMensagemWebhook(
       return { ok: true, acao: 'conversa_assistente', detalhe: { ...resp,
         envio: { sucesso: mensagensConfirmadas === resp.mensagensEnviar.length, mensagensConfirmadas } } };
     }
-    return { ok: true, acao: 'conversa_assistente' };
+    return { ok: true, acao: 'descartada', motivoDescarte:'medico_nao_identificado' };
   }
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };
 
-  // O modelo enviado pelo Noto Oficial ensina o comando; não é uma emissão.
-  if (payload.data.key.fromMe && (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
-    return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_oficial' };
-  }
-
-  const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
-  if (!payload.data.key.fromMe && medico && deps.segredoConfigurado &&
-      (instancia.oficial || payload.instance === (deps.instanciaOficialNome || 'notomed_oficial'))) {
-    if (deps.dadosProfissionais) {
-      const resposta = await deps.dadosProfissionais.processarResposta({
-        medicoId: medico.id, texto, mensagemId: payload.data.key.id,
-        mensagemEm: payload.data.messageTimestamp === undefined ? undefined
-          : new Date(Number(payload.data.messageTimestamp) * (Number(payload.data.messageTimestamp) < 1e12 ? 1000 : 1))
-      });
-      if (resposta.tratada) return { ok: true, acao: 'resposta_perfil_medico', detalhe: resposta };
-    }
-    if (extrairDatasConsulta(texto, new Date()).datas.length > 0 &&
-        await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id)) {
-      const resData = await processarRespostaDataConsulta(telefone, texto, {
-        repositorio: deps.repositorio, dadosProfissionais: deps.dadosProfissionais,
-        enviarMensagem: deps.enviarMensagemPaciente, comunicadorNoto: deps.comunicadorNoto,
-        instanciaOficialNome: deps.instanciaOficialNome
-      });
-      if (resData.ok) return { ok: true, acao: 'resposta_data_consulta', detalhe: resData };
-    }
-    try {
-      if (deps.comunicadorNoto) {
-        const resultado = await deps.comunicadorNoto.enviar({ medicoId: medico.id, evento: 'conversa',
-          chave: `conversa:${payload.data.key.id}`, mensagemRecebida: texto });
-        if (!resultado.sucesso) console.warn('[processarMensagemWebhook] Comunicação não concluída', { evento: 'conversa' });
-      } else {
-        console.warn('[processarMensagemWebhook] Comunicador indisponível', { evento: 'conversa' });
-      }
-    } catch {
-      console.warn('[processarMensagemWebhook] Comunicação falhou', { evento: 'conversa' });
-    }
-    return { ok: true, acao: 'conversa_oficial' };
-  }
+  if(instancia.oficial)return {ok:true,acao:'descartada',motivoDescarte:'canal_oficial_somente_otp'};
+  const medico=await deps.repositorio.buscarMedicoPorTelefone(telefone);
   const medicoId = instancia.medicoId || medico?.id || null;
 
   const conversa = await deps.repositorio.buscarOuCriarConversa(instancia.id, medicoId, telefone);
@@ -248,7 +234,7 @@ async function rotearMensagem(
         dadosProfissionais: deps.dadosProfissionais,
         enviarMensagem: deps.enviarMensagemPaciente,
         comunicadorNoto: deps.comunicadorNoto,
-        instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial'
+        instanciaOficialNome: deps.instanciaAssistenteNome || 'notomed_assistente'
       });
       if (resData.ok) {
         return { ok: true, acao: 'resposta_data_consulta', detalhe: resData };
@@ -283,7 +269,7 @@ async function rotearMensagem(
     iaService: deps.iaService,
     pepper: deps.pepper,
     instanciaNome: payload.instance,
-    instanciaOficialNome: deps.instanciaOficialNome || 'notomed_oficial',
+    instanciaOficialNome: deps.instanciaAssistenteNome || 'notomed_assistente',
     textoComando: texto,
     mensagemIdComando: payload.data.key.id,
     datasComando: casamento.datas

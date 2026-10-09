@@ -1,3 +1,4 @@
+import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
 import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { iniciarAvisosPendenciasProfissionais } from './worker/avisar-pendencias-profissionais.js';
@@ -47,11 +48,13 @@ const emissorDps = new PostgresEmissorDpsService(
 const evolutionClient = new EvolutionApiClient(
   config.evolutionApiUrl,
   config.evolutionGlobalApiKey,
-  config.evolutionOfficialInstanceName
+  config.evolutionOfficialInstanceName, config.evolutionOfficialInstanceName
 );
 
+const evolutionAssistantClient=new EvolutionApiClient(config.evolutionAssistantUrl,config.evolutionAssistantApiKey,config.evolutionAssistantInstanceName,config.evolutionOfficialInstanceName);
+const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
 const ia = criarServicosIa(config);
-const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
+const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
 const notificadorAlertas: NotificadorAlertas = {
   async notificarMedicoWhatsApp(params) {
     if (!params.medicoId || !params.solicitacaoId) {
@@ -79,7 +82,7 @@ const notificadorAlertas: NotificadorAlertas = {
   }
 };
 
-const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
+const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto);
 const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
 let executando = true;
 

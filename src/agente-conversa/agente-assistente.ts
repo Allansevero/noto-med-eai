@@ -27,7 +27,7 @@ export class AgenteAssistente {
     if (e.instancia !== this.instancia) throw Error('INSTANCIA_INVALIDA');
     await this.repo.enfileirar(e);
     await this.processar(e.medicoId);
-    return { estado: 'registrado' };
+    return this.repo.resultado(e);
   }
   async iniciarAoConectar(medicoId: string) {
     await this.repo.enfileirarApresentacao(medicoId, this.instancia);
