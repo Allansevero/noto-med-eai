@@ -664,4 +664,13 @@ describe('processarMensagemWebhook', () => {
     assert.equal(entradas.length,1);
   });
 
+  it('modo confirmação não captura onboarding, mesmo com tratadores antigos configurados',async()=>{
+    const repo=new AtendimentoRepositorioMemoria();repo.medico={id:'m',telefone:'5551993527271',nomeCompleto:'Médico X',crm:null,rqe:null,especialidade:null,ctribNacPadrao:''};
+    const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'nova'},message:{conversation:'Oi'}}};
+    const deps={...criarDeps(repo),instanciaAssistenteNome:'notomed_assistente',modoCadastro:'confirmacao' as const,
+      processarConversaAssistente:async()=>{throw Error('onboarding contextual proibido');},
+      gerenciadorAssistente:{processarMensagemMedico:async()=>{throw Error('onboarding legado proibido');}} as any};
+    assert.deepEqual(await processarMensagemWebhook(payload,segredo,deps),{ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido'});
+  });
+
 });

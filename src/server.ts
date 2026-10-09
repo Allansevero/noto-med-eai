@@ -106,8 +106,8 @@ export function criarAppExpress() {
   const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente, ia.geradorMensagem);
   const memoriaAssistente = new PostgresAssistente(pool);
   const agenteAssistente = new AgenteAssistente(memoriaAssistente, ia.decisorAssistente, ia.geradorMensagem,
-    evolutionAssistantClient, config.evolutionAssistantInstanceName, evolutionAssistantClient);
-  if (config.assistenteContextualAtivo && process.env.NODE_ENV !== 'test') {
+    evolutionAssistantClient, config.evolutionAssistantInstanceName, evolutionAssistantClient, config.notoCadastroModo);
+  if (config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo && process.env.NODE_ENV !== 'test') {
     let recuperando = false;
     const timer = setInterval(() => {
       if (recuperando) return;
@@ -122,6 +122,7 @@ export function criarAppExpress() {
     salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
     enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
   const dispararAssistente = (medicoId: string) => {
+    if (config.notoCadastroModo !== 'conversacional') return;
     if (!config.evolutionAssistantUrl || !config.evolutionAssistantApiKey || !config.evolutionAssistantInstanceName) {
       console.warn('[Onboarding Assistente]', { medicoId, estado: 'configuracao_incompleta' });
       return;
@@ -132,7 +133,7 @@ export function criarAppExpress() {
   };
   const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
   const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo, config.notoCadastroModo);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
@@ -689,8 +690,9 @@ export function criarAppExpress() {
         instanciaOficialNome: config.evolutionOfficialInstanceName,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
-        gerenciadorAssistente: gerenciadorOnboarding,
-        processarConversaAssistente: config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
+        modoCadastro: config.notoCadastroModo,
+        gerenciadorAssistente: config.notoCadastroModo === 'conversacional' ? gerenciadorOnboarding : undefined,
+        processarConversaAssistente: config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
         async aoAtualizarConexao(evento) {
           if (
             evento.instancia === config.evolutionOfficialInstanceName ||

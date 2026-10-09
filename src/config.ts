@@ -27,6 +27,7 @@ export interface AppConfig {
   nvidiaApiKey?: string;
   nvidiaModel?: string;
   nvidiaVisionModel?: string;
+  notoCadastroModo?: 'conversacional' | 'confirmacao';
   assistenteContextualAtivo?: boolean;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
@@ -49,6 +50,9 @@ export interface AppConfig {
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  if (env['NOTO_CADASTRO_MODO'] && !['conversacional', 'confirmacao'].includes(env['NOTO_CADASTRO_MODO'])) {
+    throw new Error('NOTO_CADASTRO_MODO deve ser confirmacao ou conversacional.');
+  }
   if (env['PREPARACAO_FISCAL_ATIVA'] === 'true' && env['AGENTE_FISCAL_ATIVO'] !== 'true') {
     throw new Error('PREPARACAO_FISCAL_ATIVA requer AGENTE_FISCAL_ATIVO para tratar pendências sem retentativas cegas.');
   }
@@ -78,6 +82,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
     nvidiaVisionModel: env['NVIDIA_VISION_MODEL']?.trim() || env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
+    notoCadastroModo: env['NOTO_CADASTRO_MODO'] === 'conversacional' ? 'conversacional' : 'confirmacao',
     assistenteContextualAtivo: env['ASSISTENTE_CONTEXTUAL_ATIVO'] === 'true',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',

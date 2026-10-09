@@ -39,9 +39,11 @@ export class AgenteAssistente {
     private gerador: GeradorMensagemNoto,
     private enviar: EnviarMensagemPaciente,
     private instancia: string,
-    private leitor?: LeitorMensagemWhatsApp
+    private leitor?: LeitorMensagemWhatsApp,
+    private modoCadastro: 'conversacional' | 'confirmacao' = 'conversacional'
   ) {}
   async receber(e: EntradaTurno) {
+    if (this.modoCadastro === 'confirmacao') return {estado: 'suspenso', mensagensConfirmadas: 0};
     if (e.instancia !== this.instancia) throw Error('INSTANCIA_INVALIDA');
     const nova = await this.repo.enfileirar(e);
     const leitura = nova && this.leitor && e.chaveMensagem && e.contatoTelefone
@@ -52,13 +54,16 @@ export class AgenteAssistente {
     return this.repo.resultado(e);
   }
   async iniciarAoConectar(medicoId: string) {
+    if (this.modoCadastro === 'confirmacao') return;
     await this.repo.enfileirarApresentacao(medicoId, this.instancia);
     await this.processar(medicoId);
   }
   async recuperar() {
+    if (this.modoCadastro === 'confirmacao') return;
     for (const id of await this.repo.pendentes()) await this.processar(id);
   }
   async processar(medicoId: string) {
+    if (this.modoCadastro === 'confirmacao') return;
     for (let i = 0; i < 10; i++) {
       const r = await this.repo.reservar(medicoId);
       if (!r) return;
