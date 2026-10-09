@@ -7,7 +7,7 @@ export class NvidiaDecisorCadastro implements DecisorCadastro {
  async decidir(p:PendenciaCadastro,texto:string):Promise<DecisaoConfirmacao>{
   const propostas:DecisaoConfirmacao[]=[
    ...p.candidatos.map(c=>({acao:'confirmar_candidato' as const,candidatoId:c.id,evidencia:texto})),
-   {acao:p.tipo==='crm'?'informar_crm':'informar_nome',valor:texto,evidencia:texto}
+   ...(p.tipo==='crm'?[{acao:'informar_crm' as const,valor:texto,evidencia:texto}]:[])
   ];
   const validas=propostas.filter(d=>validarConfirmacao(p,d,texto));
   const patches=new Set(validas.map(d=>JSON.stringify(validarConfirmacao(p,d,texto))));

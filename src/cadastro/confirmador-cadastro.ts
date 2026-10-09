@@ -16,7 +16,7 @@ function codigoFalha(e:unknown):string{
 export class ConfirmadorCadastro {
  private executando:Promise<void>|null=null;
  constructor(private repo:PostgresCadastro,private decisor:DecisorCadastro,private gerador:GeradorMensagemNoto,private enviar:EnviarMensagemPaciente,
-  private instancia:string,private aposConfirmacao?:()=>Promise<void>,private leitor?:LeitorMensagemWhatsApp){}
+  private instancia:string,private aposConfirmacao?:()=>Promise<void>,private leitor?:LeitorMensagemWhatsApp,private prontoParaEnviar:()=>Promise<boolean>=async()=>true){}
  async receber(e:EntradaTurno):Promise<{processado:boolean}>{
   if(e.instancia!==this.instancia)return {processado:false};
   const processado=await this.repo.enfileirarResposta(e);
@@ -40,13 +40,19 @@ export class ConfirmadorCadastro {
     if(patch)await this.aposConfirmacao?.();
    }catch(e){const codigo=codigoFalha(e);await this.repo.falharResposta(r,codigo);console.warn('[Cadastro confirmação]',{fase:'interpretar',codigo});}
   }
+  if(!await this.prontoParaEnviar())return;
   for(let i=0;i<5;i++){
    const a=await this.repo.reservarAviso();if(!a)break;
    try{
     if(!a.texto)await this.repo.prepararAviso(a,await this.redigir(a));
     if(!await this.repo.iniciarAviso(a))continue;
     const envio=await this.enviar.enviarTexto({instanciaNome:this.instancia,contatoTelefone:a.telefone,texto:a.texto!});
-    if(!envio.sucesso)throw Error('ENVIO_NAO_CONFIRMADO');
+    if(!envio.sucesso){
+     const status=/^HTTP (\d{3})\b/.exec(envio.erro||'')?.[1];
+     const rejeitado=status&&[400,401,403,404,422,429].includes(Number(status));
+     await this.repo.falharAviso(a,status?'ENVIO_HTTP_'+status:'ENVIO_INDETERMINADO',!!rejeitado);
+     continue;
+    }
     await this.repo.confirmarAviso(a);
    }catch(e){const codigo=codigoFalha(e);await this.repo.falharAviso(a,codigo);console.warn('[Cadastro confirmação]',{fase:'redigir_enviar',codigo});}
   }

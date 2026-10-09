@@ -23,3 +23,9 @@ test('texto que tenta reiniciar onboarding é recusado antes de enviar',async()=
  const c=new ConfirmadorCadastro(f.repo as any,{decidir:async()=>({acao:'confirmar_candidato',candidatoId:'ana',evidencia:'Sou eu'})},{gerar:async()=>['Há quanto tempo está sem emitir notas?']},{enviarTexto:async()=>{enviados++;return {sucesso:true};}},'assistente');
  await c.recuperar();assert.equal(enviados,0);assert.ok(f.eventos.includes('falha aviso'));
 });
+test('assistente desconectado preserva aviso para enviar após conexão, sem entrar em incerto',async()=>{
+ const f=fixture();f.repo.reservarResposta=async()=>null as any;let conectado=false,enviados=0;
+ const c=new ConfirmadorCadastro(f.repo as any,{decidir:async()=>({acao:'esclarecer'})},{gerar:async()=>['Ana de Souza é a médica responsável?']},{enviarTexto:async()=>{enviados++;return {sucesso:true};}},'assistente',undefined,undefined,async()=>conectado);
+ await c.recuperar();assert.equal(enviados,0);assert.equal(f.eventos.includes('inicio envio'),false);assert.equal(f.eventos.includes('preparado'),false);
+ conectado=true;await c.recuperar();assert.equal(enviados,1);assert.equal(f.eventos.includes('falha aviso'),false);
+});

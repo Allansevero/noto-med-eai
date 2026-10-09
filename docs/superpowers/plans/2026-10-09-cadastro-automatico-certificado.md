@@ -92,4 +92,4 @@
 
 Executar diretamente nesta sessão, tarefa por tarefa, com revisão final. As tarefas dependem das mesmas interfaces e do estado do cadastro; a execução sequencial evita divergências entre a suspensão e o fluxo de confirmação.
 
-Este plano aguarda revisão do usuário e escolha do método de execução. Aprovação do desenho já recebida; nenhum código de produto foi modificado até aqui.
+Plano aprovado; execução direta realizada. Tarefas 1, 3 e 4 implementadas. Tarefa 2 entregue com consulta secundária e parser público do Hub: integração HTTP de CNPJ do Hub e pesquisa automática de CRM continuam bloqueadas por contrato/acesso não validados. Tarefa 5: 841 testes unitários, 12 verificações de cadastro em PostgreSQL local, 9 verificações legadas e typecheck passaram; revisão independente identificou quatro falhas importantes, corrigidas com regressões RED→GREEN. Publicação e incorporação seguem a autorização para `feat/nvidia-only`; deploy em produção permanece a cargo do usuário.

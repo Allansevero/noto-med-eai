@@ -12,7 +12,7 @@ test('negação, pergunta e evidência inventada não confirmam vínculo',()=>{
  assert.equal(validarConfirmacao(p,{acao:'confirmar_candidato',candidatoId:'ana',evidencia:'Sim'},'Oi'),null);
 });
 test('múltiplos sócios exigem nome completo ou escolha inequívoca; sim não escolhe',()=>{
- const multi={...p,candidatos:[...p.candidatos,{id:'maria',nome:'Maria Oliveira'}]};
+ const multi={...p,candidatos:[...p.candidatos,{id:'maria',nome:'Maria Oliveira'}],perguntaConfirmada:'Quem é a responsável: 1. Ana de Souza; 2. Maria Oliveira?'};
  assert.equal(validarConfirmacao(multi,{acao:'confirmar_candidato',candidatoId:'ana',evidencia:'Sim'},'Sim'),null);
  assert.deepEqual(validarConfirmacao(multi,{acao:'confirmar_candidato',candidatoId:'maria',evidencia:'A segunda'},'A segunda'),{nome:'Maria Oliveira'});
  assert.deepEqual(validarConfirmacao(multi,{acao:'confirmar_candidato',candidatoId:'ana',evidencia:'Ana de Souza'},'A responsável é Ana de Souza'),{nome:'Ana de Souza'});
@@ -37,4 +37,18 @@ test('homônimos com CRMs diferentes não podem ser escolhidos apenas pelo nome'
  const crm={...p,tipo:'crm' as const,candidatos:[{id:'a',nome:'Ana de Souza',crm:'12345',uf:'RS'},{id:'b',nome:'Ana de Souza',crm:'54321',uf:'SP'}]};
  assert.equal(validarConfirmacao(crm,{acao:'confirmar_candidato',candidatoId:'a',evidencia:'Ana de Souza'},'Ana de Souza'),null);
  assert.deepEqual(validarConfirmacao(crm,{acao:'confirmar_candidato',candidatoId:'a',evidencia:'12345/RS'},'12345/RS'),{crm:'12345/RS'});
+});
+test('mera menção ou identificação como secretária não confirma candidato como médico',()=>{
+ for(const texto of ['Ana de Souza é a secretária','Conheço Ana de Souza.'])assert.equal(validarConfirmacao(p,{acao:'confirmar_candidato',candidatoId:'ana',evidencia:texto},texto),null);
+});
+test('escolhas numéricas seguem a ordem da pergunta enviada, não a do array interno',()=>{
+ const multi={...p,candidatos:[...p.candidatos,{id:'maria',nome:'Maria Oliveira'}],perguntaConfirmada:'Quem é a médica responsável: 1. Maria Oliveira; 2. Ana de Souza?'};
+ assert.deepEqual(validarConfirmacao(multi,{acao:'confirmar_candidato',candidatoId:'maria',evidencia:'1'},'1'),{nome:'Maria Oliveira'});
+ assert.deepEqual(validarConfirmacao(multi,{acao:'confirmar_candidato',candidatoId:'ana',evidencia:'A segunda'},'A segunda'),{nome:'Ana de Souza'});
+ assert.equal(validarConfirmacao(multi,{acao:'confirmar_candidato',candidatoId:'ana',evidencia:'1'},'1'),null);
+});
+test('frases sociais e prefixos não viram nome civil; médico explicitamente nomeado é extraído',()=>{
+ const nome={...p,tipo:'nome' as const,candidatos:[]};
+ for(const texto of ['Estou verificando','A médica é Maria da Silva'])assert.equal(validarConfirmacao(nome,{acao:'informar_nome',valor:texto,evidencia:texto},texto),null);
+ assert.deepEqual(validarConfirmacao(nome,{acao:'informar_nome',valor:'Maria da Silva',evidencia:'Maria da Silva'},'A médica é Maria da Silva'),{nome:'Maria da Silva'});
 });

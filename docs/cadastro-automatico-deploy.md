@@ -28,7 +28,8 @@ Não reiniciar turnos antigos por SQL: eles pertencem ao fluxo suspenso. Dados j
 - `cadastro_certificado_avisos`: pergunta/conclusão, estado de envio e diagnóstico sanitizado.
 - `cadastro_certificado_respostas`: mensagens recebidas e processamento idempotente.
 - Falhas de consulta fazem três tentativas (30/120 segundos entre tentativas) antes da coleta mínima. Falhas de geração/interpretação também têm três tentativas; consulte códigos `IA_*` e a configuração NVIDIA.
-- Envio iniciado sem confirmação fica `incerto`; não é reenviado automaticamente para evitar duplicatas. Investigar a confirmação na Evolution antes de qualquer retomada manual.
+- Perguntas aguardam a conexão do WhatsApp do médico e a prontidão da instância do assistente. Uma rejeição HTTP explícita (400/401/403/404/422/429) mantém a mensagem preparada para nova tentativa limitada.
+- Envio iniciado sem confirmação ou falha de conexão de resultado desconhecido fica `incerto`; não é reenviado automaticamente para evitar duplicatas. Investigar a confirmação na Evolution antes de qualquer retomada manual.
 - Apenas perguntas com envio confirmado aceitam alterações por resposta. O reconhecimento usa o contexto da pergunta; não exige respostas literais de sim/não.
 
 Não incluir documentos, conteúdo das respostas, chave privada, senha ou credenciais nos logs técnicos. Não usar produção para rodar testes.

@@ -14,3 +14,8 @@ test('resposta natural inequívoca não precisa de chamada de IA para registrar 
  const f=mock.method(globalThis,'fetch',async()=>{throw Error('não chamar rede');});
  try{const d=await new NvidiaDecisorCadastro('teste').decidir(pendencia,'Sou eu');assert.equal(d.candidatoId,'ana');assert.equal(f.mock.callCount(),0);}finally{f.mock.restore();}
 });
+test('frases contextuais passam pela interpretação e não são salvas como nome literal',async()=>{
+ let chamadas=0;
+ const f=mock.method(globalThis,'fetch',async()=>{chamadas++;return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({acao:'esclarecer'})}}]}));});
+ try{const p={...pendencia,tipo:'nome' as const,candidatos:[]};assert.equal((await new NvidiaDecisorCadastro('teste').decidir(p,'Estou verificando')).acao,'esclarecer');assert.equal(chamadas,1);}finally{f.mock.restore();}
+});

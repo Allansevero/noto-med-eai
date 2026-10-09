@@ -17,7 +17,8 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
   await pool.query(`create table medicos(id uuid primary key,nome_completo text,crm text,usuario_id uuid,atualizado_em timestamptz);
    create table usuarios(id uuid primary key,nome text,telefone text,ativo boolean);
    create table medico_certificados(id uuid primary key,medico_id uuid references medicos(id),status text,criado_em timestamptz default now());
-   create table noto_assistente_sessoes(medico_id uuid,estado jsonb);`);
+   create table noto_assistente_sessoes(medico_id uuid,estado jsonb);
+   create table whatsapp_instancias(medico_id uuid,oficial boolean,status text);`);
   const sql=await readFile(new URL('../../scripts/migrations/20261009-cadastro-certificado.sql',import.meta.url),'utf8');await pool.query(sql);await pool.query(sql);
   const repo=new PostgresCadastro(pool);const mid=randomUUID(),uid=randomUUID(),cid=randomUUID();
   await pool.query('insert into usuarios values($1,$2,$3,true)',[uid,'Emmy','5551999999999']);
@@ -62,6 +63,8 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await repo.aplicar(r,{estado:'aguardando_confirmacao',dados:{pendencia:{id:pid,tipo:'responsavel',candidatos:[{id:'maria',nome:'Maria Souza'}],perguntaConfirmada:null}}});
    const entrada={medicoId:mid,instancia:'assistente',mensagemId:'resposta-1',texto:'Sim'};
    assert.equal(await repo.enfileirarResposta(entrada),false);
+   assert.equal(await repo.reservarAviso(),null);
+   await pool!.query("insert into whatsapp_instancias values($1,false,'conectado')",[mid]);
    const aviso=(await repo.reservarAviso())!;await repo.prepararAviso(aviso,'Maria Souza é a médica responsável?');await repo.iniciarAviso(aviso);await repo.confirmarAviso(aviso);
    assert.equal(await repo.enfileirarResposta(entrada),true);assert.equal(await repo.enfileirarResposta(entrada),true);
    assert.equal((await pool!.query('select * from cadastro_certificado_respostas')).rows.length,1);
@@ -76,6 +79,15 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    const aviso=(await repo.reservarAviso())!;await repo.prepararAviso(aviso,'Qual é o CRM com UF?');await repo.iniciarAviso(aviso);
    await pool!.query("update cadastro_certificado_avisos set reservado_em=now()-interval '10 minutes' where id=$1",[aviso.id]);
    assert.equal(await repo.reservarAviso(),null);assert.equal((await pool!.query('select estado from cadastro_certificado_avisos where id=$1',[aviso.id])).rows[0].estado,'incerto');
+  });
+  await t.test('rejeição HTTP explícita preserva mensagem preparada, envio desconhecido fica incerto',async()=>{
+   await pool!.query("update cadastro_certificado_trabalhos set estado='pendente',reserva=null,proxima_tentativa_em=now()");const r=(await repo.reservar())!;
+   await repo.aplicar(r,{estado:'aguardando_confirmacao',dados:{pendencia:{id:randomUUID(),tipo:'crm',candidatos:[],perguntaConfirmada:null}}});
+   const a=(await repo.reservarAviso())!;await repo.prepararAviso(a,'Qual é o CRM com UF?');await repo.iniciarAviso(a);await repo.falharAviso(a,'ENVIO_HTTP_400',true);
+   assert.equal((await pool!.query('select estado from cadastro_certificado_avisos where id=$1',[a.id])).rows[0].estado,'preparado');
+   await pool!.query('update cadastro_certificado_avisos set proxima_tentativa_em=now() where id=$1',[a.id]);
+   const b=(await repo.reservarAviso())!;await repo.iniciarAviso(b);await repo.falharAviso(b,'ENVIO_INDETERMINADO');
+   assert.equal((await pool!.query('select estado from cadastro_certificado_avisos where id=$1',[b.id])).rows[0].estado,'incerto');
   });
   await t.test('edição no painel enquanto aguarda resposta invalida pergunta antiga e libera reavaliação',async()=>{
    await pool!.query("update cadastro_certificado_trabalhos set estado='aguardando_confirmacao',reserva=null");
@@ -94,6 +106,7 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await pool!.query('insert into usuarios values($1,$2,$3,true)',[usuario,'Emmy Antunes','5551981680978']);
    await pool!.query("insert into medicos values($1,'Médico X',null,$2,now())",[medico,usuario]);
    await pool!.query("insert into medico_certificados(id,medico_id,status) values($1,$2,'ativo')",[certificado,medico]);
+   await pool!.query("insert into whatsapp_instancias values($1,false,'conectado')",[medico]);
    let consultas=0;const envios:string[]=[];
    const cadastro=new CadastroCertificado(repo,{consultar:async(cnpj)=>{consultas++;return {estado:'consultado',dados:{cnpj,razaoSocial:'Clínica',origem:'fixture secundária',candidatos:[{nome:'Ana de Souza',origem:'fixture secundária'}]}};}},new PesquisaRegistroIndisponivel(),async()=>undefined);
    const confirmador=new ConfirmadorCadastro(repo,new NvidiaDecisorCadastro('não usar rede'),{gerar:async(ctx)=>{

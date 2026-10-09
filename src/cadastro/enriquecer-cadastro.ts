@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import type { ConsultaEmpresa, ConsultaRegistro, EmpresaConsultada } from './consultas.js';
 export interface CandidatoCadastro { id:string; nome:string; crm?:string; uf?:string; origem?:string }
-export interface PendenciaCadastro { id:string; tipo:'responsavel'|'nome'|'crm'; candidatos:CandidatoCadastro[]; perguntaConfirmada:string|null }
+export interface PendenciaCadastro { id:string; tipo:'responsavel'|'nome'|'crm'; candidatos:CandidatoCadastro[]; perguntaConfirmada:string|null; escolhasApresentadas?:Record<string,string> }
 export interface DadosCadastro { empresa?:EmpresaConsultada; nomeConfirmado?:string; pendencia?:PendenciaCadastro; cadastroIndisponivel?:boolean; crmOrigem?:string }
 export interface PerfilCadastro { nome:string; crm:string|null; nomeConfirmado:boolean }
 export interface ResultadoEnriquecimento { estado:'aguardando_confirmacao'|'concluido'|'retentar'; dados:DadosCadastro; nome?:string; crm?:string; codigo?:string }

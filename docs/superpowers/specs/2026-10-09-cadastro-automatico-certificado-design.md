@@ -50,4 +50,4 @@ Entregar alterações revisáveis e migrações compatíveis em `feat/nvidia-onl
 
 ## Estado desta proposta
 
-Este documento descreve a mudança para revisão. A suspensão integral do onboarding foi confirmada pelo usuário; contratos externos e implementação ainda não foram validados ou executados.
+Desenho e plano aprovados pelo usuário. A suspensão do onboarding, fila de enriquecimento, consulta secundária e confirmações foram implementadas e verificadas localmente. Consulta de CNPJ do Hub e pesquisa automática de CRM permanecem indisponíveis pelas limitações registradas em `docs/cadastro-automatico-fontes.md`; nenhum endpoint foi presumido. Deploy e migrações em produção não foram executados.

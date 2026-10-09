@@ -1,3 +1,4 @@
+import { assistenteConectado } from './cadastro/prontidao-evolution.js';
 import { ConfirmadorCadastro } from './cadastro/confirmador-cadastro.js';
 import { NvidiaDecisorCadastro } from './cadastro/nvidia-decisor-cadastro.js';
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
@@ -155,7 +156,8 @@ export function criarAppExpress() {
     }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined);
   const confirmadorCadastro = new ConfirmadorCadastro(cadastroCertificado.repo,
     new NvidiaDecisorCadastro(config.nvidiaApiKey || '', config.nvidiaModel), ia.geradorMensagem,
-    evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient);
+    evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient,
+    () => assistenteConectado({url:config.evolutionAssistantUrl,chave:config.evolutionAssistantApiKey,instancia:config.evolutionAssistantInstanceName,instanciaOficial:config.evolutionOfficialInstanceName}));
   if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
       void Promise.all([cadastroCertificado.recuperar(), confirmadorCadastro.recuperar()]).catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));

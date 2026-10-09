@@ -1,3 +1,4 @@
+import { mapearEscolhas } from './confirmar-pendencia.js';
 import type pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
@@ -84,6 +85,7 @@ export class PostgresCadastro {
    const r=(await c.query(`select a.*,to_jsonb(t) trabalho,u.telefone from cadastro_certificado_avisos a join cadastro_certificado_trabalhos t on t.id=a.trabalho_id
     join medicos m on m.id=t.medico_id join usuarios u on u.id=m.usuario_id and u.ativo=true
     where a.estado in ('pendente','preparado') and a.proxima_tentativa_em<=now() and (a.reserva is null or a.reservado_em<now()-interval '3 minutes')
+    and exists(select 1 from whatsapp_instancias w where w.medico_id=t.medico_id and w.oficial=false and w.status='conectado')
     and t.estado in ('aguardando_confirmacao','concluido') and m.nome_completo is not distinct from t.snapshot->>'nome' and m.crm is not distinct from t.snapshot->>'crm'
     and (a.tipo='concluido' and t.estado='concluido' or a.pendencia_id::text=t.dados->'pendencia'->>'id')
     and exists(select 1 from medico_certificados cert where cert.id=t.certificado_id and cert.status='ativo')
@@ -96,14 +98,15 @@ export class PostgresCadastro {
  async iniciarAviso(a:AvisoCadastro):Promise<boolean>{const r=await this.pool.query(`update cadastro_certificado_avisos a set estado='enviando' where a.id=$1 and a.reserva=$2 and a.estado='preparado'
   and exists(select 1 from cadastro_certificado_trabalhos t join medico_certificados cert on cert.id=t.certificado_id join medicos m on m.id=t.medico_id join usuarios u on u.id=m.usuario_id
    where t.id=a.trabalho_id and cert.status='ativo' and u.ativo=true and t.estado in ('aguardando_confirmacao','concluido')
+   and exists(select 1 from whatsapp_instancias w where w.medico_id=t.medico_id and w.oficial=false and w.status='conectado')
    and m.nome_completo is not distinct from t.snapshot->>'nome' and m.crm is not distinct from t.snapshot->>'crm'
    and (a.tipo='concluido' and t.estado='concluido' or a.pendencia_id::text=t.dados->'pendencia'->>'id')) returning a.id`,[a.id,a.reserva]);return r.rows.length===1;}
  async confirmarAviso(a:AvisoCadastro):Promise<void>{await this.transacao(async c=>{
   const r=await c.query("update cadastro_certificado_avisos set estado='confirmado',reserva=null where id=$1 and reserva=$2 and estado in ('enviando','incerto') returning texto",[a.id,a.reserva]);
-  if(r.rows.length&&a.pendencia_id)await c.query(`update cadastro_certificado_trabalhos set dados=jsonb_set(dados,'{pendencia,perguntaConfirmada}',to_jsonb($3::text)) where id=$1 and dados->'pendencia'->>'id'=$2`,[a.trabalho_id,a.pendencia_id,r.rows[0].texto]);
+  if(r.rows.length&&a.pendencia_id&&a.trabalho.dados.pendencia)await c.query(`update cadastro_certificado_trabalhos set dados=jsonb_set(jsonb_set(dados,'{pendencia,perguntaConfirmada}',to_jsonb($3::text)),'{pendencia,escolhasApresentadas}',$4::jsonb) where id=$1 and dados->'pendencia'->>'id'=$2`,[a.trabalho_id,a.pendencia_id,r.rows[0].texto,JSON.stringify(mapearEscolhas(a.trabalho.dados.pendencia,r.rows[0].texto))]);
  });}
- async falharAviso(a:AvisoCadastro,codigo:string):Promise<void>{await this.pool.query(`update cadastro_certificado_avisos set estado=case when estado='enviando' then 'incerto' when tentativas>=3 then 'falha' else estado end,
-  diagnostico=$3,reserva=null,proxima_tentativa_em=now()+case when tentativas=1 then interval '30 seconds' else interval '120 seconds' end where id=$1 and reserva=$2`,[a.id,a.reserva,codigo]);}
+ async falharAviso(a:AvisoCadastro,codigo:string,rejeitadoSemEnvio=false):Promise<void>{await this.pool.query(`update cadastro_certificado_avisos set estado=case when estado='enviando' and not $4 then 'incerto' when tentativas>=3 then 'falha' when estado='enviando' then 'preparado' else estado end,
+  diagnostico=$3,reserva=null,proxima_tentativa_em=now()+case when tentativas=1 then interval '30 seconds' else interval '120 seconds' end where id=$1 and reserva=$2`,[a.id,a.reserva,codigo,rejeitadoSemEnvio]);}
  async enfileirarResposta(e:{medicoId:string;instancia:string;mensagemId:string;texto:string}):Promise<boolean>{
   if(!e.texto.trim()||e.texto.length>2000)return false;
   const duplicada=await this.pool.query(`select r.id from cadastro_certificado_respostas r join cadastro_certificado_trabalhos t on t.id=r.trabalho_id where instancia=$1 and mensagem_id=$2 and t.medico_id=$3`,[e.instancia,e.mensagemId,e.medicoId]);if(duplicada.rows.length)return true;
