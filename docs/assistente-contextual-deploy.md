@@ -1,12 +1,13 @@
 # Ativar o Noto Assistente contextual
 
-Branch de entrega: `fix/assistente-guia-conversa`, PR #3 para `feat/nvidia-only`.
+Branch de produção: `feat/nvidia-only`. Implantar a versão mais recente dessa
+branch, que inclui as correções de contexto e validação da conversa.
 
 O agente interpreta a intenção com NVIDIA, valida ações explícitas e redige a resposta com o histórico e `docs/prompts/noto-conversa.md`. O cadastro é uma tarefa pendente: dúvidas, pausas e conversas após concluí-lo continuam recebendo respostas. O nome inicial do cadastro não identifica o médico; ele informa nome real, CRM e, opcionalmente, RQE. Não há pesquisa online.
 
 ## Deploy no Easypanel
 
-1. Usar a branch de entrega ou incorporar o PR #3 na branch configurada no Easypanel.
+1. Configurar o Easypanel para `feat/nvidia-only` e conferir o commit da implantação.
 2. No console do aplicativo com a nova versão e `DATABASE_URL` do ambiente, executar `npm run migrate:assistente`. A migração é transacional e repetível; cria duas tabelas com RLS, acessíveis apenas pelo backend. Ela não envia mensagens nem altera cadastros existentes.
 3. Configurar `ASSISTENTE_CONTEXTUAL_ATIVO=true` e reiniciar/reimplantar o aplicativo. A flag é desligada por padrão: sem ela permanece o fluxo anterior.
 4. Manter `NVIDIA_API_KEY` e `NVIDIA_MODEL`, a instância `EVOLUTION_ASSISTANT_INSTANCE_NAME` e URL/chave da Evolution. O webhook precisa de segredo configurado, via `EVOLUTION_ASSISTANT_WEBHOOK_SECRET` ou `EVOLUTION_WEBHOOK_SECRET`, conforme a configuração atual de autenticação. Não colocar chaves no GitHub.
@@ -23,6 +24,30 @@ A fila ordena por médico e deduplica por instância/ID da mensagem. Uma reserva
 Mensagens aceitas pela Evolution são registradas como confirmadas; isso não comprova leitura no celular. Timeout, interrupção ou falha de transporte tornam a entrega incerta e impedem reenvio automático. O histórico inclui só as mensagens confirmadas, inclusive em uma sequência parcialmente enviada. Novas mensagens do médico podem continuar a conversa.
 
 Este agente consulta solicitações e altera somente nome, CRM, RQE, período, preferência e pausa. Ele não varre comprovantes, solicita CPF nem emite/reprocessa notas. A redação recebe essa restrição e os resultados reais para não prometer ações inexistentes.
+
+### Falha depois de salvar o período
+
+Uma falha em `redigir` ocorre depois de aplicar as ações: o período pode estar
+salvo mesmo que nenhuma resposta tenha sido enviada. Confira `resultados`,
+`diagnostico`, `confirmadas` e `mensagens` do turno antes de investigar a gravação
+ou tentar repetir a resposta. A versão atual preserva o diagnóstico da NVIDIA:
+`IA_HTTP_ERRO_429` indica limite de requisições; `IA_CONEXAO_FALHOU` indica que
+a conexão não concluiu; `IA_RESPOSTA_INVALIDA` indica conteúdo incompleto, JSON
+inválido ou mensagens fora do formato permitido. `PROCESSAMENTO_FALHOU` é
+insuficiente para atribuir a falha antiga a uma dessas causas.
+
+Após três tentativas o turno passa para `falha` e deixa a fila automática.
+Uma recuperação manual deve se limitar ao ID e médico afetados, com diagnóstico
+`redigir:`, zero mensagens confirmadas e lista de mensagens vazia. Retomar em
+`aplicado` repete apenas a redação; os dados já salvos não são reaplicados. Conferir
+a disponibilidade da NVIDIA e implantar a versão corrigida antes dessa recuperação.
+Turnos `incerto`, `enviando` ou com mensagens confirmadas não são elegíveis: a
+ausência de confirmação não prova que uma mensagem enviada não chegou.
+
+A versão com correções de contexto marca a sessão com
+`estado.validacaoContextoVersao = 1` na primeira reserva. A falta dessa marca após
+turnos novos é um indício de implantação anterior: confira o commit executado no
+Easypanel antes de concluir que uma correção já publicada está em produção.
 
 Para desativar, definir `ASSISTENTE_CONTEXTUAL_ATIVO=false`; não apagar tabelas ou auditoria. O fluxo antigo não lê o novo histórico, então a desativação é uma reversão operacional, não uma sincronização de conversas.
 

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AgenteAssistente } from './agente-assistente.js';
 import { ErroNvidiaChat } from '../io/nvidia/chat-client.js';
+import { NvidiaGeradorMensagemNoto } from '../io/nvidia/adaptadores.js';
 import type { PostgresAssistente, Reserva } from './postgres-assistente.js';
 import type { ContextoMensagemNoto } from '../conversa/comunicador-noto.js';
 function fixture(fase = 'analisando') {
@@ -283,6 +284,29 @@ test('falhas da decisão distinguem HTTP, JSON e erro desconhecido sem expor res
     assert.equal(diagnostico, 'decidir:' + esperado);
     assert.ok(!f.eventos.includes('aplicar'));
   }
+});
+
+test('falha HTTP na redação preserva período salvo e permite retomar sem repetir gravação', async t => {
+  t.mock.method(console,'warn',()=>{});
+  const f=fixture('aplicado');
+  f.r.turno.texto='5 dias';f.r.estado.janelaDataCorte='2026-10-04';
+  f.r.turno.resultados=[{campo:'periodo',estado:'salvo'}];
+  let diagnostico:unknown;
+  f.repo.falhar=async(_r,erro)=>{diagnostico=erro;f.eventos.push('falhar');};
+  const chamada=t.mock.method(globalThis,'fetch',async()=>new Response('resposta privada',{status:429}));
+  const enviar={enviarTexto:async()=>{f.eventos.push('enviar');return {sucesso:true};}};
+  const a=new AgenteAssistente(f.repo,f.decisor,new NvidiaGeradorMensagemNoto('chave-privada'),enviar,'assistente');
+  await a.processar('m');
+  assert.equal(diagnostico,'redigir:IA_HTTP_ERRO_429');
+  assert.equal(f.r.estado.janelaDataCorte,'2026-10-04');
+  assert.ok(!f.eventos.includes('aplicar'));assert.ok(!f.eventos.includes('enviar'));
+  let reservada=false;
+  f.repo.reservar=async()=>reservada?null:((reservada=true),f.r);
+  chamada.mock.mockImplementation(async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({mensagens:['O período de cinco dias ficou registrado. Qual data prefere usar na descrição?']})}}]}));
+  await a.processar('m');
+  assert.ok(f.eventos.includes('concluir'));assert.equal(f.eventos.filter(x=>x==='enviar').length,1);
+  assert.ok(!f.eventos.includes('decidir'));assert.ok(!f.eventos.includes('aplicar'));
+  assert.equal(f.r.estado.janelaDataCorte,'2026-10-04');
 });
 
 test('leitura inicia após persistir entrada, em paralelo e sem bloquear resposta quando falha', async () => {
