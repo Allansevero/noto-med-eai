@@ -4,6 +4,8 @@ import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-em
 import { criarPendencia, type DadosCadastro, type PerfilCadastro, type ResultadoEnriquecimento } from './enriquecer-cadastro.js';
 export interface TrabalhoCadastro { id:string; medico_id:string; certificado_id:string; documento_titular:string|null; estado:string; dados:DadosCadastro; snapshot:{nome:string;crm:string|null}; tentativas:number }
 export interface ReservaCadastro { trabalho:TrabalhoCadastro; token:string; perfil:PerfilCadastro }
+export interface AvisoCadastro { id:string; trabalho_id:string; chave:string; pendencia_id:string|null; tipo:'pergunta'|'esclarecer'|'concluido'; texto:string|null; mensagem_recebida:string|null; estado:string; reserva:string; tentativas:number; trabalho:TrabalhoCadastro; telefone:string }
+export interface RespostaCadastro { id:string; trabalho_id:string; pendencia_id:string; texto:string; reserva:string; tentativas:number; trabalho:TrabalhoCadastro }
 export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
  async transacao<T>(fn:(c:pg.PoolClient)=>Promise<T>):Promise<T>{const c=await this.pool.connect();try{await c.query('begin');const r=await fn(c);await c.query('commit');return r;}catch(e){await c.query('rollback');throw e;}finally{c.release();}}
@@ -19,7 +21,12 @@ export class PostgresCadastro {
    where not exists(select 1 from medico_certificados n where n.medico_id=m.id and n.status='ativo' and (n.criado_em,n.id)>(c.criado_em,c.id))
    on conflict(certificado_id) do nothing`);
  }
- async invalidarObsoletos():Promise<void>{await this.pool.query(`update cadastro_certificado_trabalhos t set estado='obsoleto',reserva=null,atualizado_em=now()
+ async invalidarObsoletos():Promise<void>{
+  await this.pool.query(`update cadastro_certificado_trabalhos t set estado='pendente',reserva=null,reservado_em=null,tentativas=0,proxima_tentativa_em=now(),diagnostico='CADASTRO_ALTERADO',
+   dados=case when t.snapshot->>'nome' is not distinct from m.nome_completo then t.dados-'pendencia' else t.dados-'pendencia'-'nomeConfirmado' end,
+   snapshot=jsonb_build_object('nome',m.nome_completo,'crm',m.crm) from medicos m
+   where m.id=t.medico_id and t.estado='aguardando_confirmacao' and (m.nome_completo is distinct from t.snapshot->>'nome' or m.crm is distinct from t.snapshot->>'crm')`);
+  await this.pool.query(`update cadastro_certificado_trabalhos t set estado='obsoleto',reserva=null,atualizado_em=now()
   where t.estado not in ('obsoleto','concluido') and not exists(select 1 from medico_certificados c join medicos m on m.id=c.medico_id join usuarios u on u.id=m.usuario_id
    where c.id=t.certificado_id and c.medico_id=t.medico_id and c.status='ativo' and u.ativo=true
    and not exists(select 1 from medico_certificados n where n.medico_id=m.id and n.status='ativo' and (n.criado_em,n.id)>(c.criado_em,c.id)))`);}
@@ -30,8 +37,9 @@ export class PostgresCadastro {
    if(!r)return null;const token=randomUUID();
    const m=(await c.query('select nome_completo,crm from medicos where id=$1',[r.medico_id])).rows[0];
    const legado=(await c.query('select estado from noto_assistente_sessoes where medico_id=$1',[r.medico_id])).rows[0]?.estado;
+   const confirmadoAnterior=(await c.query("select id from cadastro_certificado_trabalhos where medico_id=$1 and dados->>'nomeConfirmado'=$2 limit 1",[r.medico_id,m.nome_completo])).rows.length>0;
    r.tentativas++;await c.query("update cadastro_certificado_trabalhos set estado='consultando',reserva=$2,reservado_em=now(),tentativas=$3 where id=$1",[r.id,token,r.tentativas]);
-   return {trabalho:r,token,perfil:{nome:m.nome_completo,crm:m.crm,nomeConfirmado:nomeProfissionalValido(m.nome_completo)&&legado?.nomeConfirmado===m.nome_completo&&legado?.identidadePendente!==true}};
+   return {trabalho:r,token,perfil:{nome:m.nome_completo,crm:m.crm,nomeConfirmado:nomeProfissionalValido(m.nome_completo)&&(confirmadoAnterior||(legado?.nomeConfirmado===m.nome_completo&&legado?.identidadePendente!==true))}};
   });
  }
  async documento(r:ReservaCadastro,documento:string|undefined):Promise<void>{await this.pool.query('update cadastro_certificado_trabalhos set documento_titular=$3 where id=$1 and reserva=$2',[r.trabalho.id,r.token,documento??null]);r.trabalho.documento_titular=documento??null;}
@@ -59,9 +67,82 @@ export class PostgresCadastro {
    }
    await c.query(`update cadastro_certificado_trabalhos set estado=$2,dados=$3,reserva=null,reservado_em=null,diagnostico=$4,
     proxima_tentativa_em=now()+$5*interval '1 second',snapshot=$6,atualizado_em=now() where id=$1`,[t.id,estado,JSON.stringify(dados),resultado.codigo??null,espera,JSON.stringify({nome:resultado.nome??m.nome_completo,crm:resultado.crm??m.crm})]);
+   if(estado==='aguardando_confirmacao'&&dados.pendencia)await this.agendarAviso(c,t.id,dados.pendencia.id,'pergunta',dados.pendencia.id);
+   if(estado==='concluido')await this.agendarAviso(c,t.id,'concluido','concluido',null);
   });
  }
  async pendencia(medicoId:string):Promise<TrabalhoCadastro|null>{const r=await this.pool.query(`select t.* from cadastro_certificado_trabalhos t join medico_certificados c on c.id=t.certificado_id
   join medicos m on m.id=t.medico_id join usuarios u on u.id=m.usuario_id and u.ativo=true where t.medico_id=$1 and t.estado='aguardando_confirmacao' and c.status='ativo'
   and not exists(select 1 from medico_certificados n where n.medico_id=m.id and n.status='ativo' and (n.criado_em,n.id)>(c.criado_em,c.id)) order by t.criado_em desc limit 1`,[medicoId]);return r.rows[0]??null;}
+ private async agendarAviso(c:pg.PoolClient,trabalhoId:string,chave:string,tipo:AvisoCadastro['tipo'],pendenciaId:string|null,texto?:string):Promise<void>{
+  await c.query('insert into cadastro_certificado_avisos(trabalho_id,chave,tipo,pendencia_id,mensagem_recebida) values($1,$2,$3,$4,$5) on conflict do nothing',[trabalhoId,chave,tipo,pendenciaId,texto??null]);
+ }
+ async reservarAviso():Promise<AvisoCadastro|null>{
+  await this.invalidarObsoletos();
+  await this.pool.query("update cadastro_certificado_avisos set estado='incerto',diagnostico='ENVIO_SEM_CONFIRMACAO' where estado='enviando' and reservado_em<now()-interval '3 minutes'");
+  return this.transacao(async c=>{
+   const r=(await c.query(`select a.*,to_jsonb(t) trabalho,u.telefone from cadastro_certificado_avisos a join cadastro_certificado_trabalhos t on t.id=a.trabalho_id
+    join medicos m on m.id=t.medico_id join usuarios u on u.id=m.usuario_id and u.ativo=true
+    where a.estado in ('pendente','preparado') and a.proxima_tentativa_em<=now() and (a.reserva is null or a.reservado_em<now()-interval '3 minutes')
+    and t.estado in ('aguardando_confirmacao','concluido') and m.nome_completo is not distinct from t.snapshot->>'nome' and m.crm is not distinct from t.snapshot->>'crm'
+    and (a.tipo='concluido' and t.estado='concluido' or a.pendencia_id::text=t.dados->'pendencia'->>'id')
+    and exists(select 1 from medico_certificados cert where cert.id=t.certificado_id and cert.status='ativo')
+    order by a.criado_em,a.id for update of a skip locked limit 1`)).rows[0] as AvisoCadastro|undefined;
+   if(!r||!r.telefone)return null;r.reserva=randomUUID();r.tentativas++;
+   await c.query('update cadastro_certificado_avisos set reserva=$2,reservado_em=now(),tentativas=$3 where id=$1',[r.id,r.reserva,r.tentativas]);return r;
+  });
+ }
+ async prepararAviso(a:AvisoCadastro,texto:string):Promise<void>{await this.pool.query("update cadastro_certificado_avisos set texto=$3,estado='preparado' where id=$1 and reserva=$2 and estado='pendente'",[a.id,a.reserva,texto]);a.texto=texto;}
+ async iniciarAviso(a:AvisoCadastro):Promise<boolean>{const r=await this.pool.query(`update cadastro_certificado_avisos a set estado='enviando' where a.id=$1 and a.reserva=$2 and a.estado='preparado'
+  and exists(select 1 from cadastro_certificado_trabalhos t join medico_certificados cert on cert.id=t.certificado_id join medicos m on m.id=t.medico_id join usuarios u on u.id=m.usuario_id
+   where t.id=a.trabalho_id and cert.status='ativo' and u.ativo=true and t.estado in ('aguardando_confirmacao','concluido')
+   and m.nome_completo is not distinct from t.snapshot->>'nome' and m.crm is not distinct from t.snapshot->>'crm'
+   and (a.tipo='concluido' and t.estado='concluido' or a.pendencia_id::text=t.dados->'pendencia'->>'id')) returning a.id`,[a.id,a.reserva]);return r.rows.length===1;}
+ async confirmarAviso(a:AvisoCadastro):Promise<void>{await this.transacao(async c=>{
+  const r=await c.query("update cadastro_certificado_avisos set estado='confirmado',reserva=null where id=$1 and reserva=$2 and estado in ('enviando','incerto') returning texto",[a.id,a.reserva]);
+  if(r.rows.length&&a.pendencia_id)await c.query(`update cadastro_certificado_trabalhos set dados=jsonb_set(dados,'{pendencia,perguntaConfirmada}',to_jsonb($3::text)) where id=$1 and dados->'pendencia'->>'id'=$2`,[a.trabalho_id,a.pendencia_id,r.rows[0].texto]);
+ });}
+ async falharAviso(a:AvisoCadastro,codigo:string):Promise<void>{await this.pool.query(`update cadastro_certificado_avisos set estado=case when estado='enviando' then 'incerto' when tentativas>=3 then 'falha' else estado end,
+  diagnostico=$3,reserva=null,proxima_tentativa_em=now()+case when tentativas=1 then interval '30 seconds' else interval '120 seconds' end where id=$1 and reserva=$2`,[a.id,a.reserva,codigo]);}
+ async enfileirarResposta(e:{medicoId:string;instancia:string;mensagemId:string;texto:string}):Promise<boolean>{
+  if(!e.texto.trim()||e.texto.length>2000)return false;
+  const duplicada=await this.pool.query(`select r.id from cadastro_certificado_respostas r join cadastro_certificado_trabalhos t on t.id=r.trabalho_id where instancia=$1 and mensagem_id=$2 and t.medico_id=$3`,[e.instancia,e.mensagemId,e.medicoId]);if(duplicada.rows.length)return true;
+  const t=await this.pendencia(e.medicoId);if(!t?.dados.pendencia?.perguntaConfirmada)return false;
+  await this.pool.query(`insert into cadastro_certificado_respostas(trabalho_id,pendencia_id,instancia,mensagem_id,texto) values($1,$2,$3,$4,$5) on conflict do nothing`,[t.id,t.dados.pendencia.id,e.instancia,e.mensagemId,e.texto]);return true;
+ }
+ async reservarResposta():Promise<RespostaCadastro|null>{
+  await this.invalidarObsoletos();return this.transacao(async c=>{
+   const r=(await c.query(`select a.*,to_jsonb(t) trabalho from cadastro_certificado_respostas a join cadastro_certificado_trabalhos t on t.id=a.trabalho_id
+    where a.estado in ('pendente','analisando') and a.proxima_tentativa_em<=now() and (a.reserva is null or a.reservado_em<now()-interval '3 minutes')
+    and t.estado='aguardando_confirmacao' and a.pendencia_id::text=t.dados->'pendencia'->>'id'
+    and not exists(select 1 from cadastro_certificado_respostas outra where outra.trabalho_id=a.trabalho_id and outra.id<>a.id and outra.estado='analisando' and outra.reservado_em>=now()-interval '3 minutes')
+    order by a.criado_em,a.id for update of t,a skip locked limit 1`)).rows[0] as RespostaCadastro|undefined;
+   if(!r)return null;r.reserva=randomUUID();r.tentativas++;
+   await c.query("update cadastro_certificado_respostas set estado='analisando',reserva=$2,reservado_em=now(),tentativas=$3 where id=$1",[r.id,r.reserva,r.tentativas]);return r;
+  });
+ }
+ async aplicarConfirmacao(a:RespostaCadastro,patch:{nome?:string;crm?:string}|null):Promise<void>{
+  await this.transacao(async c=>{
+   const resposta=(await c.query("select id from cadastro_certificado_respostas where id=$1 and reserva=$2 and estado='analisando' for update",[a.id,a.reserva])).rows[0];if(!resposta)return;
+   const t=(await c.query('select * from cadastro_certificado_trabalhos where id=$1 for update',[a.trabalho_id])).rows[0] as TrabalhoCadastro;
+   const m=(await c.query('select nome_completo,crm from medicos where id=$1 for update',[t.medico_id])).rows[0];
+   const ativo=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[t.medico_id])).rows[0];
+   const p=t.dados.pendencia;
+   if(t.estado==='aguardando_confirmacao'&&p?.id===a.pendencia_id&&ativo?.id===t.certificado_id&&m.nome_completo===t.snapshot.nome&&m.crm===t.snapshot.crm){
+    const nome=patch?.nome,crm=patch?.crm;
+    if((nome&&p.tipo!=='crm'&&nomeProfissionalValido(nome)&&(!t.dados.nomeConfirmado||t.dados.nomeConfirmado===nome)) || (crm&&p.tipo==='crm'&&normalizarCrm(crm)?.includes('/')&&!normalizarCrm(m.crm))){
+     await c.query('update medicos set nome_completo=coalesce($2,nome_completo),crm=coalesce($3,crm),atualizado_em=now() where id=$1',[t.medico_id,nome??null,crm??null]);
+     const dados={...t.dados};delete dados.pendencia;if(nome)dados.nomeConfirmado=nome;if(crm)dados.crmOrigem='Declarado pelo usuário';
+     await c.query("update cadastro_certificado_trabalhos set estado='pendente',dados=$2,snapshot=$3,tentativas=0,proxima_tentativa_em=now() where id=$1",[t.id,JSON.stringify(dados),JSON.stringify({nome:nome??m.nome_completo,crm:crm??m.crm})]);
+    }else await this.agendarAviso(c,t.id,'resposta:'+a.id,'esclarecer',p.id,a.texto);
+   }else if(t.estado==='aguardando_confirmacao'&&ativo?.id===t.certificado_id){
+    const dados={...t.dados};delete dados.pendencia;if(m.nome_completo!==t.snapshot.nome)delete dados.nomeConfirmado;
+    await c.query("update cadastro_certificado_trabalhos set estado='pendente',dados=$2,snapshot=$3,tentativas=0,proxima_tentativa_em=now() where id=$1",[t.id,JSON.stringify(dados),JSON.stringify({nome:m.nome_completo,crm:m.crm})]);
+   }
+   await c.query("update cadastro_certificado_respostas set estado='processado',reserva=null where id=$1",[a.id]);
+  });
+ }
+ async falharResposta(a:RespostaCadastro,codigo:string):Promise<void>{await this.pool.query(`update cadastro_certificado_respostas set estado=case when tentativas>=3 then 'falha' else 'pendente' end,reserva=null,diagnostico=$3,
+  proxima_tentativa_em=now()+case when tentativas=1 then interval '30 seconds' else interval '120 seconds' end where id=$1 and reserva=$2`,[a.id,a.reserva,codigo]);}
+
 }

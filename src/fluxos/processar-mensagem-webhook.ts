@@ -139,7 +139,7 @@ export async function processarMensagemWebhook(
       }
     }
     if (medico && deps.modoCadastro === 'confirmacao') {
-      const detalhe = await deps.processarConfirmacaoCadastro?.({medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto, contatoTelefone: telefone, chaveMensagem: {id: payload.data.key.id, remoteJid: jidPrincipal, fromMe: false}});
+      const detalhe = await deps.processarConfirmacaoCadastro?.({medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto, contatoTelefone: telefone, chaveMensagem: {id: payload.data.key.id, remoteJid: jidPrincipal, fromMe: false, ...(jidAlternativo ? {remoteJidAlt: jidAlternativo} : {})}});
       return detalhe?.processado ? {ok:true,acao:'conversa_assistente',detalhe} : {ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido'};
     }
     if (medico && deps.processarConversaAssistente) {

@@ -1,3 +1,5 @@
+import { ConfirmadorCadastro } from './cadastro/confirmador-cadastro.js';
+import { NvidiaDecisorCadastro } from './cadastro/nvidia-decisor-cadastro.js';
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { BrasilApiConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
@@ -151,9 +153,12 @@ export function criarAppExpress() {
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
     }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined);
+  const confirmadorCadastro = new ConfirmadorCadastro(cadastroCertificado.repo,
+    new NvidiaDecisorCadastro(config.nvidiaApiKey || '', config.nvidiaModel), ia.geradorMensagem,
+    evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient);
   if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
-      void cadastroCertificado.recuperar().catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
+      void Promise.all([cadastroCertificado.recuperar(), confirmadorCadastro.recuperar()]).catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
     }, 5000);
     timer.unref();
   }
@@ -712,6 +717,7 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         modoCadastro: config.notoCadastroModo,
+        processarConfirmacaoCadastro: config.notoCadastroModo === 'confirmacao' ? entrada => confirmadorCadastro.receber(entrada) : undefined,
         gerenciadorAssistente: config.notoCadastroModo === 'conversacional' ? gerenciadorOnboarding : undefined,
         processarConversaAssistente: config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
         async aoAtualizarConexao(evento) {
