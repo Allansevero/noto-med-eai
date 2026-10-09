@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { ErroNvidiaChat } from '../io/nvidia/chat-client.js';
+import { diagnosticoErroWebhook } from '../whatsapp/diagnostico-webhook.js';
 import {
   decisaoAssistenteSchema,
   validarAcoes,
@@ -10,6 +12,18 @@ import type {
 } from './postgres-assistente.js';
 import type { GeradorMensagemNoto } from '../conversa/comunicador-noto.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
+function codigoFalha(erro: unknown): string {
+  if (erro instanceof ErroNvidiaChat) {
+    const permitidos = ['IA_NAO_CONFIGURADA','IA_CONEXAO_FALHOU','IA_HTTP_ERRO','IA_RESPOSTA_INVALIDA'];
+    const codigo = permitidos.includes(erro.codigo) ? erro.codigo : 'IA_FALHOU';
+    return codigo + (Number.isInteger(erro.statusHttp) && erro.statusHttp! >= 100 && erro.statusHttp! <= 599 ? '_' + erro.statusHttp : '');
+  }
+  if (erro instanceof z.ZodError) return 'DADOS_INVALIDOS';
+  if (erro instanceof SyntaxError) return 'JSON_INVALIDO';
+  const banco = diagnosticoErroWebhook(erro);
+  return banco.codigoBanco ? 'BANCO_' + banco.codigoBanco : 'PROCESSAMENTO_FALHOU';
+}
+
 const mensagensSchema = z
   .array(z.string().trim().min(1).max(500))
   .min(1)
@@ -41,6 +55,7 @@ export class AgenteAssistente {
       const r = await this.repo.reservar(medicoId);
       if (!r) return;
       let falhou = false;
+      let fase = 'carregar_contexto';
       try {
         const { telefone, ...panorama } = await this.repo.panorama(medicoId);
         if (typeof telefone !== 'string' || !telefone)
@@ -50,6 +65,7 @@ export class AgenteAssistente {
           r.turno.sequencia
         );
         if (r.turno.estado === 'analisando') {
+          fase = 'decidir';
           const decisao =
             r.turno.texto === '' &&
             r.turno.mensagem_id.startsWith('apresentacao:')
@@ -67,12 +83,14 @@ export class AgenteAssistente {
                     panorama
                   })
                 );
+          fase = 'validar_dados';
           const { patch, resultados } = validarAcoes(
             decisao,
             r.turno.texto,
             r.estado
           );
           // Validação não significa gravação. O repositório confirma ambos na mesma transação.
+          fase = 'gravar_dados';
           await this.repo.aplicar(
             r,
             patch,
@@ -84,6 +102,7 @@ export class AgenteAssistente {
           );
         }
         if (r.turno.estado === 'aplicado') {
+          fase = 'redigir';
           const mensagens = mensagensSchema.parse(
             await this.gerador.gerar({
               evento: 'conversa',
@@ -116,27 +135,35 @@ export class AgenteAssistente {
               }
             })
           );
+          fase = 'salvar_resposta';
           await this.repo.prepararResposta(r, mensagens);
         }
+        fase = 'iniciar_envio';
         await this.repo.iniciarEnvio(r);
         for (let j = 0; j < r.turno.mensagens.length; j++) {
+          fase = 'enviar';
           const envio = await this.enviar.enviarTexto({
             instanciaNome: this.instancia,
             contatoTelefone: telefone,
             texto: r.turno.mensagens[j]
           });
           if (!envio.sucesso) throw Error('ENVIO_NAO_CONFIRMADO');
+          fase = 'confirmar_envio';
           await this.repo.confirmarMensagem(r, j + 1);
         }
+        fase = 'concluir';
         await this.repo.concluir(r);
-      } catch {
+      } catch (erro) {
         falhou = true;
-        await this.repo.falhar(r).catch(() => {});
+        const codigo = codigoFalha(erro);
+        await this.repo.falhar(r, fase + ':' + codigo).catch(() => {});
         console.warn('[Assistente contextual]', {
           medicoId,
           turnoId: r.turno.id,
           etapa: r.turno.estado,
-          estado: 'falha_registrada'
+          estado: 'falha_registrada',
+          fase,
+          codigo
         });
       } finally {
         await this.repo.liberar(r);

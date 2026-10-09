@@ -201,7 +201,8 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
       []
     );
     assert.equal(r3!.estado.pausado, true);
-    await repo.falhar(r3!);
+    await repo.falhar(r3!, 'redigir:IA_HTTP_ERRO_429');
+    assert.equal((await p.query("select diagnostico from noto_assistente_turnos where mensagem_id='m3'")).rows[0].diagnostico, 'redigir:IA_HTTP_ERRO_429');
     await repo.liberar(r3!);
     assert.equal(
       await repo.reservar(med),
