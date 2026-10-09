@@ -101,7 +101,8 @@ export function criarAppExpress() {
     paligemmaClient,
     evolutionAssistantClient
   );
-  const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente);
+  const ia = criarServicosIa(config);
+  const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente, ia.geradorMensagem);
   const iniciarAssistente = criarDisparadorAssistente({ pool, gerenciador: gerenciadorOnboarding,
     salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
     enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
@@ -112,7 +113,6 @@ export function criarAppExpress() {
     }
     iniciarAssistente(medicoId);
   };
-  const ia = criarServicosIa(config);
   const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
   const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
   const authAdminService = new SupabaseAuthAdminService(

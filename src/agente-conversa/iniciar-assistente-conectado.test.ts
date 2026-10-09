@@ -37,7 +37,7 @@ function ambiente(opcoes: { conectado?: boolean; estadoAnterior?: boolean; falha
     async buscarDadosMedicoOnline() { assert.equal(reservaLiberada, true); return null; },
     async salvarEstadoOnboarding(_id: string, novo: any) { estado = novo; }
   };
-  const gerenciador = new GerenciadorConversaOnboarding(ferramentas as any);
+  const gerenciador = new GerenciadorConversaOnboarding(ferramentas as any, { async gerar() { return ['Apresentação gerada', 'Pergunta de nome gerada']; } });
   const iniciar = () => iniciarAssistenteConectado({ pool: pool as any, gerenciador,
     salvarEstado: ferramentas.salvarEstadoOnboarding, instanciaNome: 'notomed_assistente',
     enviar: { async enviarTexto(p: any) {
@@ -53,9 +53,9 @@ test('WhatsApp conectado recebe apresentação e pergunta do roteiro, com estado
   const a = ambiente();
   await a.iniciar();
   assert.equal(a.envios.length, 2);
-  assert.match(a.envios[0], /Sou o assistente do Noto/);
-  assert.match(a.envios[1], /CRM/);
-  assert.equal(a.estado().etapa, 'confirmacao_crm_rqe');
+  assert.equal(a.envios[0], 'Apresentação gerada');
+  assert.equal(a.envios[1], 'Pergunta de nome gerada');
+  assert.equal(a.estado().etapa, 'apresentacao');
   assert.equal(a.resultados.at(-1).estado, 'enviado');
 });
 

@@ -21,3 +21,11 @@ As ações `reserva_apresentacao_assistente`, `resultado_apresentacao_assistente
 Uma falha de transporte registra `incerto` e impede reenvio automático: timeouts podem ocorrer após a entrega. Verifique o histórico da instância antes de liberar qualquer nova tentativa. Uma reserva deixada por interrupção do processo também exige essa verificação. Falhas anteriores ao transporte registram `falha_preparacao`; devem ser investigadas antes de liberar a reserva. A correção não reinicia conversas que já possuem estado.
 
 As respostas do Assistente também passam a conferir o resultado do transporte, interromper a sequência em caso de falha e retornar `detalhe.envio` no webhook. A lógica existente das etapas seguintes permanece a mesma.
+
+## Redação das mensagens e nome provisório
+
+O gerenciador controla as etapas e fornece objetivos e fatos ao gerador NVIDIA compartilhado, que lê `docs/prompts/noto-conversa.md`. Não há mensagens fixas como alternativa quando a geração falha. A falha anterior ao transporte fica registrada como `falha_preparacao`, para investigação antes de liberar a reserva.
+
+Toda nova apresentação pede o nome real, mesmo se houver um nome no cadastro. Esse valor cadastrado não entra no contexto da IA. O nome informado na conversa é validado, salvo no cadastro e carregado como `nomeConfirmado` no estado das etapas seguintes. Nomes provisórios e respostas inválidas mantêm a pergunta de nome.
+
+A mudança não reinicia conversas existentes nem altera as regras de confirmação de CRM ou a execução das ferramentas de comprovantes.

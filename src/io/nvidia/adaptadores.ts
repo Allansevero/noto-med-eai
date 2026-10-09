@@ -1,7 +1,7 @@
 /** Adaptadores NVIDIA preservam as portas: só a aplicação executa ferramentas. */
 import { z } from 'zod';
 import type { ContextoMensagemNoto, GeradorMensagemNoto } from '../../conversa/comunicador-noto.js';
-import { limites, carregarGuia } from '../../conversa/prompt-noto.js';
+import { limites, limitesOnboardingAssistente, carregarGuia } from '../../conversa/prompt-noto.js';
 import type { DadosExtracaoIa, ExtratorIaService } from '../../ia/extrator-ia-service.js';
 import { montarPromptExtracao } from '../../ia/regras/montar-prompt-extracao.js';
 import { parsearRespostaExtracao } from '../../ia/regras/parsear-resposta-extracao.js';
@@ -24,7 +24,7 @@ export class NvidiaGeradorMensagemNoto implements GeradorMensagemNoto {
     try {
       const guia = await carregarGuia();
       const content = await completarNvidia(this.apiKey, this.modelo, [
-        { role: 'system', content: `${guia}\n${limites}` },
+        { role: 'system', content: `${guia}\n${limites}${contexto.dados.fluxo === 'onboarding_assistente' ? '\n' + limitesOnboardingAssistente : ''}` },
         { role: 'user', content: JSON.stringify(contexto) }
       ]);
       return mensagensSchema.parse(JSON.parse(content)).mensagens;

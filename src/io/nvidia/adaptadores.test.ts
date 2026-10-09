@@ -105,3 +105,26 @@ test('chave NVIDIA ausente impede chamadas externas', async t => {
   await assert.rejects(new NvidiaDecisorTribemd('', 'modelo').decidir({ ferramentas: [], passo: 1, pacientes: 0, agendamentos: 0 }));
   assert.equal(chamadas, 0);
 });
+
+test('Assistente gera apresentação com o guia sem enviar nome provisório à NVIDIA', async t => {
+  const { NvidiaGeradorMensagemNoto } = await adaptadores();
+  const { GerenciadorConversaOnboarding } = await import('../../agente-conversa/gerenciador-conversa-onboarding.js');
+  let body: any;
+  t.mock.method(globalThis, 'fetch', async (_url: unknown, init?: RequestInit) => {
+    body = JSON.parse(String(init?.body));
+    return resposta({ mensagens: ['Oi! Sou o Noto. Como é seu nome completo?'] });
+  });
+  const gerenciador = new GerenciadorConversaOnboarding({
+    async buscarDadosMedicoOnline() { assert.fail('cadastro provisório não autoriza busca'); },
+    async salvarEstadoOnboarding() {}
+  } as any, new NvidiaGeradorMensagemNoto('chave-teste', 'modelo'));
+  const resultado = await gerenciador.iniciarAoConectar('med-1', 'médico x');
+  assert.deepEqual(resultado.mensagensEnviar, ['Oi! Sou o Noto. Como é seu nome completo?']);
+  const guia = await readFile(new URL('../../../docs/prompts/noto-conversa.md', import.meta.url), 'utf8');
+  assert.ok(body.messages[0].content.includes(guia));
+  assert.match(body.messages[0].content, /ONBOARDING DO NOTO ASSISTENTE/);
+  const contexto = JSON.parse(body.messages[1].content);
+  assert.equal(contexto.medico.nome, null);
+  assert.equal(contexto.dados.objetivo, 'apresentar_e_pedir_nome');
+  assert.equal(body.messages[1].content.includes('médico x'), false);
+});
