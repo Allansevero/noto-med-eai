@@ -1,0 +1,24 @@
+/**
+ * Marca a mensagem recebida no WhatsApp como lida (read receipt)
+ * no início do atendimento, indicando ao usuário que sua mensagem
+ * está sendo processada.
+ */
+
+export interface LeitorMensagemWhatsApp {
+  marcarLida(params: { instanciaNome: string; mensagemId: string; contatoTelefone: string }): Promise<{ sucesso: boolean; erro?: string }>;
+}
+
+export async function marcarMensagemLida(
+  leitor: LeitorMensagemWhatsApp,
+  params: { instanciaNome: string; mensagemId: string; contatoTelefone: string }
+): Promise<{ sucesso: boolean; erro?: string }> {
+  if (!params.mensagemId || !params.instanciaNome || !params.contatoTelefone) {
+    return { sucesso: false, erro: 'parametros_obrigatorios_ausentes' };
+  }
+
+  try {
+    return await leitor.marcarLida(params);
+  } catch (err: any) {
+    return { sucesso: false, erro: err?.message || 'erro_ao_marcar_lida' };
+  }
+}
