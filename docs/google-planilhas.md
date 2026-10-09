@@ -40,7 +40,8 @@ Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
    a tela de consentimento OAuth. Em modo de teste, cadastrar os e-mails de teste;
    para uso público, cumprir a verificação exigida pelo Google para esse escopo.
 2. Criar credencial OAuth **Aplicativo Web** e cadastrar exatamente o redirect:
-   `https://notomed-web.6t32my.easypanel.host/api/integracoes/google-planilhas/callback`.
+   `https://notomed.tech/api/integracoes/google-planilhas/callback`.
+   Cadastrar `https://notomed.tech` nas origens JavaScript autorizadas da credencial.
 3. No Easypanel `notomed` → `web`, configurar `GOOGLE_CLIENT_ID`,
    `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (o endereço acima), além de
    `GOOGLE_API_KEY` para o Picker, `GOOGLE_APP_ID` com o **número numérico do
@@ -56,6 +57,16 @@ Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
 Sem credenciais Google completas, a Conta mostra integração indisponível e os
 outros fluxos seguem funcionando. Testes simulam Google/NVIDIA e usam PostgreSQL
 local isolado; não demonstram consentimento, permissões ou importação em produção.
+
+O login e o início da conexão devem ocorrer em `https://notomed.tech`, no mesmo
+navegador usado para concluir a autorização. O retorno configurado anteriormente
+no domínio do Easypanel mudava a origem: o navegador não entregava o cookie
+HttpOnly da tentativa nem a sessão Noto guardada em localStorage no domínio
+público. Isso causava falha da conexão Google e novo pedido de código WhatsApp.
+Atualizar o endereço tanto na credencial do Google quanto no ambiente do Easypanel
+e reiniciar o serviço web antes de iniciar outra tentativa. Se a chave do Picker
+tiver restrição por site, incluir também `https://notomed.tech/*` nos referenciadores
+permitidos. Nenhuma migração de banco é necessária para essa correção.
 
 ## Diagnóstico de seleção da planilha
 
