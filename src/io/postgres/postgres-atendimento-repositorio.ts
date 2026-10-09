@@ -464,31 +464,43 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     solicitacaoId: string;
     xdescServ: string;
     fila: 'pronta' | 'pendente_cadastro';
-  }): Promise<void> {
+    medicoId?:string; mensagemId?:string; instancia?:string;
+  }): Promise<void|boolean> {
+    if(params.mensagemId&&(!params.medicoId||!params.instancia))throw Error('CONTEXTO_DATA_INCOMPLETO');
     const client = await this.pool.connect();
     try {
       await client.query('begin');
       // Mesma ordem de locks da coleta profissional: médico antes da solicitação.
-      const { rows } = await client.query(`select m.nome_completo, m.crm, m.rqe, m.especialidade
+      const { rows } = await client.query(`select m.id,m.nome_completo, m.crm, m.rqe, m.especialidade
         from medicos m join solicitacoes_nota s on s.medico_id=m.id
-        where s.id=$1 for update of m`, [params.solicitacaoId]);
+        where s.id=$1 and ($2::uuid is null or m.id=$2) for update of m`, [params.solicitacaoId,params.medicoId??null]);
       const medico = rows[0];
+      let atualizada=false;
+      if(medico&&params.mensagemId){
+        const anterior=await client.query(`select id from auditoria where entidade='medicos' and entidade_id=$1 and acao='resposta_data_assistente'
+          and dados_novos->>'mensagemId'=$2 and dados_novos->>'instancia'=$3 limit 1`,[medico.id,params.mensagemId,params.instancia]);
+        if(anterior.rowCount){await client.query('commit');return false;}
+      }
       const datas = params.xdescServ.match(/\bNAS DATAS\s+(.+)$/i)?.[1];
       if (medico && datas) {
         const descricao = montarDescricaoServico({nomeCompleto:medico.nome_completo ?? '',
           crm:medico.crm, rqe:medico.rqe, especialidade:medico.especialidade}, datas);
-        await client.query(`update solicitacoes_nota s
+        const update=await client.query(`update solicitacoes_nota s
           set xdesc_serv=$2, datas_consulta_texto=$4,
               aguardando_dados_profissionais=aguardando_dados_profissionais or $5,
               fila=case when aguardando_dados_profissionais or aguardando_confirmacao_medico or $5 then null else $3::fila_solicitacao_nota end,
               aguardando_data_consulta=false, atualizado_em=now()
-          where s.id=$1 and s.status='pendente' and s.tentativas=0
+          where s.id=$1 and s.status='pendente' and s.aguardando_data_consulta=true and s.tentativas=0
             and s.bloqueada_em is null
             and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)
             and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=s.id)`,
           [params.solicitacaoId, descricao, params.fila, datas, !dadosProfissionaisCompletos(medico)]);
+        atualizada=!!update.rowCount;
+        if(atualizada&&params.mensagemId)await client.query(`insert into auditoria(acao,entidade,entidade_id,dados_novos) values('resposta_data_assistente','medicos',$1,$2::jsonb)`,
+          [medico.id,JSON.stringify({mensagemId:params.mensagemId,instancia:params.instancia,solicitacaoId:params.solicitacaoId})]);
       }
       await client.query('commit');
+      return atualizada;
     } catch (erro) {
       await client.query('rollback');
       throw erro;

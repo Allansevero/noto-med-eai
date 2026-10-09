@@ -10,6 +10,8 @@ A investigação dos logs e uma consulta somente de leitura ao Supabase confirma
 
 A identificação contextual considera apenas usuários ativos. Se o telefone corresponde a vários médicos, aceita exclusivamente aquele com uma conversa já confirmada na mesma instância do Assistente. Se não houver vínculo confirmado ou houver mais de um, preserva o bloqueio e registra `medico_nao_identificado`. Não escolhe a primeira conta nem altera/desativa cadastros. Mais de um serviço fiscal padrão não duplica um médico na consulta.
 
+Respostas de data para notas são deduplicadas por médico, instância e ID da mensagem sob a mesma trava de banco da atualização. Uma repetição não aplica a data a outra nota pendente.
+
 O resultado do webhook agora inclui estado do turno e quantidade de mensagens confirmadas; o resultado de identificação ausente é um descarte explícito. Não são registrados nomes, texto da conversa, telefones ou credenciais.
 
 ## Atualização
@@ -17,3 +19,5 @@ O resultado do webhook agora inclui estado do turno e quantidade de mensagens co
 Manter as duas instâncias com nomes distintos e a configuração Evolution/NVIDIA do assistente. Não exige migração adicional: usa as tabelas da migração `migrate:assistente` já aplicada. A resposta perdida não estava na fila; após atualizar, enviar o nome novamente permite continuar do ponto preservado. Não reenviar apresentações ou entregas incertas automaticamente.
 
 A consulta de produção foi somente de leitura, sem mensagens, emissões ou alteração de dados.
+
+Verificação da entrega: 744 testes aprovados, typecheck aprovado e seis testes de integração PostgreSQL local aprovados. Revisão independente concluída; o achado de duplicação em respostas de data foi reproduzido antes da correção e passou depois. Nenhum teste enviou mensagens ou emitiu notas reais.

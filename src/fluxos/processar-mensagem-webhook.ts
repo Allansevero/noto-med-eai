@@ -59,7 +59,7 @@ export type ResultadoProcessarWebhook =
       ok: true;
       acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
       detalhe?: any;
-      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido' | 'canal_oficial_somente_otp' | 'historico_assistente_ignorado' | 'medico_nao_identificado';
+      motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido' | 'canal_oficial_somente_otp' | 'historico_assistente_ignorado' | 'medico_nao_identificado' | 'mensagem_duplicada';
     }
   | { ok: false; motivo: 'autenticacao_invalida' | 'payload_invalido' | 'instancia_nao_encontrada' };
 
@@ -131,8 +131,9 @@ export async function processarMensagemWebhook(
       if(/^(?:consulta (?:de|em) )?\d{1,2}\/\d{1,2}\/\d{4}/i.test(texto.trim())&&!texto.includes('?')&&
         await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id)){
         const resposta=await processarRespostaDataConsulta(telefone,texto,{repositorio:deps.repositorio,dadosProfissionais:deps.dadosProfissionais,
-          enviarMensagem:deps.enviarMensagemPaciente,comunicadorNoto:deps.comunicadorNoto,instanciaOficialNome:deps.instanciaAssistenteNome,medicoIdentificado:medico});
+          enviarMensagem:deps.enviarMensagemPaciente,comunicadorNoto:deps.comunicadorNoto,instanciaOficialNome:deps.instanciaAssistenteNome,medicoIdentificado:medico,mensagemId:payload.data.key.id});
         if(resposta.ok)return {ok:true,acao:'resposta_data_consulta',detalhe:resposta};
+        if(resposta.motivo==='resposta_ja_processada')return {ok:true,acao:'descartada',motivoDescarte:'mensagem_duplicada'};
       }
     }
     if (medico && deps.processarConversaAssistente) {

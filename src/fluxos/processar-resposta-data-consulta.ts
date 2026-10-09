@@ -13,6 +13,7 @@ import type { DadosProfissionaisService } from '../conta/dados-profissionais-ser
 
 export interface ProcessarRespostaDataDeps {
   repositorio: AtendimentoRepositorio;
+  mensagemId?:string;
   medicoIdentificado?: import('../atendimento/atendimento-repositorio.js').MedicoDadosRegistro;
   comunicadorNoto?: ComunicadorNoto;
   enviarMensagem: EnviarMensagemPaciente;
@@ -22,7 +23,7 @@ export interface ProcessarRespostaDataDeps {
 
 export type ResultadoProcessarRespostaData =
   | { ok: true; solicitacaoId: string; dataInformada: string; fila: 'pronta' | 'pendente_cadastro' }
-  | { ok: false; motivo: 'medico_nao_encontrado' | 'solicitacao_nao_encontrada' | 'data_vazia' };
+  | { ok: false; motivo: 'medico_nao_encontrado' | 'solicitacao_nao_encontrada' | 'data_vazia' | 'resposta_ja_processada' };
 
 export async function processarRespostaDataConsulta(
   telefoneMedico: string,
@@ -48,11 +49,13 @@ export async function processarRespostaDataConsulta(
   const paciente = await deps.repositorio.buscarPacientePorId(pendente.pacienteId);
   const fila = paciente?.cpfHash ? 'pronta' : 'pendente_cadastro';
 
-  await deps.repositorio.atualizarDataDescricaoSolicitacao({
+  const atualizada=await deps.repositorio.atualizarDataDescricaoSolicitacao({
     solicitacaoId: pendente.id,
     xdescServ: novaDescricao,
-    fila
+    fila,
+    medicoId:medico.id,mensagemId:deps.mensagemId,instancia:deps.instanciaOficialNome
   });
+  if(atualizada===false)return {ok:false,motivo:'resposta_ja_processada'};
 
   // A Conta pode ter alterado o perfil depois da leitura inicial. O serviço
   // verifica o cadastro atual e só pede os dados se ainda forem necessários.
