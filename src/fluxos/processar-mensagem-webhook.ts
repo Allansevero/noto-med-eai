@@ -49,6 +49,7 @@ export interface ProcessarWebhookDeps {
   instanciaOficialNome?: string;
   instanciaAssistenteNome?: string;
   enviarMensagemAssistente?: EnviarMensagemPaciente;
+  processarConversaAssistente?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<unknown>;
   gerenciadorAssistente?: GerenciadorConversaOnboarding;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
 }
@@ -93,6 +94,7 @@ export async function processarMensagemWebhook(
 
   const payload = parsed.data;
   const jidPrincipal = payload.data.key.remoteJid;
+  if (jidPrincipal.endsWith('@g.us')) return { ok: true, acao: 'descartada', motivoDescarte: 'contato_nao_identificado' };
   const jidAlternativo = payload.data.key.remoteJidAlt;
   const telefone =
     extrairTelefoneJid(jidAlternativo) ||
@@ -107,6 +109,16 @@ export async function processarMensagemWebhook(
       return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_assistente' };
     }
     const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+    if (medico && deps.processarConversaAssistente) {
+      if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
+      const timestamp = payload.data.messageTimestamp === undefined ? null : Number(payload.data.messageTimestamp);
+      if (texto.length > 2000 || (timestamp !== null && (!Number.isFinite(timestamp) || timestamp < Date.now()/1000-86400 || timestamp > Date.now()/1000+60))) {
+        return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
+      }
+      return { ok: true, acao: 'conversa_assistente', detalhe: await deps.processarConversaAssistente({
+        medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto
+      }) };
+    }
     if (medico && deps.gerenciadorAssistente) {
       const resp = await deps.gerenciadorAssistente.processarMensagemMedico({
         medicoId: medico.id,

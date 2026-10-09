@@ -1,29 +1,23 @@
-/**
- * Orquestrador da conversa de onboarding entre o Noto Assistente e o médico.
- * Conduz as etapas de apresentação, busca e confirmação de CRM/RQE online,
- * levantamento de pacientes, definição da janela temporal de notas atrasadas
- * e alinhamento sobre as datas de consulta para emissão.
- */
-
+/** O código controla as etapas; a NVIDIA redige com o guia noto-conversa.md. */
 import type { FerramentasAssistenteNoto } from './ferramentas-assistente-noto.js';
+import type { EventoComunicacaoNoto, GeradorMensagemNoto } from '../conversa/comunicador-noto.js';
+import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 
 export type EtapaOnboardingAssistente =
-  | 'apresentacao'
-  | 'confirmacao_crm_rqe'
-  | 'apresentar_pacientes_e_perguntar_janela'
-  | 'aguardando_janela_tempo'
-  | 'perguntar_preferencia_data'
-  | 'concluido';
+  | 'apresentacao' | 'aguardando_crm' | 'aguardando_rqe_opcional' | 'confirmacao_crm_rqe' | 'apresentar_pacientes_e_perguntar_janela'
+  | 'aguardando_janela_tempo' | 'perguntar_preferencia_data' | 'concluido';
 
 export interface EstadoAssistenteMedico {
   etapa: EtapaOnboardingAssistente;
+  nomeConfirmado?: string;
+  crmInformado?: string;
+  rqeInformado?: string | null;
   crmSugerido?: string;
   rqeSugerido?: string | null;
   especialidadeSugerida?: string | null;
   ufSugerida?: string;
   janelaDataCorte?: string;
 }
-
 export interface EntradaProcessamentoOnboarding {
   medicoId: string;
   nomeCompleto?: string;
@@ -31,195 +25,130 @@ export interface EntradaProcessamentoOnboarding {
   textoRecebido?: string;
   estadoAtual?: EstadoAssistenteMedico;
 }
-
 export interface RespostaProcessamentoOnboarding {
   novoEstado: EstadoAssistenteMedico;
   mensagensEnviar: string[];
   acaoExecutada?: string;
 }
 
-function ehRespostaAfirmativa(texto: string): boolean {
-  const t = texto.trim().toLowerCase();
-  return /^(sim|s|pode|pode salvar|correto|t[aá] certo|isso|exato|positivo|confirmo|ok|beleza|show)$/i.test(t)
-    || /\b(pode salvar|t[aá] correto|est[aá] certo|pode sim)\b/i.test(t);
+type Objetivo = 'apresentar_e_pedir_nome' | 'pedir_nome' | 'pedir_crm_uf' | 'oferecer_rqe_opcional'
+  | 'informar_pacientes_e_pedir_periodo' | 'pedir_preferencia_data' | 'confirmar_preferencia';
+
+function recusouRqe(texto: string): boolean {
+  const t = texto.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase().replace(/[.!?]+$/, '');
+  return /^(?:nao(?: tenho| quero)?(?: rqe)?|sem(?: rqe)?|pular|dispenso|prefiro nao informar)(?:,? obrigado(?:a)?)?$/.test(t);
+}
+function interpretarCrm(texto: string): { crm: string; rqe?: string | null } | null {
+  const m = texto.trim().match(/^(?:(?:meu\s+)?crm(?:\s+(?:é|e))?\s*:?\s*)?(\d{1,12})(?:\s*[\/-]?\s*([a-z]{2}))?(?:\s*(?:[,;]|e)?\s*(?:RQE\s*:?\s*(\d{1,12})|(sem\s+RQE|n[aã]o\s+(?:tenho|quero)\s+RQE)))?$/i);
+  if (!m) return null;
+  const crm = normalizarCrm(m[1] + (m[2] ? '/' + m[2] : ''));
+  if (!crm || (m[3] && !/[1-9]/.test(m[3]))) return null;
+  return { crm, ...(m[3] ? { rqe: m[3] } : m[4] ? { rqe: null } : {}) };
 }
 
 export class GerenciadorConversaOnboarding {
-  constructor(private readonly ferramentas: FerramentasAssistenteNoto) {}
+  constructor(private readonly ferramentas: FerramentasAssistenteNoto,
+    private readonly gerador: GeradorMensagemNoto) {}
 
-  /**
-   * Ponto de entrada quando o médico conecta a instância do WhatsApp.
-   */
-  async iniciarAoConectar(
-    medicoId: string,
-    nomeCompleto?: string,
-    uf?: string,
-    opcoes: { persistirEstado?: boolean } = {}
-  ): Promise<RespostaProcessamentoOnboarding> {
-    const mensagens: string[] = [];
-    mensagens.push('Olá, doutor(a)! Sou o assistente do Noto. Estou aqui para cuidar da emissão das suas notas fiscais de consultas direto pelo WhatsApp.');
-
-    let resp: RespostaProcessamentoOnboarding;
-    if (!nomeCompleto || nomeCompleto.trim().split(/\s+/).length < 2) {
-      mensagens.push('Para começarmos, como é o seu nome completo, como está no seu CRM?');
-      resp = {
-        novoEstado: { etapa: 'apresentacao' },
-        mensagensEnviar: mensagens
-      };
-    } else {
-      // Se já temos o nome completo, busca online o CRM/RQE
-      resp = await this.avancarParaBuscaCrm(medicoId, nomeCompleto, uf, mensagens);
-    }
-
+  async iniciarAoConectar(medicoId: string, _nomeCadastrado?: string, _uf?: string,
+    opcoes: { persistirEstado?: boolean } = {}): Promise<RespostaProcessamentoOnboarding> {
+    // Nome cadastrado é provisório: não é usado como identidade nem enviado à IA.
+    const resposta = await this.redigir({ etapa: 'apresentacao' }, 'apresentar_e_pedir_nome', 'pedir_nome');
     if (opcoes.persistirEstado !== false) {
-      await this.ferramentas.salvarEstadoOnboarding(medicoId, resp.novoEstado);
+      await this.ferramentas.salvarEstadoOnboarding(medicoId, resposta.novoEstado);
     }
-    return resp;
+    return resposta;
   }
 
-  /**
-   * Processa a resposta enviada pelo médico durante o fluxo de onboarding.
-   */
-  async processarMensagemMedico(
-    entrada: EntradaProcessamentoOnboarding
-  ): Promise<RespostaProcessamentoOnboarding> {
+  async processarMensagemMedico(entrada: EntradaProcessamentoOnboarding): Promise<RespostaProcessamentoOnboarding> {
     const texto = entrada.textoRecebido?.trim() || '';
-    const estadoSalvo = (await this.ferramentas.obterEstadoOnboarding(entrada.medicoId)) as EstadoAssistenteMedico | null;
+    const estadoSalvo = await this.ferramentas.obterEstadoOnboarding(entrada.medicoId) as EstadoAssistenteMedico | null;
     const estado = entrada.estadoAtual ?? estadoSalvo ?? { etapa: 'apresentacao' };
-
     let resposta: RespostaProcessamentoOnboarding;
     switch (estado.etapa) {
       case 'apresentacao': {
-        const nomeInformado = texto;
-        resposta = await this.avancarParaBuscaCrm(entrada.medicoId, nomeInformado, entrada.uf);
+        const nome = texto.replace(/^(?:meu nome(?: completo)?\s*(?:é|e|:)|me chamo|sou(?: o| a)?)\s+/i, '')
+          .trim().replace(/\s+/g, ' ');
+        if (!nomeProfissionalValido(nome)) {
+          resposta = await this.redigir({ etapa: 'apresentacao' }, 'pedir_nome', 'pedir_nome', {}, texto);
+          break;
+        }
+        const proximo: EstadoAssistenteMedico = { etapa: 'aguardando_crm', nomeConfirmado: nome };
+        resposta = await this.redigir(proximo, 'pedir_crm_uf', 'pedir_crm', {}, texto);
+        await this.ferramentas.salvarDadosMedico(entrada.medicoId, { nomeCompleto: nome });
         break;
       }
-
-      case 'confirmacao_crm_rqe': {
-        if (ehRespostaAfirmativa(texto)) {
-          await this.ferramentas.salvarDadosMedico(entrada.medicoId, {
-            crm: estado.crmSugerido,
-            rqe: estado.rqeSugerido,
-            especialidade: estado.especialidadeSugerida
-          });
-
-          resposta = await this.avancarParaPacientesEJanela(entrada.medicoId);
+      case 'confirmacao_crm_rqe': // Conversas antigas passam a pedir o dado, sem adotar sugestões.
+      case 'aguardando_crm': {
+        const registro = interpretarCrm(texto);
+        const proximo: EstadoAssistenteMedico = { ...estado, etapa: 'aguardando_crm' };
+        if (!registro) {
+          resposta = await this.redigir(proximo, 'pedir_crm_uf', 'pedir_crm', {}, texto);
+          break;
+        }
+        await this.ferramentas.salvarDadosMedico(entrada.medicoId, registro);
+        proximo.crmInformado = registro.crm;
+        if (registro.rqe !== undefined) {
+          proximo.rqeInformado = registro.rqe;
+          resposta = await this.avancarParaPeriodo(entrada.medicoId, proximo, texto);
         } else {
-          resposta = {
-            novoEstado: { ...estado, etapa: 'confirmacao_crm_rqe' },
-            mensagensEnviar: ['Sem problemas! Qual é o número do seu CRM e estado (por exemplo: 12345/SP)?']
-          };
+          proximo.etapa = 'aguardando_rqe_opcional';
+          resposta = await this.redigir(proximo, 'oferecer_rqe_opcional', 'conversa', {}, texto);
         }
         break;
       }
-
+      case 'aguardando_rqe_opcional': {
+        const rqe = texto.replace(/^(?:meu\s+)?RQE(?:\s+(?:é|e))?\s*:?\s*/i, '').trim();
+        const omitido = recusouRqe(texto);
+        if (!omitido && (!/^\d{1,12}$/.test(rqe) || !/[1-9]/.test(rqe))) {
+          resposta = await this.redigir(estado, 'oferecer_rqe_opcional', 'conversa', { respostaRqeInvalida: true }, texto);
+          break;
+        }
+        const rqeInformado = omitido ? null : rqe;
+        await this.ferramentas.salvarDadosMedico(entrada.medicoId, { rqe: rqeInformado });
+        resposta = await this.avancarParaPeriodo(entrada.medicoId, { ...estado, rqeInformado }, texto);
+        break;
+      }
       case 'aguardando_janela_tempo': {
         const dataCorte = this.ferramentas.interpretarJanelaTempo(texto);
-        const mensagens = [
-          'Entendido! Já configurei esse período e vou começar a varrer os comprovantes recebidos nas suas conversas.',
-          'Antes de emitirmos as notas encontradas: você prefere que eu pergunte uma data por vez aos pacientes para confirmar o dia exato da consulta, ou posso colocar a data da consulta a mesma do comprovante de pagamento?'
-        ];
-
-        resposta = {
-          novoEstado: {
-            ...estado,
-            etapa: 'perguntar_preferencia_data',
-            janelaDataCorte: dataCorte
-          },
-          mensagensEnviar: mensagens,
-          acaoExecutada: `janela_configurada:${dataCorte}`
-        };
+        resposta = await this.redigir({ ...estado, etapa: 'perguntar_preferencia_data', janelaDataCorte: dataCorte },
+          'pedir_preferencia_data', 'conversa', { varreduraIniciada: false }, texto);
+        resposta.acaoExecutada = `janela_configurada:${dataCorte}`;
         break;
       }
-
       case 'perguntar_preferencia_data': {
-        const prefMesma = /mesma|comprovante|pagamento|mesmo dia/i.test(texto);
-        const preferencia = prefMesma ? 'mesma_do_comprovante' : 'perguntar_uma_a_uma';
-
+        const preferencia = /mesma|comprovante|pagamento|mesmo dia/i.test(texto)
+          ? 'mesma_do_comprovante' : 'perguntar_uma_a_uma';
         await this.ferramentas.salvarPreferenciaDataConsulta(entrada.medicoId, preferencia);
-
-        const confirmacao = preferencia === 'mesma_do_comprovante'
-          ? 'Perfeito! Vou considerar a data do comprovante para a descrição das consultas.'
-          : 'Combinado! Vou confirmar com cada paciente a data da consulta antes de gerar a nota.';
-
-        resposta = {
-          novoEstado: { ...estado, etapa: 'concluido' },
-          mensagensEnviar: [
-            confirmacao,
-            'Tudo configurado! Já estou monitorando suas conversas. Se faltar o CPF de algum paciente, eu mesmo peço educadamente na conversa para você.'
-          ],
-          acaoExecutada: `preferencia_salva:${preferencia}`
-        };
+        resposta = await this.redigir({ ...estado, etapa: 'concluido' }, 'confirmar_preferencia',
+          'dados_salvos', { preferencia, preferenciaSalva: true, varreduraIniciada: false }, texto);
+        resposta.acaoExecutada = `preferencia_salva:${preferencia}`;
         break;
       }
-
-      default: {
-        resposta = {
-          novoEstado: estado,
-          mensagensEnviar: []
-        };
-        break;
-      }
+      default:
+        return { novoEstado: estado, mensagensEnviar: [] };
     }
-
     await this.ferramentas.salvarEstadoOnboarding(entrada.medicoId, resposta.novoEstado);
     return resposta;
   }
 
-  private async avancarParaBuscaCrm(
-    medicoId: string,
-    nomeCompleto: string,
-    uf?: string,
-    mensagensAnteriores: string[] = []
-  ): Promise<RespostaProcessamentoOnboarding> {
-    const dadosOnline = await this.ferramentas.buscarDadosMedicoOnline(nomeCompleto, uf);
-
-    if (dadosOnline && dadosOnline.crm) {
-      const especialidadeTexto = dadosOnline.especialidade ? ` em ${dadosOnline.especialidade}` : '';
-      const rqeTexto = dadosOnline.rqe ? `, RQE ${dadosOnline.rqe}` : '';
-
-      return {
-        novoEstado: {
-          etapa: 'confirmacao_crm_rqe',
-          crmSugerido: dadosOnline.crm,
-          rqeSugerido: dadosOnline.rqe,
-          especialidadeSugerida: dadosOnline.especialidade,
-          ufSugerida: dadosOnline.uf
-        },
-        mensagensEnviar: [
-          ...mensagensAnteriores,
-          `Localizei seus registros: CRM ${dadosOnline.crm}/${dadosOnline.uf}${rqeTexto}${especialidadeTexto}. Está correto? Posso salvar no seu cadastro?`
-        ]
-      };
-    }
-
-    return {
-      novoEstado: { etapa: 'confirmacao_crm_rqe' },
-      mensagensEnviar: [
-        ...mensagensAnteriores,
-        `Prazer, Dr(a) ${nomeCompleto.split(' ')[0]}! Qual é o número do seu CRM e estado (por exemplo: 12345/SP)?`
-      ]
-    };
+  private async avancarParaPeriodo(medicoId: string, estado: EstadoAssistenteMedico,
+    texto: string): Promise<RespostaProcessamentoOnboarding> {
+    const resumoPacientes = await this.ferramentas.obterResumoPacientes(medicoId);
+    return this.redigir({ ...estado, etapa: 'aguardando_janela_tempo' },
+      'informar_pacientes_e_pedir_periodo', 'dados_salvos', { resumoPacientes }, texto);
   }
 
-  private async avancarParaPacientesEJanela(
-    medicoId: string
-  ): Promise<RespostaProcessamentoOnboarding> {
-    const resumo = await this.ferramentas.obterResumoPacientes(medicoId);
-
-    const textoPacientes = resumo.totalPacientesCadastrados > 0
-      ? `Encontrei ${resumo.totalPacientesCadastrados} paciente(s) já cadastrados aqui na sua conta.`
-      : 'Ainda não encontrei pacientes cadastrados na sua conta.';
-
-    const mensagens = [
-      'Prontinho, dados salvos!',
-      `${textoPacientes} Talvez falte mais gente. Você pode subir uma planilha ou sincronizar pelas integrações, e eu também vou procurar aqui nas suas conversas do WhatsApp.`,
-      'Para eu começar a busca: você sabe mais ou menos há quanto tempo está sem emitir notas?'
-    ];
-
-    return {
-      novoEstado: { etapa: 'aguardando_janela_tempo' },
-      mensagensEnviar: mensagens
-    };
+  private async redigir(estado: EstadoAssistenteMedico, objetivo: Objetivo, evento: EventoComunicacaoNoto,
+    dados: Record<string, unknown> = {}, mensagemRecebida: string | null = null): Promise<RespostaProcessamentoOnboarding> {
+    const mensagensEnviar = await this.gerador.gerar({ evento, destinatario: 'medico',
+      medico: { nome: nomeProfissionalValido(estado.nomeConfirmado) ? estado.nomeConfirmado! : null,
+        crm: estado.crmInformado ?? null, rqe: estado.rqeInformado ?? null },
+      caso: null, quantidadeNotasParadas: 0, mensagemRecebida, historico: [],
+      dados: { fluxo: 'onboarding_assistente', objetivo, etapa: estado.etapa, usoRegistro: 'descricao_da_nota',
+        registrosInformados: { crm: estado.crmInformado ?? null, rqe: estado.rqeInformado ?? null },
+        janelaDataCorte: estado.janelaDataCorte ?? null, ...dados }
+    });
+    return { novoEstado: estado, mensagensEnviar };
   }
 }
