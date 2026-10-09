@@ -1432,7 +1432,12 @@
 
   <script>
     // Gerenciador de estado local
-    let sessaoAtual = JSON.parse(localStorage.getItem('notomed_sessao') || 'null');
+    let sessaoAtual = null;
+    try {
+      const salva = JSON.parse(localStorage.getItem('notomed_sessao') || 'null');
+      if (salva?.usuario && typeof salva.tokenAcesso === 'string' && salva.tokenAcesso) sessaoAtual = salva;
+      else localStorage.removeItem('notomed_sessao');
+    } catch { localStorage.removeItem('notomed_sessao'); }
     let certArquivoBase64 = '';
     let certNomeArquivo = '';
     let telefoneAtual = '';
@@ -1697,15 +1702,23 @@
 
     // --- CARREGAR ONBOARDING / PAINEL ---
     async function carregarFluxoOnboarding(abaFinal) {
-      if (!sessaoAtual?.usuario) return;
-      cardAuth.classList.add('hidden');
-      cardOnboarding.classList.remove('hidden');
+      if (!sessaoAtual?.usuario || !sessaoAtual.tokenAcesso) { efetuarLogout(); return; }
+      cardOnboarding.classList.add('hidden');
 
       const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
       try {
-        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`, {
+          headers: { Authorization: 'Bearer ' + sessaoAtual.tokenAcesso }
+        });
+        if (res.status === 401 || res.status === 403) {
+          efetuarLogout();
+          showAlert('Entre novamente com o código enviado pelo WhatsApp.');
+          return;
+        }
         const data = await res.json();
-        if (data.ok && data.status) {
+        if (res.ok && data.ok && data.status) {
+          cardAuth.classList.add('hidden');
+          cardOnboarding.classList.remove('hidden');
           if (data.medicoId || data.status.medicoId) {
             sessaoAtual.usuario.medicoId = data.medicoId || data.status.medicoId;
             localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
@@ -1713,10 +1726,12 @@
           renderizarPassos(data.status);
           if (abaFinal && painelDisponivel) alternarAba(abaFinal);
         } else {
-          mostrarPasso(3);
+          throw new Error('Status indisponível');
         }
       } catch (err) {
-        mostrarPasso(3);
+        cardOnboarding.classList.add('hidden');
+        cardAuth.classList.remove('hidden');
+        showAlert('Não foi possível carregar seu cadastro. Recarregue para tentar novamente.');
       }
     }
 
@@ -2390,7 +2405,7 @@
       const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
       if (medicoId) {
         try {
-          const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+          const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`, { headers: { Authorization: 'Bearer ' + sessaoAtual.tokenAcesso } });
           const data = await res.json();
           if (data.ok && data.status) {
             if (inputNome && inputNome.readOnly) inputNome.value = data.status.passos?.passo1Nome ? data.status.nomeUsuario : '';
