@@ -58,6 +58,7 @@ import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal
 import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
 import { CfmBuscarMedicoOnlineProvider } from './medico/io/buscar-medico-online.js';
 import { FerramentasAssistenteNoto } from './agente-conversa/ferramentas-assistente-noto.js';
+import { criarDisparadorAssistente } from './agente-conversa/iniciar-assistente-conectado.js';
 import { GerenciadorConversaOnboarding } from './agente-conversa/gerenciador-conversa-onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,6 +102,16 @@ export function criarAppExpress() {
     evolutionAssistantClient
   );
   const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente);
+  const iniciarAssistente = criarDisparadorAssistente({ pool, gerenciador: gerenciadorOnboarding,
+    salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
+    enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
+  const dispararAssistente = (medicoId: string) => {
+    if (!config.evolutionAssistantUrl || !config.evolutionAssistantApiKey || !config.evolutionAssistantInstanceName) {
+      console.warn('[Onboarding Assistente]', { medicoId, estado: 'configuracao_incompleta' });
+      return;
+    }
+    iniciarAssistente(medicoId);
+  };
   const ia = criarServicosIa(config);
   const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
   const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
@@ -175,7 +186,8 @@ export function criarAppExpress() {
     pool,
     autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
     consultar: medicoId => consultarStatusInstanciaWhatsapp(pool, {
-      medicoId, evolutionUrl: config.evolutionApiUrl, evolutionApiKey: config.evolutionGlobalApiKey
+      medicoId, evolutionUrl: config.evolutionApiUrl, evolutionApiKey: config.evolutionGlobalApiKey,
+      aoConectar: dispararAssistente
     })
   }));
 
@@ -279,7 +291,8 @@ export function criarAppExpress() {
         const conexao = await consultarStatusInstanciaWhatsapp(pool, {
           medicoId,
           evolutionUrl: config.evolutionApiUrl,
-          evolutionApiKey: config.evolutionGlobalApiKey
+          evolutionApiKey: config.evolutionGlobalApiKey,
+          aoConectar: dispararAssistente
         });
         if (conexao.ok && conexao.conectado) {
           status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
@@ -287,6 +300,7 @@ export function criarAppExpress() {
       }
       dispararTreino(medicoId);
       if (status.passos.passo4WhatsappConectado) {
+        dispararAssistente(medicoId);
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
           console.info('[Evolution] Histórico sincronizado:', resultado);
@@ -573,7 +587,8 @@ export function criarAppExpress() {
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey,
         appWebhookUrl: appUrl,
-        webhookSecret: config.evolutionWebhookSecret
+        webhookSecret: config.evolutionWebhookSecret,
+        aoConectar: dispararAssistente
       });
       if (resultado.ok) dispararTreino(medicoId);
       if (resultado.diagnostico) {
@@ -599,7 +614,8 @@ export function criarAppExpress() {
       const resultado = await consultarStatusInstanciaWhatsapp(pool, {
         medicoId,
         evolutionUrl: config.evolutionApiUrl,
-        evolutionApiKey: config.evolutionGlobalApiKey
+        evolutionApiKey: config.evolutionGlobalApiKey,
+        aoConectar: dispararAssistente
       });
       if (resultado.conectado) dispararTreino(medicoId);
       return res.json({ ...resultado, medicoId });
@@ -655,32 +671,7 @@ export function criarAppExpress() {
           const medicoId = await registrarConexaoWhatsapp(pool, evento);
           if (medicoId) {
             dispararTreino(medicoId);
-            // Aciona o Noto Assistente em seu container dedicado para conduzir o onboarding
-            try {
-              const medicoRow = (await pool.query(
-                `select m.id, m.nome_completo, u.telefone
-               from medicos m
-               join usuarios u on u.id = m.usuario_id
-               where m.id = $1`,
-                [medicoId]
-              )).rows[0];
-
-              if (medicoRow && medicoRow.telefone) {
-                const resp = await gerenciadorOnboarding.iniciarAoConectar(
-                  medicoRow.id,
-                  medicoRow.nome_completo
-                );
-                for (const msg of resp.mensagensEnviar) {
-                  await evolutionAssistantClient.enviarTexto({
-                    instanciaNome: config.evolutionAssistantInstanceName,
-                    contatoTelefone: medicoRow.telefone,
-                    texto: msg
-                  });
-                }
-              }
-            } catch (err) {
-              console.warn('[Onboarding Assistente] Erro ao iniciar ao conectar:', err);
-            }
+            dispararAssistente(medicoId);
           }
         }
       });
@@ -893,10 +884,11 @@ export function criarAppExpress() {
     }
     setTimeout(() => {
       void pool.query(
-        `select nome_instancia
+        `select nome_instancia, medico_id
          from whatsapp_instancias
          where status = 'conectado' and oficial = false`
       ).then(async ({ rows }) => {
+        rows.forEach(row => { if (row.medico_id) dispararAssistente(row.medico_id); });
         for (const row of rows) {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);

@@ -10,6 +10,7 @@ export type ConsultarStatusWhatsappInput = {
   medicoId: string;
   evolutionUrl: string;
   evolutionApiKey: string;
+  aoConectar?: (medicoId: string) => void;
 };
 
 export type ResultadoStatusWhatsapp = {
@@ -53,6 +54,7 @@ export async function consultarStatusInstanciaWhatsapp(
          where nome_instancia = $1`,
         [nomeInstancia]
       );
+      input.aoConectar?.(medicoId);
       return { ok: true, conectado: true, status: 'conectado', state: 'open' };
     }
 

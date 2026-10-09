@@ -90,6 +90,7 @@ async function simularEvolution(
   const original = globalThis.fetch;
   const chamadas: Array<{ url: string; body?: any }> = [];
   let consultasTelefone = 0;
+  const iniciosAssistente: string[] = [];
   const pool = { query: async (sql: string) => {
     if (sql.includes('select u.telefone')) { consultasTelefone++; return { rows: [{ telefone: '48912345678' }] }; }
     return { rows: [{ id: 'instancia' }] };
@@ -105,9 +106,10 @@ async function simularEvolution(
     const resultado = await conectarInstanciaWhatsappMedico(pool, {
       medicoId: 'medico-teste', modoConexao,
       evolutionUrl: 'http://evolution.test', evolutionApiKey: 'chave-secreta',
-      appWebhookUrl: 'http://noto.test', webhookSecret: 'segredo-webhook'
+      appWebhookUrl: 'http://noto.test', webhookSecret: 'segredo-webhook',
+      aoConectar: (medicoId: string) => iniciosAssistente.push(medicoId)
     } as any);
-    return { resultado: resultado as any, chamadas, consultasTelefone };
+    return { resultado: resultado as any, chamadas, consultasTelefone, iniciosAssistente };
   } finally { globalThis.fetch = original; }
 }
 
@@ -119,6 +121,7 @@ test('QR explícito não consulta nem envia telefone e reutiliza a instância ex
   assert.equal(t.chamadas.find(c => c.url.includes('/instance/connect/'))?.url, 'http://evolution.test/instance/connect/medico_medicoteste');
   assert.equal(t.resultado.ok, true);
   assert.equal(t.resultado.qrcodeBase64, 'data:image/png;base64,imagem-qr');
+  assert.deepEqual(t.iniciosAssistente, []);
   assert.equal(t.resultado.pairingCode, null);
   assert.equal(t.chamadas.some(c => /logout|delete/.test(c.url)), false);
 });
@@ -142,4 +145,5 @@ test('instância já conectada é reconhecida mesmo sem um novo código', async 
   const t = await simularEvolution({ status: 200, data: {} }, 'qrcode', true);
   assert.equal(t.resultado.ok, true);
   assert.equal(t.resultado.status, 'open');
+  assert.deepEqual(t.iniciosAssistente, ['medico-teste']);
 });
