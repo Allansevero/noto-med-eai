@@ -18,7 +18,9 @@
     "migrate:treino": "node scripts/migrar-treino-onboarding.mjs",
     "check:treino": "node scripts/verificar-treino-onboarding.mjs",
     "migrate:perfil": "node scripts/migrar-dados-profissionais.mjs",
-    "migrate:planilhas": "node scripts/migrar-google-planilhas.mjs"
+    "migrate:planilhas": "node scripts/migrar-google-planilhas.mjs",
+    "migrate:assistente": "node scripts/migrar-assistente-contextual.mjs",
+    "test:assistente-db": "node --import tsx --test src/agente-conversa/postgres-assistente.integration.ts"
   },
   "keywords": [
     "nfse",
