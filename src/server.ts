@@ -1,3 +1,4 @@
+import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
@@ -45,7 +46,6 @@ import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
 import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medico.js';
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
-import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
 import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
@@ -81,16 +81,15 @@ export function criarAppExpress() {
   // Instanciação dos adaptadores de infraestrutura
   const otpRepo = new PostgresOtpRepositorio(pool);
   const atendimentoRepo = new PostgresAtendimentoRepositorio(pool, config.encryptionKey);
-  const dispararTreino = criarDisparadorTreino(pool, config);
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
-    config.evolutionOfficialInstanceName
+    config.evolutionOfficialInstanceName, config.evolutionOfficialInstanceName
   );
   const evolutionAssistantClient = new EvolutionApiClient(
     config.evolutionAssistantUrl,
     config.evolutionAssistantApiKey,
-    config.evolutionAssistantInstanceName
+    config.evolutionAssistantInstanceName, config.evolutionOfficialInstanceName
   );
   const paligemmaClient = new PaligemmaComprovanteClient(
     config.nvidiaApiKey || '',
@@ -131,8 +130,9 @@ export function criarAppExpress() {
       void agenteAssistente.iniciarAoConectar(medicoId).catch(()=>console.warn('[Assistente contextual]',{medicoId,etapa:'apresentacao',estado:'falha_registrada'}));
     }else iniciarAssistente(medicoId);
   };
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, ia.geradorMensagem);
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
+  const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
+  const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
@@ -316,7 +316,7 @@ export function criarAppExpress() {
           status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
         }
       }
-      dispararTreino(medicoId);
+
       if (status.passos.passo4WhatsappConectado) {
         dispararAssistente(medicoId);
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
@@ -408,7 +408,7 @@ export function criarAppExpress() {
         medicoId, consulta.documento.xml);
       const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
         medicoId, fiscal.parametros.dadosReformaTributaria.hash);
-      if (adocaoFiscal.ok) dispararTreino(medicoId);
+
       return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu, adocaoFiscal });
     } catch (erro: any) {
       console.warn('[ADN] Busca de referência pendente:', { etapa: 'busca_referencia', codigo: erro?.codigo || 'BUSCA_FALHOU', diagnostico: erro?.diagnostico, mensagem: erro?.message });
@@ -478,7 +478,7 @@ export function criarAppExpress() {
         referenciaHash,
         usarReferencia: usarReferencia === true
       });
-      dispararTreino(medicoId);
+
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
       if (req.body?.usarReferencia === true) {
@@ -552,7 +552,7 @@ export function criarAppExpress() {
 
         const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
           medicoId, fiscal.parametros.dadosReformaTributaria.hash);
-        if (adocaoFiscal.ok) dispararTreino(medicoId);
+
         return res.json({
           ...resultado,
           medicoId,
@@ -608,7 +608,7 @@ export function criarAppExpress() {
         webhookSecret: config.evolutionWebhookSecret,
         aoConectar: dispararAssistente
       });
-      if (resultado.ok) dispararTreino(medicoId);
+
       if (resultado.diagnostico) {
         console.warn('[WhatsApp] Conexão pendente:', {
           medicoId, modoConexao: modoConexao || 'codigo', diagnostico: resultado.diagnostico
@@ -635,7 +635,7 @@ export function criarAppExpress() {
         evolutionApiKey: config.evolutionGlobalApiKey,
         aoConectar: dispararAssistente
       });
-      if (resultado.conectado) dispararTreino(medicoId);
+
       return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do WhatsApp' });
@@ -672,7 +672,7 @@ export function criarAppExpress() {
         dadosProfissionais,
         comunicadorNoto,
         billingRepositorio: billingRepo,
-        enviarMensagemPaciente: evolutionClient,
+        enviarMensagemPaciente: enviarConversas,
         iaService: ia.extrator,
         consultaCpfProvider: hubCpfClient,
         segredoConfigurado: segredoEsperado,
@@ -689,7 +689,7 @@ export function criarAppExpress() {
           ) return;
           const medicoId = await registrarConexaoWhatsapp(pool, evento);
           if (medicoId) {
-            dispararTreino(medicoId);
+
             dispararAssistente(medicoId);
           }
         }
@@ -895,12 +895,6 @@ export function criarAppExpress() {
   });
 
   if (process.env['NODE_ENV'] !== 'test') {
-    if (config.treinoOnboardingAtivo) {
-      // Retoma apenas intervalos entre mensagens já confirmadas, nunca envios incertos.
-      void pool.query(`select medico_id from onboarding_treinos_whatsapp where estado = 'pendente'`)
-        .then(({ rows }) => rows.forEach(row => dispararTreino(row.medico_id)))
-        .catch(() => console.warn('[TreinoOnboarding] Não foi possível consultar treinos pendentes. Verifique a migração.'));
-    }
     setTimeout(() => {
       void pool.query(
         `select nome_instancia, medico_id

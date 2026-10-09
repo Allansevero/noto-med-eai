@@ -21,3 +21,9 @@ test('diagnóstico distingue descarte, erro de autenticação e fila aguardando 
  assert.equal(r.fila,null);assert.equal(r.aguardandoData,true);
  assert.deepEqual(diagnosticoEntradaWebhook({event:'conteudo privado',data:{key:{remoteJid:'telefone privado'}}}),{evento:'outro',fromMe:undefined,tipoContato:'outro',dadosEmLote:false});
 });
+
+test('assistente registra estado real e confirmações sem tratar recebimento como envio',()=>{
+ const r=diagnosticoResultadoWebhook({ok:true,acao:'conversa_assistente',detalhe:{estado:'pendente',mensagensConfirmadas:0,diagnostico:'segredo interno'}});
+ assert.equal(r.estadoTurno,'pendente');assert.equal(r.mensagensConfirmadas,0);assert.doesNotMatch(JSON.stringify(r),/segredo interno/);
+ assert.equal(diagnosticoResultadoWebhook({ok:true,acao:'descartada',motivoDescarte:'medico_nao_identificado'}).motivo,'medico_nao_identificado');
+});

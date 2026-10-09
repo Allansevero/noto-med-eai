@@ -4,6 +4,7 @@ import pg from 'pg';
 import { readFile } from 'node:fs/promises';
 import { iniciarAssistenteConectado } from './iniciar-assistente-conectado.js';
 import { GerenciadorConversaOnboarding } from './gerenciador-conversa-onboarding.js';
+import { PostgresAtendimentoRepositorio } from '../io/postgres/postgres-atendimento-repositorio.js';
 import { PostgresAssistente } from './postgres-assistente.js';
 const url = process.env.NOTO_TEST_DATABASE_URL;
 if (
@@ -375,6 +376,41 @@ test('reserva concorrente, gravação atômica, ordem, histórico e envio incert
         );
       }
     );
+
+    await t.test('telefone duplicado usa só conversa confirmada da instância e bloqueia ambiguidade real',async()=>{
+      await p!.query('alter table medicos add column especialidade text;create table medico_servicos_fiscais(id uuid default gen_random_uuid(),medico_id uuid,ctrib_nac text,padrao boolean,ativo boolean);');
+      const r=new PostgresAtendimentoRepositorio(p!,'chave teste');
+      const outro=await criarMedico(14);
+      await p!.query("update usuarios set telefone='5551981680978' where id in (select usuario_id from medicos where id=any($1::uuid[]))",[['00000000-0000-4000-8000-000000000013',outro]]);
+      // Mesmo telefone: somente o cadastro 13 tem apresentação confirmada.
+      const medico=(await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'))!;
+      assert.equal(medico.id,'00000000-0000-4000-8000-000000000013');
+      await p!.query("insert into medico_servicos_fiscais(medico_id,ctrib_nac,padrao,ativo) values($1,'041601',true,true),($1,'041601',true,true)",[medico.id]);
+      assert.equal((await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'))?.id,medico.id,'serviços repetidos não duplicam médico');
+      assert.equal(await r.buscarMedicoAssistentePorTelefone('5551981680978','outra-instancia'),null);
+      await p!.query(`insert into noto_assistente_turnos(medico_id,instancia,mensagem_id,texto,estado,mensagens,confirmadas) values($1,'assistente','segunda-apresentacao','','concluido','["Oi."]',1)`,[outro]);
+      assert.equal(await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'),null,'duas conversas confirmadas continuam ambíguas');
+      await p!.query('update usuarios set ativo=false where id=(select usuario_id from medicos where id=$1)',[outro]);
+      assert.equal((await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'))?.id,medico.id);
+      await p!.query('update usuarios set ativo=false where id=(select usuario_id from medicos where id=$1)',[medico.id]);
+      assert.equal(await r.buscarMedicoAssistentePorTelefone('5551981680978','assistente'),null,'não escolher cadastro inativo');
+    });
+
+    await t.test('webhook de data repetido não modifica outra nota pendente',async()=>{
+      await p!.query(`create type fila_solicitacao_nota as enum('pronta','pendente_cadastro');
+        alter table solicitacoes_nota add column xdesc_serv text,add column datas_consulta_texto text,add column aguardando_dados_profissionais boolean default false,
+          add column aguardando_confirmacao_medico boolean default false,add column aguardando_data_consulta boolean default true,
+          add column fila fila_solicitacao_nota,add column atualizado_em timestamptz,add column tentativas integer default 0,add column bloqueada_em timestamptz;
+        create table notas_fiscais(solicitacao_id uuid);create table investigacoes_emissao(solicitacao_id uuid);`);
+      const a='00000000-0000-4000-8000-000000000050',b='00000000-0000-4000-8000-000000000051';
+      await p!.query("insert into solicitacoes_nota(id,medico_id,status,criado_em) values($1,$3,'pendente',now()),($2,$3,'pendente',now())",[a,b,med]);
+      const r=new PostgresAtendimentoRepositorio(p!,'chave teste');
+      const entrada={xdescServ:'REFERENTE A CONSULTA NAS DATAS 08/10/2026',fila:'pronta' as const,medicoId:med,mensagemId:'data-repetida',instancia:'assistente'};
+      await r.atualizarDataDescricaoSolicitacao({...entrada,solicitacaoId:a});
+      await r.atualizarDataDescricaoSolicitacao({...entrada,solicitacaoId:b});
+      assert.equal((await p!.query('select aguardando_data_consulta from solicitacoes_nota where id=$1',[b])).rows[0].aguardando_data_consulta,true);
+      assert.equal((await p!.query('select count(*)::int as total from auditoria where acao=$1',['resposta_data_assistente'])).rows[0].total,1);
+    });
   } finally {
     if (p) await p.end();
     await admin.query(`drop schema if exists ${schema} cascade`);

@@ -1,6 +1,6 @@
 /**
  * Caso de uso: Processamento da resposta do médico com a data da consulta.
- * Quando o médico responde à pergunta enviada pelo WhatsApp oficial,
+ * Quando o médico responde à pergunta enviada pelo WhatsApp do assistente,
  * atualiza a descrição legal da NFS-e com a data informada e avança a fila
  * para 'pronta' (se paciente já possui CPF) ou 'pendente_cadastro'.
  */
@@ -13,6 +13,8 @@ import type { DadosProfissionaisService } from '../conta/dados-profissionais-ser
 
 export interface ProcessarRespostaDataDeps {
   repositorio: AtendimentoRepositorio;
+  mensagemId?:string;
+  medicoIdentificado?: import('../atendimento/atendimento-repositorio.js').MedicoDadosRegistro;
   comunicadorNoto?: ComunicadorNoto;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaOficialNome?: string;
@@ -21,7 +23,7 @@ export interface ProcessarRespostaDataDeps {
 
 export type ResultadoProcessarRespostaData =
   | { ok: true; solicitacaoId: string; dataInformada: string; fila: 'pronta' | 'pendente_cadastro' }
-  | { ok: false; motivo: 'medico_nao_encontrado' | 'solicitacao_nao_encontrada' | 'data_vazia' };
+  | { ok: false; motivo: 'medico_nao_encontrado' | 'solicitacao_nao_encontrada' | 'data_vazia' | 'resposta_ja_processada' };
 
 export async function processarRespostaDataConsulta(
   telefoneMedico: string,
@@ -33,7 +35,7 @@ export async function processarRespostaDataConsulta(
     return { ok: false, motivo: 'data_vazia' };
   }
 
-  const medico = await deps.repositorio.buscarMedicoPorTelefone(telefoneMedico);
+  const medico = deps.medicoIdentificado ?? await deps.repositorio.buscarMedicoPorTelefone(telefoneMedico);
   if (!medico) {
     return { ok: false, motivo: 'medico_nao_encontrado' };
   }
@@ -47,11 +49,13 @@ export async function processarRespostaDataConsulta(
   const paciente = await deps.repositorio.buscarPacientePorId(pendente.pacienteId);
   const fila = paciente?.cpfHash ? 'pronta' : 'pendente_cadastro';
 
-  await deps.repositorio.atualizarDataDescricaoSolicitacao({
+  const atualizada=await deps.repositorio.atualizarDataDescricaoSolicitacao({
     solicitacaoId: pendente.id,
     xdescServ: novaDescricao,
-    fila
+    fila,
+    medicoId:medico.id,mensagemId:deps.mensagemId,instancia:deps.instanciaOficialNome
   });
+  if(atualizada===false)return {ok:false,motivo:'resposta_ja_processada'};
 
   // A Conta pode ter alterado o perfil depois da leitura inicial. O serviço
   // verifica o cadastro atual e só pede os dados se ainda forem necessários.

@@ -73,3 +73,11 @@ it('envio de texto tem prazo limitado e falha sem confirmar entrega',async t=>{
  assert.equal(resposta.sucesso,false);
  assert.ok(sinal,'envio precisa de AbortSignal');
 });
+
+it('instância reservada ao OTP bloqueia texto e PDF comuns antes do HTTP',async t=>{
+ let requests=0;t.mock.method(globalThis,'fetch',async()=>{requests++;return Response.json({key:{id:'codigo'}});});
+ const client=new EvolutionApiClient('https://e.test','chave','oficial','oficial');
+ assert.equal((await client.enviarTexto({instanciaNome:'oficial',contatoTelefone:'5511999991234',texto:'conversa'})).sucesso,false);
+ assert.equal((await client.enviarPdf({instanciaNome:'oficial',contatoTelefone:'5511999991234',pdfPathOuUrl:'https://e.test/test.pdf',nomeArquivo:'teste.pdf'})).sucesso,false);
+ assert.equal(requests,0);assert.equal((await client.enviar({telefone:'5511999991234',codigo:'123456'})).sucesso,true);assert.equal(requests,1);
+});

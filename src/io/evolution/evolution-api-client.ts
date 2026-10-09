@@ -27,7 +27,8 @@ export class EvolutionApiClient
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
-    private readonly instanciaOficialNome: string
+    private readonly instanciaOficialNome: string,
+    private readonly instanciaSomenteOtp?: string
   ) {}
 
   async enviar(params: EnviarOtpParams): Promise<ResultadoEnvioOtp> {
@@ -42,10 +43,12 @@ export class EvolutionApiClient
   }
 
   async enviarTexto(params: EnviarMensagemPacienteParams): Promise<ResultadoEnvioMensagemPaciente> {
+    if(params.instanciaNome===this.instanciaSomenteOtp)return {sucesso:false,erro:'CANAL_OFICIAL_SOMENTE_OTP'};
     return this.enviarTextoGenerico(params.instanciaNome, params.contatoTelefone, params.texto);
   }
 
   async enviarPdf(params: EnviarPdfDanfseParams): Promise<ResultadoEnvioPdf> {
+    if(params.instanciaNome===this.instanciaSomenteOtp)return {sucesso:false,erro:'CANAL_OFICIAL_SOMENTE_OTP'};
     const url = `${this.baseUrl.replace(/\/$/, '')}/message/sendMedia/${params.instanciaNome}`;
     try {
       const telLimpo = params.contatoTelefone.replace(/\D/g, '');

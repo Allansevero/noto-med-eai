@@ -141,6 +141,10 @@ export class PostgresAssistente {
     }
     return novo;
   }
+  async resultado(e:EntradaTurno){
+    const r=(await this.pool.query('select estado,confirmadas,diagnostico from noto_assistente_turnos where medico_id=$1 and instancia=$2 and mensagem_id=$3',[e.medicoId,e.instancia,e.mensagemId])).rows[0];
+    return r?{estado:r.estado,mensagensConfirmadas:r.confirmadas,diagnostico:r.diagnostico}:{estado:'nao_registrado'};
+  }
   async reservar(medicoId: string): Promise<Reserva | null> {
     return this.transacao(async (c) => {
       const ativo = await c.query(

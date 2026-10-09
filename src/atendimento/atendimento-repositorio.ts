@@ -97,6 +97,7 @@ export interface AtendimentoRepositorio {
   }): Promise<{ id: string }>;
   buscarConsultasEmAberto(medicoId: string, pacienteId: string): Promise<ConsultaEmAbertoRegistro[]>;
   buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null>;
+  buscarMedicoAssistentePorTelefone?(telefone: string, instancia: string): Promise<MedicoDadosRegistro | null>;
   buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null>;
   criarSolicitacaoNota(params: {
     medicoId: string;
@@ -115,7 +116,8 @@ export interface AtendimentoRepositorio {
     solicitacaoId: string;
     xdescServ: string;
     fila: 'pronta' | 'pendente_cadastro';
-  }): Promise<void>;
+    medicoId?:string; mensagemId?:string; instancia?:string;
+  }): Promise<void|boolean>;
   liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number>;
   salvarMensagem?(params: {
     conversaId: string;
