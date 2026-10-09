@@ -67,11 +67,11 @@ export class FerramentasAssistenteNoto {
         `update medicos set
           nome_completo = coalesce($2, nome_completo),
           crm = coalesce($3, crm),
-          rqe = coalesce($4, rqe),
+          rqe = case when $6::boolean then $4 else rqe end,
           especialidade = coalesce($5, especialidade),
           atualizado_em = now()
         where id = $1`,
-        [medicoId, dados.nomeCompleto ?? null, dados.crm ?? null, dados.rqe ?? null, dados.especialidade ?? null]
+        [medicoId, dados.nomeCompleto ?? null, dados.crm ?? null, dados.rqe ?? null, dados.especialidade ?? null, dados.rqe !== undefined]
       );
 
       if (dados.nomeCompleto) {
