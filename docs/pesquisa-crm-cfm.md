@@ -1,26 +1,25 @@
-# Pesquisa de CRM e RQE no CFM
+# Pesquisa de CRM e RQE com Infosimples
 
-A RPA usa Chromium e Playwright já disponíveis na imagem do Noto. Abre https://portal.cfm.org.br/busca-medicos/, preenche o nome completo e aciona o formulário normal. Quando a página entrega resultados, lê os cartões renderizados, filtrando pelo nome completo exato e extraindo CRM/UF e RQE.
+A fonte é a API Infosimples v2 CFM/Cadastro, conforme documentação da conta fornecida em 10/10/2026. Endpoint: `POST https://api.infosimples.com/api/v2/consultas/cfm/cadastro`, corpo `application/x-www-form-urlencoded`, com `token`, `nome` completo e `timeout=90`. Não usa mais RPA no Chromium nem tem fallback para automação do portal.
 
-A pesquisa começa após o Hub encontrar um único candidato a responsável, antes de sua confirmação. Com vários sócios, aguarda a identificação do responsável. O onboarding até o painel continua exigindo a conexão inicial do WhatsApp. A aprovação em “Dados da Conta” também exige conexão ativa, validada no backend. Os parâmetros fiscais continuam vindo da referência ADN.
+## Fluxo e confirmação
 
-Os resultados ficam como sugestões com link do CFM. Não são gravados automaticamente como identidade confirmada. Homônimos e múltiplos CRMs precisam ser revisados. Um único RQE pode preencher a sugestão; múltiplos RQEs ficam visíveis para escolha manual, sem selecionar uma especialidade arbitrariamente.
+Após encontrar um único candidato no Hub, pesquisa por nome completo antes de pedir a confirmação. Com vários sócios, aguarda a identificação do responsável. O provedor informa que pesquisa por nome devolve apenas o primeiro resultado exatamente igual; isso não elimina homônimos. Exigimos correspondência exata do nome e confirmação do usuário.
 
-## Configuração
+A inscrição retornada pode não conter UF. A UF do endereço nunca é usada como UF do CRM. Quando necessário, a UF da primeira inscrição serve apenas para restringir uma segunda consulta ao mesmo nome e àquela UF. Só o resultado dessa consulta restrita é apresentado. Se não for possível confirmar a associação, permite preenchimento manual. Esse método não enumera todas as inscrições do médico.
 
-- `CFM_PESQUISA_ATIVA=true` é o padrão. `false` suspende a RPA e permite preenchimento manual.
-- `CHROMIUM_EXECUTABLE_PATH` usa o caminho já configurado no Noto, com padrão `/usr/bin/chromium-browser` para sua imagem Alpine. O executável precisa existir.
-- Permitir acesso HTTPS ao portal CFM e aos recursos que sua página carrega, inclusive Google reCAPTCHA, preservando a validação TLS.
-- Não exige SearXNG ou um novo serviço externo. Não há migração adicional além das tabelas cadastrais existentes.
+Os RQEs são extraídos de `especialidade_lista` ou `especialidade`. Um único RQE preenche a sugestão; múltiplos RQEs são exibidos para revisão, sem escolher uma especialidade automaticamente. Nome, CRM e RQE só são cadastrados após confirmação. O onboarding continua A1 → conexão inicial do WhatsApp → painel. O backend exige WhatsApp conectado para confirmar. A referência ADN e os requisitos fiscais permanecem independentes.
 
-## Limites e diagnóstico
+## Configuração e custos
 
-A página do CFM exige reCAPTCHA. A RPA opera o formulário, mas não resolve desafios nem contorna bloqueios. Por isso, não se pode garantir pesquisa automática em todas as tentativas. Se o portal não entregar resultados, o painel permite conferir no CFM e informar CRM/RQE manualmente.
+- Configure `INFOSIMPLES_TOKEN` somente no backend do Easypanel, sem incluir a chave no Git ou em logs.
+- `CFM_PESQUISA_ATIVA=true` é o padrão; `false` suspende a consulta. Sem token, o painel permite preenchimento manual e não faz consulta paga.
+- Reinicie o serviço web após configurar o token e publicar o código. Não há nova migração de banco.
+- Cada tentativa usa uma ou duas chamadas. A documentação informa adicional de R$ 0,04 por chamada, além do preço base. Falhas podem resultar em retentativas limitadas pela fila existente; o valor efetivo depende da cobrança Infosimples. Consultas externas podem levar até 90 segundos por chamada, fora da requisição de upload. A reserva do trabalho dura nove minutos para cobrir Hub (até 300 segundos) e duas chamadas Infosimples, evitando recuperação concorrente durante a consulta.
+- Resultados concluídos são reutilizados. Trabalhos pendentes de confirmação com falha antiga `CFM_*` ou sem fonte configurada são recuperados uma vez ao ativar a API, reutilizando a empresa consultada no Hub. Falhas Infosimples não são reagendadas a cada ciclo apenas por abrir o painel.
 
-Códigos: `CFM_NAVEGACAO_INDISPONIVEL` (navegador, rede ou layout inicial), `CFM_CAPTCHA_OU_TIMEOUT` (nenhum resultado entregue, com reCAPTCHA na página), `CFM_RESULTADO_INDISPONIVEL` (resultado não entregue), `CFM_NAO_ENCONTRADO` (nenhum cartão compatível com o nome completo). Nenhum código comprova que a pessoa não possui registro.
+## Diagnóstico e validação
 
-Consultas concluídas ficam armazenadas na fila cadastral. Ao habilitar a fonte, trabalhos antigos sem fonte configurada podem ser pesquisados novamente, reutilizando os dados da empresa já obtidos no Hub. Logs não incluem nome, documento, conteúdo de conversa ou credenciais.
+`INFOSIMPLES_API_<código>` e `INFOSIMPLES_HTTP_<status>` identificam erros sanitizados. `INFOSIMPLES_UF_NAO_CONFIRMADA` impede associação sem fonte suficiente; `INFOSIMPLES_RESULTADO_AMBIGUO` indica nome divergente ou quantidade inesperada; `INFOSIMPLES_NAO_ENCONTRADO` indica consulta vazia. Nenhum código comprova ausência de habilitação profissional.
 
-Testes locais exercitam o formulário real do robô com transporte sintético, cartões CRM/RQE, nomes diferentes e falhas de navegador. Esses testes não comprovam que o CFM aceitará a automação em produção.
-
-Na validação deste ambiente, a página foi obtida por HTTPS com curl, mas o Chromium não confiou no certificado do proxy. A alteração persistente do trust store foi rejeitada pela revisão automática de permissões. A execução online completa permanece sem validação; a suíte local usa transporte sintético e mantém TLS ativo.
+Logs não incluem token, documentos, nomes, respostas brutas ou dados de contato. Testes usam transporte sintético e PostgreSQL local. Nenhuma consulta paga ou teste com dados pessoais reais foi executado durante o desenvolvimento; acesso, saldo e resultado real do provedor devem ser validados após configurar o token.

@@ -43,6 +43,7 @@ export interface AppConfig {
   googleAppId?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
+  infosimplesToken?: string;
   cfmPesquisaAtiva: boolean;
   stripeSecretKey?: string;
   stripePublishableKey?: string;
@@ -99,6 +100,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     googleAppId: env['GOOGLE_APP_ID'],
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
+    infosimplesToken: env['INFOSIMPLES_TOKEN'],
     cfmPesquisaAtiva: env['CFM_PESQUISA_ATIVA'] !== 'false',
     stripeSecretKey: env['STRIPE_SECRET_KEY'],
     stripePublishableKey: env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],

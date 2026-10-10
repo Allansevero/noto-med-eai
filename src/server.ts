@@ -7,7 +7,7 @@ import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/c
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
-import { CfmConsultaRegistro } from './cadastro/pesquisa-cfm.js';
+import { InfosimplesConsultaRegistro } from './cadastro/infosimples.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
 import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
@@ -150,12 +150,13 @@ export function criarAppExpress() {
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
-  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), config.cfmPesquisaAtiva?new CfmConsultaRegistro(config.chromiumExecutablePath || '/usr/bin/chromium-browser'):new PesquisaRegistroIndisponivel(),
+  const pesquisaCrmConfigurada=config.cfmPesquisaAtiva&&!!config.infosimplesToken?.trim();
+  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), pesquisaCrmConfigurada?new InfosimplesConsultaRegistro(config.infosimplesToken!):new PesquisaRegistroIndisponivel(),
     async (medicoId, certificadoId) => {
       const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
-    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, config.cfmPesquisaAtiva);
+    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada);
   const confirmadorCadastro = new ConfirmadorCadastro(cadastroCertificado.repo,
     new NvidiaDecisorCadastro(config.nvidiaApiKey || '', config.nvidiaModel), ia.geradorMensagem,
     evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient,
