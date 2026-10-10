@@ -3,7 +3,7 @@ import { ConfirmadorCadastro } from './cadastro/confirmador-cadastro.js';
 import { NvidiaDecisorCadastro } from './cadastro/nvidia-decisor-cadastro.js';
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
-import { BrasilApiConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
+import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { randomUUID } from 'node:crypto';
@@ -148,7 +148,7 @@ export function criarAppExpress() {
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
-  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), new BrasilApiConsultaEmpresa(), new PesquisaRegistroIndisponivel(),
+  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), new PesquisaRegistroIndisponivel(),
     async (medicoId, certificadoId) => {
       const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
       if (!cert || cert.id !== certificadoId) return undefined;

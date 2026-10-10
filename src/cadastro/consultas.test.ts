@@ -15,9 +15,9 @@ test('documento divergente, sócio PJ e resposta inválida não identificam méd
  assert.equal((await new BrasilApiConsultaEmpresa((async()=>{throw Error('segredo');}) as typeof fetch).consultar(cnpj)).estado,'indisponivel');
 });
 test('parser do contrato público do Hub aceita sócios com qualificação sem reconstruir CPF',()=>{
- const r=lerRespostaHubCnpj({status:'true',result:{numero_de_inscricao:cnpj,nome:'Clínica',quadro_socios:['ANA DE SOUZA 49-Sócio-Administrador']}},cnpj);
+ const r=lerRespostaHubCnpj({status:'true',return:'OK',result:{numero_de_inscricao:cnpj,nome:'Clínica',quadro_socios:['ANA DE SOUZA 49-Sócio-Administrador']}},cnpj);
  assert.equal(r.estado,'consultado');if(r.estado==='consultado')assert.deepEqual(r.dados.candidatos,[{nome:'ANA DE SOUZA',origem:'Hub do Desenvolvedor / quadro_socios'}]);
- assert.equal(lerRespostaHubCnpj({status:true,result:{numero_de_inscricao:'99999999000199',nome:'Outra'}},cnpj).estado,'indisponivel');
+ assert.equal(lerRespostaHubCnpj({status:true,return:'OK',result:{numero_de_inscricao:'99999999000199',nome:'Outra'}},cnpj).estado,'indisponivel');
 });
 test('pesquisa indisponível não fabrica CRM nem UF',async()=>{
  assert.deepEqual(await new PesquisaRegistroIndisponivel().buscar('Ana de Souza'),{estado:'indisponivel',codigo:'CRM_FONTE_NAO_CONFIGURADA'});

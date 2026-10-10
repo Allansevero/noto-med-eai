@@ -33,6 +33,8 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
   });
   await t.test('reserva expirada é recuperada e resultado atrasado perde autoridade',async()=>{
    await pool!.query("update cadastro_certificado_trabalhos set estado='pendente'");const antiga=(await repo.reservar())!;
+   await pool!.query("update cadastro_certificado_trabalhos set reservado_em=now()-interval '4 minutes'");
+   assert.equal(await repo.reservar(),null,'consulta Hub de até 300 segundos ainda conserva a reserva');
    await pool!.query("update cadastro_certificado_trabalhos set reservado_em=now()-interval '10 minutes'");const nova=(await repo.reservar())!;
    assert.notEqual(antiga.token,nova.token);await repo.aplicar(antiga,{estado:'concluido',dados:{},crm:'999/RS'});
    assert.equal((await pool!.query('select crm from medicos')).rows[0].crm,null);
