@@ -13,7 +13,7 @@ export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
  async agendarPesquisaProfissional():Promise<void>{
   await this.pool.query(`update cadastro_certificado_trabalhos set estado='pendente',proxima_tentativa_em=now(),reserva=null,dados=dados-'pesquisaProfissional'
-   where estado='aguardando_confirmacao' and (not (dados ? 'pesquisaProfissional') or dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA')
+   where estado='aguardando_confirmacao' and (not (dados ? 'pesquisaProfissional') or dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA' or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_')
    and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`);
  }
  async revisaoPainel(medicoId:string){
@@ -73,7 +73,7 @@ export class PostgresCadastro {
  async reservar():Promise<ReservaCadastro|null>{
   await this.invalidarObsoletos();return this.transacao(async c=>{
    const r=(await c.query(`select * from cadastro_certificado_trabalhos where estado in ('pendente','consultando') and proxima_tentativa_em<=now()
-    and (reserva is null or reservado_em<now()-interval '6 minutes') order by criado_em,id for update skip locked limit 1`)).rows[0] as TrabalhoCadastro|undefined;
+    and (reserva is null or reservado_em<now()-interval '9 minutes') order by criado_em,id for update skip locked limit 1`)).rows[0] as TrabalhoCadastro|undefined;
    if(!r)return null;const token=randomUUID();
    const m=(await c.query('select nome_completo,crm from medicos where id=$1',[r.medico_id])).rows[0];
    const legado=(await c.query('select estado from noto_assistente_sessoes where medico_id=$1',[r.medico_id])).rows[0]?.estado;
