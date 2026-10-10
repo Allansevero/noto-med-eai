@@ -1172,6 +1172,9 @@
 
           <!-- CENTRAL: CONTEÚDO PRINCIPAL (600px) -->
           <div class="painel-central">
+            <p id="avisoDadosProfissionais" role="status" hidden style="color:#c66a13;margin:0 0 18px;">
+              <button type="button" id="btnRevisarProfissional" class="btn-link" style="color:#c66a13 !important;padding:0;text-align:left;">Verifique se seus dados profissionais estão corretos em “Dados da Conta”.</button>
+            </p>
             <div id="cardWhatsappPainel" class="sheets-card">
               <div class="sheets-card-main">
                 <div class="sheets-card-left">
@@ -1262,6 +1265,13 @@
           <section id="contaSecaoDados" class="conta-secao hidden" aria-labelledby="tituloContaDados">
             <h2 class="access-title" id="tituloContaDados">Dados da conta</h2>
             <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
+            <p id="contaEmpresaProfissional"></p>
+            <p id="contaRevisaoProfissionalStatus" role="status" aria-live="polite"></p>
+            <label for="selectResponsavelProfissional" id="labelResponsavelProfissional" hidden>Responsável encontrado</label>
+            <select id="selectResponsavelProfissional" hidden></select>
+            <label for="selectCrmProfissional" id="labelCrmProfissional" hidden>Registros encontrados</label>
+            <select id="selectCrmProfissional" hidden></select>
+            <ul id="fontesCrmProfissional"></ul>
             <div class="account-fields-list">
               <div class="account-field-group">
                 <label class="field-label-data">Nome Completo</label>
@@ -1318,6 +1328,7 @@
                 </div>
               </div>
             </div>
+            <button type="button" class="btn-action" id="btnConfirmarProfissional" hidden>Confirmar dados profissionais</button>
             <button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">Atualizar dados</button>
           </section>
 
@@ -2170,6 +2181,7 @@
     }
     async function atualizarStatusWhatsappPainel() {
       if (!painelDisponivel || document.hidden || !sessaoAtual?.tokenAcesso || consultaStatusWhatsappPendente) return;
+      if (typeof atualizarRevisaoCadastro === 'function') void atualizarRevisaoCadastro();
       const geracao = geracaoStatusWhatsapp;
       const sessao = sessaoAtual;
       consultaStatusWhatsappPendente = true;
@@ -2390,6 +2402,93 @@
     }
     document.getElementById('btnVoltarConta').addEventListener('click', voltarMenuConta);
 
+    // INICIO REVISAO CADASTRO
+    let cadastroRevisao = null, cadastroEdicaoPendente = false, consultaCadastroPendente = false, aprovandoCadastro = false, cadastroSessao = null;
+    const cadastroEl = id => document.getElementById(id);
+    function marcarEdicaoCadastro() {
+      if (!cadastroRevisao?.trabalhoId) return;
+      cadastroEdicaoPendente = true;cadastroRevisao = { ...cadastroRevisao, aprovado: false };
+      cadastroEl('btnConfirmarProfissional').hidden = false;cadastroEl('avisoDadosProfissionais').hidden = false;
+    }
+    function renderizarRevisaoCadastro(r, preencher = false) {
+      cadastroEl('avisoDadosProfissionais').hidden = !r.trabalhoId || r.aprovado;
+      if (cadastroEdicaoPendente && cadastroRevisao && !preencher) {
+        if (cadastroRevisao.versao !== r.versao) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Os dados mudaram. Atualize a página e revise antes de confirmar.';
+        return;
+      }
+      cadastroRevisao = r;
+      const pronto = ['aguardando_confirmacao', 'concluido'].includes(r.estado) && r.whatsappConectado;
+      cadastroEl('btnConfirmarProfissional').hidden = !r.trabalhoId || r.aprovado;
+      cadastroEl('btnConfirmarProfissional').disabled = !pronto || aprovandoCadastro;
+      cadastroEl('contaEmpresaProfissional').textContent = r.empresa ? `Empresa: ${r.empresa.razaoSocial} · CNPJ: ${r.empresa.cnpj}` : '';
+      cadastroEl('contaRevisaoProfissionalStatus').textContent = r.aprovado ? 'Dados profissionais confirmados.'
+        : !r.trabalhoId ? 'Envie seu certificado A1 para consultar os dados da empresa.'
+        : !r.whatsappConectado ? 'Conecte seu WhatsApp antes de confirmar os dados profissionais.'
+        : !pronto ? 'Estamos consultando seus dados. Você pode acompanhar por aqui.'
+        : r.pesquisaCrm === 'indisponivel' ? 'Confira o nome e informe CRM com UF. A pesquisa automática de CRM está indisponível.'
+        : 'Confira ou corrija os dados do médico antes de confirmar. RQE é opcional.';
+      for (const [campo,id] of [['nome','inputContaNome'],['crm','inputContaCrm'],['rqe','inputContaRqe']]) {
+        const el = cadastroEl(id); if (el.readOnly) el.value = r[campo] || '';
+      }
+      const fontes = cadastroEl('fontesCrmProfissional');fontes.replaceChildren();
+      for (const registro of r.registros || []) {
+        if (!registro.urlOrigem) continue;
+        const item = document.createElement('li'), link = document.createElement('a');
+        link.href = registro.urlOrigem;link.target = '_blank';link.rel = 'noopener noreferrer';
+        link.textContent = `${registro.crm}/${registro.uf}${registro.rqes?.length ? " · RQE: " + registro.rqes.join(", ") : ""} — fonte da pesquisa (confira antes de aprovar)`;
+        item.appendChild(link);fontes.appendChild(item);
+      }
+      for (const [id,label,opcoes,valor,texto] of [
+        ['selectResponsavelProfissional','labelResponsavelProfissional',r.candidatos || [],c=>c.nome,c=>c.nome],
+        ['selectCrmProfissional','labelCrmProfissional',r.registros || [],c=>`${c.crm}/${c.uf}`,c=>`${c.crm}/${c.uf} — ${c.nomeCompleto}`]
+      ]) {
+        const select = cadastroEl(id);select.replaceChildren();select.hidden = opcoes.length < 2 || r.aprovado;cadastroEl(label).hidden = select.hidden;
+        const vazio = document.createElement('option');vazio.value = '';vazio.textContent = 'Selecione o registro correto';select.appendChild(vazio);
+        for (const c of opcoes) { const option = document.createElement('option');option.value = valor(c);option.textContent = texto(c);select.appendChild(option); }
+      }
+    }
+    async function atualizarRevisaoCadastro(preencher = false) {
+      if (!painelDisponivel || !sessaoAtual?.tokenAcesso || consultaCadastroPendente || aprovandoCadastro) return;
+      if (cadastroSessao !== sessaoAtual) { cadastroSessao = sessaoAtual;cadastroRevisao = null;cadastroEdicaoPendente = false; }
+      const sessao = sessaoAtual;consultaCadastroPendente = true;
+      try {
+        const res = await fetch('/api/conta/cadastro', { headers: { Authorization: 'Bearer ' + sessao.tokenAcesso }, cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        const data = await res.json();
+        if (sessao !== sessaoAtual || !painelDisponivel) return;
+        if (!res.ok || !data.ok) throw Error('consulta');
+        if (preencher) cadastroEdicaoPendente = false;
+        renderizarRevisaoCadastro(data.revisao, preencher);
+      } catch { if (sessao === sessaoAtual) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Não foi possível consultar o cadastro. Tente atualizar os dados.'; }
+      finally { consultaCadastroPendente = false; }
+    }
+    cadastroEl('btnRevisarProfissional').addEventListener('click', () => abrirSecaoConta('dados'));
+    cadastroEl('selectResponsavelProfissional').addEventListener('change', e => {
+      if (!e.target.value) return;marcarEdicaoCadastro();cadastroEl('inputContaNome').value = e.target.value;cadastroEl('inputContaCrm').value = '';
+    });
+    cadastroEl('selectCrmProfissional').addEventListener('change', e => {
+      if (!e.target.value) return;marcarEdicaoCadastro();cadastroEl('inputContaCrm').value = e.target.value;const registro=cadastroRevisao.registros.find(r=>`${r.crm}/${r.uf}`===e.target.value);cadastroEl('inputContaRqe').value=registro?.rqe || '';
+    });
+    for (const id of ['inputContaNome','inputContaCrm','inputContaRqe']) cadastroEl(id).addEventListener('input', marcarEdicaoCadastro);
+    cadastroEl('btnConfirmarProfissional').addEventListener('click', async () => {
+      if (!cadastroRevisao?.trabalhoId || aprovandoCadastro || !sessaoAtual?.tokenAcesso) return;
+      const sessao = sessaoAtual, revisao = cadastroRevisao, btn = cadastroEl('btnConfirmarProfissional');
+      aprovandoCadastro = true;btn.disabled = true;cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Confirmando dados profissionais…';
+      try {
+        const res = await fetch('/api/conta/cadastro/aprovar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sessao.tokenAcesso },
+          body: JSON.stringify({ trabalhoId: revisao.trabalhoId, versao: revisao.versao, nome: cadastroEl('inputContaNome').value.trim(), crm: cadastroEl('inputContaCrm').value.trim(), rqe: cadastroEl('inputContaRqe').value.trim() || null }) });
+        const data = await res.json();if (sessao !== sessaoAtual || !painelDisponivel) return;
+        if (!res.ok || !data.ok) { cadastroEl('contaRevisaoProfissionalStatus').textContent = data.detalhe || 'Não foi possível confirmar os dados.';return; }
+        for (const [id,action] of [['inputContaNome','btnActionNome'],['inputContaCrm','btnActionCrm'],['inputContaRqe','btnActionRqe']]) {
+          cadastroEl(id).readOnly = true;cadastroEl(id).classList.remove('is-editing');cadastroEl(action).classList.remove('is-saving');
+          cadastroEl(action).querySelector('.icon-edit')?.classList.remove('hidden');cadastroEl(action).querySelector('.btn-save-inline-text')?.classList.add('hidden');
+        }
+        cadastroEdicaoPendente = false;renderizarRevisaoCadastro(data.revisao, true);
+        await atualizarVisualizacaoConta();
+      } catch { if (sessao === sessaoAtual) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Não foi possível confirmar o salvamento. Atualize para verificar o cadastro.'; }
+      finally { aprovandoCadastro = false;if (sessao === sessaoAtual) btn.disabled = !cadastroRevisao?.whatsappConectado || !['aguardando_confirmacao','concluido'].includes(cadastroRevisao?.estado); }
+    });
+    // FIM REVISAO CADASTRO
+
     async function atualizarVisualizacaoConta() {
       const nome = sessaoAtual?.usuario?.nome || '';
       const tel = sessaoAtual?.usuario?.telefone || telefoneAtual || '';
@@ -2430,6 +2529,7 @@
           }
         } catch {}
       }
+      await atualizarRevisaoCadastro(true);
     }
 
     // INICIO GOOGLE PLANILHAS
@@ -2691,6 +2791,7 @@
           // Entrar em modo de edição
           valorOriginal = input.value;
           input.readOnly = false;
+          if (['nome','crm','rqe'].includes(campo)) marcarEdicaoCadastro();
           input.classList.add('is-editing');
           btn.classList.add('is-saving');
           if (icon) icon.classList.add('hidden');
@@ -2709,6 +2810,14 @@
           if (campo === 'nome' && novoValor.length < 2) {
             if (statusPerfil) statusPerfil.textContent = 'Informe o nome completo antes de salvar.';
             input.focus();
+            return;
+          }
+
+          if (['nome','crm','rqe'].includes(campo) && cadastroRevisao?.trabalhoId && !cadastroRevisao.aprovado) {
+            cadastroEdicaoPendente = true;
+            input.readOnly = true;input.classList.remove('is-editing');btn.classList.remove('is-saving');
+            if (icon) icon.classList.remove('hidden');if (txtSalvar) txtSalvar.classList.add('hidden');
+            if (statusPerfil) statusPerfil.textContent = 'Alteração preparada. Clique em “Confirmar dados profissionais” para gravar.';
             return;
           }
 

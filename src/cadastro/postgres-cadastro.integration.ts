@@ -126,5 +126,42 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    assert.equal(consultas,1);assert.deepEqual(envios,['Ana de Souza é a médica responsável?','Qual é o CRM da médica com UF?','Nome e CRM confirmados.']);
    await confirmador.receber({medicoId:medico,instancia:'assistente',mensagemId:'crm-1',texto:'CRM/RS 37.341'});await confirmador.recuperar();assert.equal(envios.length,3);
   });
+  await t.test('aprovação exige WhatsApp conectado, valida versão e preserva secretária',async()=>{
+   const revisar=(repo as any).revisaoPainel;assert.equal(typeof revisar,'function');
+   await pool!.query('alter table medicos add column rqe text');
+   const medico=randomUUID(),usuario=randomUUID(),certificado=randomUUID();
+   await pool!.query('insert into usuarios values($1,$2,$3,true)',[usuario,'Secretária Emmy','5551999998888']);
+   await pool!.query("insert into medicos(id,nome_completo,usuario_id,atualizado_em) values($1,'Médico 6133',$2,now())",[medico,usuario]);
+   await pool!.query("insert into medico_certificados(id,medico_id,status) values($1,$2,'ativo')",[certificado,medico]);
+   await repo.agendar({medicoId:medico,certificadoId:certificado,documentoTitular:'11222333000181'});
+   const r=(await repo.reservar())!;
+   await repo.aplicar(r,{estado:'aguardando_confirmacao',dados:{empresa:{cnpj:'11222333000181',origem:'Hub',razaoSocial:'Clínica',candidatos:[{nome:'Ana de Souza',origem:'Hub'}]},pendencia:{id:randomUUID(),tipo:'responsavel',candidatos:[],perguntaConfirmada:null}}});
+   await repo.agendarPesquisaProfissional();
+   const pesquisa=(await repo.reservar())!;assert.equal(pesquisa.trabalho.id,r.trabalho.id);
+   assert.ok(pesquisa.trabalho.dados.empresa); // Reutiliza o Hub já consultado.
+   await repo.aplicar(pesquisa,{estado:'aguardando_confirmacao',dados:{...pesquisa.trabalho.dados,pesquisaProfissional:{nome:'Ana de Souza',estado:'nao_encontrado',registros:[],codigo:'CRM_NAO_ENCONTRADO'}}});
+   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null);
+   const revisao=await (repo as any).revisaoPainel(medico);assert.equal(revisao.nome,'Ana de Souza');assert.equal(revisao.aprovado,false);
+   const body={trabalhoId:revisao.trabalhoId,versao:revisao.versao,nome:'Ana de Souza',crm:'37341/RS',rqe:null};
+   await assert.rejects(()=>(repo as any).aprovarPainel(medico,{...body,versao:'antiga'}));
+   await assert.rejects(()=>(repo as any).aprovarPainel(medico,{...body,crm:'sim'}));
+   await assert.rejects(()=>(repo as any).aprovarPainel(mid,body));
+   await assert.rejects(()=>(repo as any).aprovarPainel(medico,body),/Conecte seu WhatsApp/);
+   await pool!.query("insert into whatsapp_instancias values($1,false,'conectado')",[medico]);
+   const aprovado=await (repo as any).aprovarPainel(medico,body);assert.equal(aprovado.aprovado,true);
+   assert.deepEqual((await pool!.query('select nome_completo,crm from medicos where id=$1',[medico])).rows[0],{nome_completo:'Ana de Souza',crm:'37341/RS'});
+   assert.equal((await pool!.query('select nome from usuarios where id=$1',[usuario])).rows[0].nome,'Secretária Emmy');
+   assert.equal(await repo.pendencia(medico),null);
+   const pid=randomUUID();const resposta=(await pool!.query("insert into cadastro_certificado_respostas(trabalho_id,pendencia_id,instancia,mensagem_id,texto) values($1,$2,'assistente','concorrente','Sim') returning id",[revisao.trabalhoId,pid])).rows[0];
+   const segurador=await pool!.connect();let aprovando:Promise<unknown>|undefined;
+   try{
+    await segurador.query('begin');await segurador.query('select id from cadastro_certificado_respostas where id=$1 for update',[resposta.id]);
+    const novaRevisao=await (repo as any).revisaoPainel(medico);
+    aprovando=(repo as any).aprovarPainel(medico,{...body,versao:novaRevisao.versao,rqe:'123'});
+    await new Promise(r=>setTimeout(r,30));await segurador.query("set local lock_timeout='500ms'");
+    await assert.doesNotReject(()=>segurador.query('select id from cadastro_certificado_trabalhos where id=$1 for update',[revisao.trabalhoId]));
+   }finally{await segurador.query('rollback');segurador.release();await aprovando;}
+   await repo.reservarResposta();assert.equal((await pool!.query('select estado from cadastro_certificado_respostas where id=$1',[resposta.id])).rows[0].estado,'processado');
+  });
  }finally{await pool?.end();await admin.query(`drop schema ${schema} cascade`);await admin.end();}
 });
