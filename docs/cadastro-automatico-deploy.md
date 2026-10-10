@@ -8,7 +8,7 @@ Ao salvar o A1, o upload agenda enriquecimento sem esperar consultas externas. O
 
 **Fontes atualmente disponíveis:** Hub como fonte CNPJ principal quando `HUB_DESENVOLVEDOR_TOKEN` está configurado; BrasilAPI como fonte secundária se o Hub estiver indisponível ou o token ausente. Um candidato deve ser confirmado como médico responsável. O nome do secretário não é promovido ao do médico nem sobrescrito pelo nome encontrado. Para e-CPF, a consulta de CPF já existente do Hub pode fornecer um candidato com o mesmo token configurado.
 
-**Limitações externas:** o acesso/saldo do token ao CNPJ do Hub não foi testado com consulta real. Pesquisa de CRM automática não habilitada: página pública do CFM exige reCAPTCHA. Por enquanto, depois de identificar o médico, o Noto pede CRM com UF como dado declarado, sem RQE e sem retomar o roteiro antigo. Consulte [fontes](cadastro-automatico-fontes.md).
+**Pesquisa profissional e revisão:** a RPA usa o formulário público do CFM por nome completo para obter CRM/UF e RQE; veja [funcionamento e limitações](pesquisa-crm-cfm.md). Os resultados exigem confirmação do responsável. Um aviso laranja acima do WhatsApp abre “Dados da Conta”, onde o usuário pode corrigir e confirmar nome, CRM/UF e RQE opcional. O onboarding continua exigindo A1 e conexão inicial do WhatsApp antes do painel. A confirmação é recusada pelo backend enquanto o WhatsApp estiver desconectado. Sem fonte ou resultado, o CRM pode ser preenchido manualmente. O cadastro profissional só é salvo após confirmação; a aprovação não dispensa os requisitos fiscais.
 
 O Hub pode levar até 300 segundos; a reserva do trabalho dura seis minutos. Isso ocorre depois do upload, sem esperar a consulta na requisição de envio do A1. A chamada padrão pode consumir um crédito na base ou dois na Receita; não forçamos a Receita nem consultamos inscrições estaduais adicionais. Configurar o token no ambiente do backend, sem incluí-lo no código ou em URLs de logs. Trabalhos que já possuem empresa válida reutilizam seus dados, sem forçar nova consulta paga após esse deploy.
 
@@ -26,6 +26,7 @@ Não reiniciar turnos antigos por SQL: eles pertencem ao fluxo suspenso. Dados j
 
 ## Diagnóstico
 
+- Logs `[Cadastro automático]`: início do processamento, resultado previsto, quantidade de candidatos, estado da pesquisa e código técnico, sem dados pessoais. A aprovação pelo painel também registra os IDs do trabalho e do médico.
 - `cadastro_certificado_trabalhos`: estado, tentativas, próxima tentativa e diagnóstico técnico. Empresa/candidatos estão em `dados`, restritos ao backend.
 - `cadastro_certificado_avisos`: pergunta/conclusão, estado de envio e diagnóstico sanitizado.
 - `cadastro_certificado_respostas`: mensagens recebidas e processamento idempotente.

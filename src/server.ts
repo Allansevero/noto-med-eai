@@ -6,6 +6,8 @@ import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
+import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
+import { CfmConsultaRegistro } from './cadastro/pesquisa-cfm.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
 import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
@@ -148,12 +150,12 @@ export function criarAppExpress() {
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
-  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), new PesquisaRegistroIndisponivel(),
+  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), config.cfmPesquisaAtiva?new CfmConsultaRegistro(config.chromiumExecutablePath || '/usr/bin/chromium-browser'):new PesquisaRegistroIndisponivel(),
     async (medicoId, certificadoId) => {
       const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
-    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined);
+    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, config.cfmPesquisaAtiva);
   const confirmadorCadastro = new ConfirmadorCadastro(cadastroCertificado.repo,
     new NvidiaDecisorCadastro(config.nvidiaApiKey || '', config.nvidiaModel), ia.geradorMensagem,
     evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient,
@@ -224,6 +226,10 @@ export function criarAppExpress() {
     });
   }
 
+  app.use('/api/conta/cadastro', criarRouterCadastroPainel({
+    pool,repo:cadastroCertificado.repo,
+    autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; }
+  }));
   app.use('/api/whatsapp', criarRouterStatusWhatsapp({
     pool,
     autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },

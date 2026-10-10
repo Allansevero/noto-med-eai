@@ -3,12 +3,51 @@ import type pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import { criarPendencia, type DadosCadastro, type PerfilCadastro, type ResultadoEnriquecimento } from './enriquecer-cadastro.js';
+import { aprovacaoPainelSchema, ErroRevisaoCadastro, montarRevisao } from './revisao-painel.js';
+const versaoRevisaoSql="md5(jsonb_build_array(t.dados,t.snapshot,t.estado,t.atualizado_em,m.nome_completo,m.crm,m.rqe)::text)";
 export interface TrabalhoCadastro { id:string; medico_id:string; certificado_id:string; documento_titular:string|null; estado:string; dados:DadosCadastro; snapshot:{nome:string;crm:string|null}; tentativas:number }
 export interface ReservaCadastro { trabalho:TrabalhoCadastro; token:string; perfil:PerfilCadastro }
 export interface AvisoCadastro { id:string; trabalho_id:string; chave:string; pendencia_id:string|null; tipo:'pergunta'|'esclarecer'|'concluido'; texto:string|null; mensagem_recebida:string|null; estado:string; reserva:string; tentativas:number; trabalho:TrabalhoCadastro; telefone:string }
 export interface RespostaCadastro { id:string; trabalho_id:string; pendencia_id:string; texto:string; reserva:string; tentativas:number; trabalho:TrabalhoCadastro }
 export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
+ async agendarPesquisaProfissional():Promise<void>{
+  await this.pool.query(`update cadastro_certificado_trabalhos set estado='pendente',proxima_tentativa_em=now(),reserva=null,dados=dados-'pesquisaProfissional'
+   where estado='aguardando_confirmacao' and (not (dados ? 'pesquisaProfissional') or dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA')
+   and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`);
+ }
+ async revisaoPainel(medicoId:string){
+  const r=(await this.pool.query(`select m.nome_completo as nome,m.crm,m.rqe,to_jsonb(t) as trabalho,${versaoRevisaoSql} as versao
+   ,exists(select 1 from whatsapp_instancias w where w.medico_id=m.id and w.oficial=false and w.status='conectado') as whatsapp_conectado
+   from medicos m join usuarios u on u.id=m.usuario_id and u.ativo=true
+   left join lateral(select id from medico_certificados where medico_id=m.id and status='ativo' order by criado_em desc,id desc limit 1) cert on true
+   left join cadastro_certificado_trabalhos t on t.certificado_id=cert.id and t.medico_id=m.id where m.id=$1`,[medicoId])).rows[0];
+  if(!r)throw new ErroRevisaoCadastro(404,'Cadastro não encontrado.');
+  return {...montarRevisao(r.trabalho?{...r.trabalho,versao:r.versao}:null,r),whatsappConectado:r.whatsapp_conectado};
+ }
+ async aprovarPainel(medicoId:string,entrada:unknown){
+  const e=aprovacaoPainelSchema.parse(entrada);
+  await this.transacao(async c=>{
+   const t=(await c.query('select * from cadastro_certificado_trabalhos where id=$1 and medico_id=$2 for update',[e.trabalhoId,medicoId])).rows[0] as TrabalhoCadastro|undefined;
+   if(!t)throw new ErroRevisaoCadastro(409,'O cadastro mudou. Atualize os dados antes de confirmar.');
+   const m=(await c.query('select nome_completo,crm,rqe from medicos where id=$1 for update',[medicoId])).rows[0];
+   const cert=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[medicoId])).rows[0];
+   const ativo=(await c.query('select u.ativo from usuarios u join medicos m on m.usuario_id=u.id where m.id=$1',[medicoId])).rows[0]?.ativo;
+   if(!ativo||cert?.id!==t.certificado_id||!['aguardando_confirmacao','concluido'].includes(t.estado))throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de confirmar.');
+   const anterior=t.dados.aprovacaoPainel;
+   const conectado=(await c.query("select 1 from whatsapp_instancias where medico_id=$1 and oficial=false and status='conectado' for share",[medicoId])).rowCount;
+   if(!conectado)throw new ErroRevisaoCadastro(409,'Conecte seu WhatsApp antes de confirmar os dados profissionais.');
+   if(t.estado==='concluido'&&anterior?.nome===e.nome&&anterior.crm===e.crm&&anterior.rqe===e.rqe&&m.nome_completo===e.nome&&m.crm===e.crm&&m.rqe===e.rqe)return;
+   const versao=(await c.query(`select ${versaoRevisaoSql} as versao from cadastro_certificado_trabalhos t join medicos m on m.id=t.medico_id where t.id=$1`,[t.id])).rows[0].versao;
+   if(versao!==e.versao)throw new ErroRevisaoCadastro(409,'Os dados foram atualizados. Revise novamente antes de confirmar.');
+   await c.query('update medicos set nome_completo=$2,crm=$3,rqe=$4,atualizado_em=now() where id=$1',[medicoId,e.nome,e.crm,e.rqe]);
+   const dados:DadosCadastro={...t.dados,nomeConfirmado:e.nome,crmOrigem:'Confirmado pelo usuário no painel',aprovacaoPainel:{nome:e.nome,crm:e.crm!,rqe:e.rqe,confirmadoEm:new Date().toISOString()}};delete dados.pendencia;
+   await c.query("update cadastro_certificado_trabalhos set estado='concluido',dados=$2,snapshot=$3,reserva=null,reservado_em=null,diagnostico=null,atualizado_em=now() where id=$1",[t.id,JSON.stringify(dados),JSON.stringify({nome:e.nome,crm:e.crm})]);
+   await c.query("update cadastro_certificado_avisos set estado='falha',diagnostico='APROVADO_NO_PAINEL',reserva=null where trabalho_id=$1 and estado in ('pendente','preparado')",[t.id]);
+   console.info('[Cadastro automático]',{etapa:'aprovado_no_painel',trabalhoId:t.id,medicoId});
+  });
+  return this.revisaoPainel(medicoId);
+ }
  async transacao<T>(fn:(c:pg.PoolClient)=>Promise<T>):Promise<T>{const c=await this.pool.connect();try{await c.query('begin');const r=await fn(c);await c.query('commit');return r;}catch(e){await c.query('rollback');throw e;}finally{c.release();}}
  async agendar(e:{medicoId:string;certificadoId:string;documentoTitular?:string}):Promise<void>{
   await this.pool.query(`insert into cadastro_certificado_trabalhos(medico_id,certificado_id,documento_titular,snapshot)
@@ -114,6 +153,8 @@ export class PostgresCadastro {
   await this.pool.query(`insert into cadastro_certificado_respostas(trabalho_id,pendencia_id,instancia,mensagem_id,texto) values($1,$2,$3,$4,$5) on conflict do nothing`,[t.id,t.dados.pendencia.id,e.instancia,e.mensagemId,e.texto]);return true;
  }
  async reservarResposta():Promise<RespostaCadastro|null>{
+  // Limpeza em statement separado: não segurar trabalho ao esperar lock da resposta.
+  await this.pool.query("update cadastro_certificado_respostas r set estado='processado',reserva=null where r.estado='pendente' and exists(select 1 from cadastro_certificado_trabalhos t where t.id=r.trabalho_id and t.estado in ('concluido','obsoleto'))");
   await this.invalidarObsoletos();return this.transacao(async c=>{
    const r=(await c.query(`select a.*,to_jsonb(t) trabalho from cadastro_certificado_respostas a join cadastro_certificado_trabalhos t on t.id=a.trabalho_id
     where a.estado in ('pendente','analisando') and a.proxima_tentativa_em<=now() and (a.reserva is null or a.reservado_em<now()-interval '3 minutes')

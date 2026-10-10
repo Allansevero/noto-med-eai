@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import type { ConsultaEmpresa, ConsultaRegistro, EmpresaConsultada } from './consultas.js';
+import type { DadosMedicoOnline } from '../medico/io/buscar-medico-online.js';
 export interface CandidatoCadastro { id:string; nome:string; crm?:string; uf?:string; origem?:string }
 export interface PendenciaCadastro { id:string; tipo:'responsavel'|'nome'|'crm'; candidatos:CandidatoCadastro[]; perguntaConfirmada:string|null; escolhasApresentadas?:Record<string,string> }
-export interface DadosCadastro { empresa?:EmpresaConsultada; nomeConfirmado?:string; pendencia?:PendenciaCadastro; cadastroIndisponivel?:boolean; crmOrigem?:string }
+export interface DadosCadastro { empresa?:EmpresaConsultada; nomeConfirmado?:string; pendencia?:PendenciaCadastro; cadastroIndisponivel?:boolean; crmOrigem?:string; pesquisaProfissional?:{nome:string;estado:'consultado'|'indisponivel'|'nao_encontrado';registros:DadosMedicoOnline[];codigo?:string}; aprovacaoPainel?:{nome:string;crm:string;rqe:string|null;confirmadoEm:string} }
 export interface PerfilCadastro { nome:string; crm:string|null; nomeConfirmado:boolean }
 export interface ResultadoEnriquecimento { estado:'aguardando_confirmacao'|'concluido'|'retentar'; dados:DadosCadastro; nome?:string; crm?:string; codigo?:string }
 export function criarPendencia(tipo:PendenciaCadastro['tipo'],candidatos:CandidatoCadastro[]=[]):PendenciaCadastro{return {id:randomUUID(),tipo,candidatos,perguntaConfirmada:null};}
@@ -24,18 +25,28 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
    if(!pessoa || !nomeProfissionalValido(pessoa.nome))return {estado:'retentar',dados,codigo:'CPF_CONSULTA_INDISPONIVEL'};
    candidatos=[{id:randomUUID(),nome:pessoa.nome,origem:'Hub do Desenvolvedor / CPF do titular'}];
   }
+  if(candidatos.length===1 && dados.pesquisaProfissional?.nome!==candidatos[0].nome){
+   const pesquisado=await registro.buscar(candidatos[0].nome);
+   dados.pesquisaProfissional={nome:candidatos[0].nome,estado:pesquisado.estado,registros:pesquisado.estado==='consultado'?pesquisado.dados:[],...(pesquisado.estado!=='consultado'?{codigo:pesquisado.codigo}:{})};
+  }
   if(!candidatos.length && nomeProfissionalValido(entrada.perfil.nome))candidatos=[{id:randomUUID(),nome:entrada.perfil.nome,origem:'Cadastro existente, confirmação pendente'}];
-  dados.pendencia=criarPendencia(candidatos.length?'responsavel':'nome',candidatos);
+  const anterior=entrada.dados.pendencia;
+  dados.pendencia=anterior?.tipo==='responsavel'&&anterior.candidatos.length===candidatos.length&&anterior.candidatos.every((c,i)=>normal(c.nome)===normal(candidatos[i].nome))
+   ?anterior:criarPendencia(candidatos.length?'responsavel':'nome',candidatos);
   return {estado:'aguardando_confirmacao',dados};
  }
  dados.nomeConfirmado=nome;
  if(normalizarCrm(entrada.perfil.crm))return {estado:'concluido',dados};
- const r=await registro.buscar(nome);
+ const pesquisa=dados.pesquisaProfissional;
+ const r=pesquisa?.nome===nome && (pesquisa.estado!=='indisponivel' || pesquisa.codigo==='CRM_FONTE_NAO_CONFIGURADA')
+  ? pesquisa.estado==='consultado'?{estado:'consultado' as const,dados:pesquisa.registros}:{estado:pesquisa.estado,codigo:pesquisa.codigo||'CRM_CONSULTA_INDISPONIVEL'}
+  :await registro.buscar(nome);
+ dados.pesquisaProfissional={nome,estado:r.estado,registros:r.estado==='consultado'?r.dados:[],...(r.estado!=='consultado'?{codigo:r.codigo}:{})};
  if(r.estado==='consultado'){
   const validos=r.dados.filter(c=>normal(c.nomeCompleto)===normal(nome)&&normalizarCrm(`${c.crm}/${c.uf}`));
   const unicos=[...new Map(validos.map(c=>[normalizarCrm(`${c.crm}/${c.uf}`)!,c])).values()];
-  if(unicos.length===1 && r.dados.length===1){dados.crmOrigem='Consulta profissional oficial';return {estado:'concluido',dados,crm:normalizarCrm(`${unicos[0].crm}/${unicos[0].uf}`)!};}
-  candidatos=unicos.map(c=>({id:randomUUID(),nome:c.nomeCompleto,crm:c.crm,uf:c.uf,origem:'Consulta profissional oficial'}));
+  if(unicos.length===1 && r.dados.length===1 && unicos[0].verificado!==false){dados.crmOrigem='Consulta profissional oficial';return {estado:'concluido',dados,crm:normalizarCrm(`${unicos[0].crm}/${unicos[0].uf}`)!};}
+  candidatos=unicos.map(c=>({id:randomUUID(),nome:c.nomeCompleto,crm:c.crm,uf:c.uf,origem:c.origem??'Consulta profissional oficial'}));
  }else if(r.estado==='indisponivel' && r.codigo!=='CRM_FONTE_NAO_CONFIGURADA')return {estado:'retentar',dados,codigo:r.codigo};
  dados.pendencia=criarPendencia('crm',candidatos);
  return {estado:'aguardando_confirmacao',dados};

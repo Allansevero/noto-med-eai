@@ -8,8 +8,12 @@ export interface DadosMedicoOnline {
   crm: string;
   uf: string;
   rqe?: string | null;
+  rqes?: string[];
   especialidade?: string | null;
   situacao?: string;
+  origem?: string;
+  urlOrigem?: string;
+  verificado?: boolean;
 }
 
 export interface BuscarMedicoOnlineProvider {
