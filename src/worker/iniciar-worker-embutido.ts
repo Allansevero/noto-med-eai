@@ -1,5 +1,6 @@
+import { criarEnviadorConversasNoto } from '../whatsapp/enviador-conversas-noto.js';
 import { PostgresComunicadorNoto } from '../io/postgres/postgres-comunicador-noto.js';
-import { GroqGeradorMensagemNoto } from '../io/groq/groq-gerador-mensagem-noto.js';
+import { criarServicosIa } from '../ia/criar-servicos-ia.js';
 import { iniciarAvisosPendenciasProfissionais } from './avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados-profissionais-service.js';
 /**
@@ -9,7 +10,6 @@ import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados
  */
 
 import { PostgresInvestigacaoRepositorio } from '../io/postgres/postgres-investigacao-repositorio.js';
-import { GroqDecisorFiscal } from '../io/groq/groq-decisor-fiscal.js';
 
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
@@ -49,16 +49,32 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
-    config.evolutionOfficialInstanceName
+    config.evolutionOfficialInstanceName, config.evolutionOfficialInstanceName
   );
 
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, new GroqGeradorMensagemNoto(config.groqApiKey, config.groqModel));
+  const evolutionAssistantClient=new EvolutionApiClient(config.evolutionAssistantUrl,config.evolutionAssistantApiKey,config.evolutionAssistantInstanceName,config.evolutionOfficialInstanceName);
+  const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
+  const ia = criarServicosIa(config);
+  const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
   const notificadorAlertas: NotificadorAlertas = {
     async notificarMedicoWhatsApp(params) {
-      if(!params.medicoId || !params.solicitacaoId)return;
-      const envio=await comunicadorNoto.enviar({medicoId:params.medicoId,solicitacaoId:params.solicitacaoId,
-        chave:`falha:${params.solicitacaoId}`,evento:'falha_emissao',dados:{diagnostico:params.motivoErro}});
-      if(!envio.sucesso)console.warn('[NotoConversa] Aviso de emissão aguardando comunicação.',{solicitacaoId:params.solicitacaoId});
+      if (!params.medicoId || !params.solicitacaoId) {
+        throw new Error('Identificadores do médico ou da solicitação ausentes para envio de notificação.');
+      }
+      const envio = await comunicadorNoto.enviar({
+        medicoId: params.medicoId,
+        solicitacaoId: params.solicitacaoId,
+        chave: `falha:${params.solicitacaoId}`,
+        evento: 'falha_emissao',
+        dados: {
+          diagnostico: params.motivoErro,
+          ...(params.pendenciasFiscais ? { pendencias: params.pendenciasFiscais } : {})
+        }
+      });
+      if (!envio.sucesso) {
+        console.warn('[NotoConversa] Falha no envio do aviso de emissão ao médico.', { solicitacaoId: params.solicitacaoId });
+        throw new Error(`Falha ao enviar aviso de emissão pelo WhatsApp ao médico (solicitação ${params.solicitacaoId}).`);
+      }
     },
     async notificarDesenvolvedorEmail(params) {
       if (config.resendApiKey && config.devEmailAlerta) {
@@ -67,7 +83,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     }
   };
 
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo);
   const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
   let ativo = true;
 
@@ -89,7 +105,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
           notificadorAlertas,
           agenteFiscal: config.agenteFiscalAtivo ? {
             repositorio: new PostgresInvestigacaoRepositorio(pool),
-            decisor: new GroqDecisorFiscal(config.groqApiKey, config.groqModel)
+            decisor: ia.decisorFiscal
           } : undefined
         });
         console.log(`[WorkerEmbutido] Solicitação ${item.id} finalizada com status: ${res.status}`);

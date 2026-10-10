@@ -33,7 +33,7 @@ class Repo implements InvestigacaoRepositorio {
 }
 function montar(resultados: ResultadoEmissaoDps[]) {
   const repo = new Repo();
-  let chamadas = 0, avisos = 0, entregas = 0, decisoes = 0;
+  let chamadas = 0, avisos = 0, avisosDev = 0, entregas = 0, decisoes = 0;
   const deps = {
     agenteFiscal: { repositorio: repo, decisor: { async decidir(contexto: any) {
       decisoes++;
@@ -49,15 +49,18 @@ function montar(resultados: ResultadoEmissaoDps[]) {
       async marcarFalhaDefinitiva() { assert.fail('Não deve liberar consultas para nova emissão'); }
     },
     enviarPdfDanfse: { async enviarPdf() { entregas++; return { sucesso: true }; } },
-    notificadorAlertas: { async notificarMedicoWhatsApp() { avisos++; }, async notificarDesenvolvedorEmail() {} }
+    notificadorAlertas: {
+      async notificarMedicoWhatsApp() { avisos++; },
+      async notificarDesenvolvedorEmail() { avisosDev++; }
+    }
   };
-  return { repo, deps, contadores: () => ({ chamadas, avisos, entregas, decisoes }) };
+  return { repo, deps, contadores: () => ({ chamadas, avisos, avisosDev, entregas, decisoes }) };
 }
 test('falha antes do envio → investiga → repete uma vez → verifica banco → resolve e entrega', async () => {
   const c = montar([{ sucesso: false, erro: 'DNS', falhaAntesDoEnvio: 'EAI_AGAIN' }, sucesso]);
   assert.equal((await processarItemFila(item, c.deps)).status, 'emitida');
   assert.equal(c.repo.estado, 'resolvido');
-  assert.deepEqual(c.contadores(), { chamadas: 2, avisos: 0, entregas: 1, decisoes: 1 });
+  assert.deepEqual(c.contadores(), { chamadas: 2, avisos: 0, avisosDev: 0, entregas: 1, decisoes: 1 });
   assert.ok(c.repo.eventos.some(e => e.tipo === 'verificacao'));
 });
 test('sucesso normal não chama agente nem abre caso', async () => {
@@ -72,7 +75,7 @@ for (const codigo of ['E0160', 'E0014', 'E0676', 'E0710', undefined]) {
     await processarItemFila(item, c.deps);
     assert.equal(c.repo.estado, 'necessita_intervencao');
     assert.equal(c.contadores().chamadas, 1);
-    assert.equal(c.contadores().avisos, 1);
+    assert.equal(c.contadores().avisos + c.contadores().avisosDev, 1);
   });
 }
 test('segunda falha encerra sem loop', async () => {
@@ -166,3 +169,35 @@ test('proposta de correção para rejeição sem regra é bloqueada', async () =
   });
   assert.equal(c.repo.estado, 'necessita_intervencao');
 });
+
+test('falha na comunicação com médico registra resultado falhou na auditoria e não enviada', async () => {
+  const c = montar([{ sucesso: false, erro: 'Enquadramento cadastral diverge', codigoErroSefin: 'E0160' }]);
+  c.deps.notificadorAlertas.notificarMedicoWhatsApp = async () => {
+    throw new Error('Falha no WhatsApp');
+  };
+  await processarItemFila(item, c.deps);
+  assert.equal(c.repo.estado, 'necessita_intervencao');
+  const eventoNotificacao = c.repo.eventos.find(e => e.tipo === 'notificacao');
+  assert.ok(eventoNotificacao, 'Deve registrar evento de notificação');
+  assert.equal(eventoNotificacao.resultado, 'falhou');
+  assert.equal(c.repo.eventos.some(e => e.tipo === 'notificacao' && e.resultado === 'enviada'), false);
+});
+
+test('erro de FORA_DA_VIGENCIA escala diretamente para desenvolvedor sem alertar o médico via WhatsApp', async () => {
+  const falhaVigencia: ResultadoEmissaoDps = {
+    sucesso: false,
+    erro: 'Há parâmetros fiscais pendentes de revisão antes do envio.',
+    pendenciasFiscais: [
+      { campo: 'vigencia', codigo: 'FORA_DA_VIGENCIA', mensagem: 'Revisar os parâmetros aplicáveis à competência da nota.' }
+    ]
+  };
+  const c = montar([falhaVigencia]);
+  await processarItemFila(item, c.deps);
+  assert.equal(c.repo.estado, 'necessita_intervencao');
+  assert.equal(c.contadores().avisos, 0, 'Não deve incomodar o médico com falha de vigência do sistema');
+  assert.equal(c.contadores().avisosDev, 1, 'Deve alertar os desenvolvedores por e-mail');
+  const escalonamento = c.repo.eventos.find(e => e.tipo === 'escalonamento');
+  assert.ok(escalonamento);
+  assert.equal(escalonamento.responsavel, 'desenvolvedor');
+});
+

@@ -1,5 +1,5 @@
 /**
- * Caso de uso: Consolidação inteligente de agendamento usando IA (Groq) com fallback determinístico.
+ * Caso de uso: Consolidação inteligente de agendamento usando IA com fallback determinístico.
  * Tenta enriquecer a extração com linguagem natural para datas relativas e nomes,
  * recorrendo com segurança a regex caso a IA demore ou não esteja disponível.
  */

@@ -9,6 +9,11 @@ import {extrairPacientesPlanilha} from './extrair-pacientes.js';
 import {importarPacientesPlanilha} from './importar-pacientes.js';
 interface Deps {comunicador?:ComunicadorNoto;pool:pg.Pool;google?:GooglePlanilhas;mapeador?:MapeadorColunasPlanilha;autenticar:(token:string)=>Promise<string|null>;encryptionKey:string;pepper:string;redirectUri:string;googleApiKey?:string;googleAppId?:string;}
 class ErroPublico extends Error{constructor(public readonly status:number,mensagem:string){super(mensagem);}}
+class ErroCallbackGoogle extends Error{constructor(public readonly codigo:string){super(codigo);}}
+function codigoBancoConhecido(erro:unknown):string|undefined {
+ const codigo=(erro as {code?:unknown}|null)?.code;
+ return typeof codigo==='string'&&['42P01','42703','42883','42501','42P08','42804','22P02','22023','23502','23503','23505','40001','40P01','53300','57014','08006','XX000'].includes(codigo)?codigo:undefined;
+}
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const cookieNome='noto_google_estado';
 export function identificarPlanilha(valor:unknown):string {
@@ -27,9 +32,8 @@ export function criarRouterGooglePlanilhas(deps:Deps){
    const mensagem=e instanceof Error?e.message:'';
    const semCabecalho=mensagem==='Não foi possível identificar um cabeçalho confiável nas primeiras dez linhas.';
    const groq=mensagem.match(/^Não foi possível mapear colunas \(Groq HTTP (\d{3})\)\.$/);
-   const codigoBruto=(e as {code?:unknown}|null)?.code;
    // Only known SQLSTATE identifiers; never log SQL, provider bodies, headers or error.message.
-   const codigoBanco=typeof codigoBruto==='string'&&['42P01','42703','42883','42501','42P08','42804','22P02','22023','23502','23503','23505','40001','40P01','53300','57014','08006','XX000'].includes(codigoBruto)?codigoBruto:undefined;
+   const codigoBanco=codigoBancoConhecido(e);
    const status=e instanceof ErroPublico?e.status:semCabecalho?422:502;
    const rota=['/status','/conectar','/picker-token','/abas','/previa','/importar','/conexao'].includes(q.path)?q.path:'outra';
    const diagnostico={rota,etapa:r.locals.planilhaEtapa as string,
@@ -48,22 +52,37 @@ export function criarRouterGooglePlanilhas(deps:Deps){
  const limparCookie=(r:any)=>r.clearCookie(cookieNome,{path:base+'/callback',httpOnly:true,sameSite:'lax',secure:deps.redirectUri.startsWith('https://')});
  // Callback público, ligado à sessão que iniciou OAuth por cookie+estado consumível.
  router.get('/callback',async(q,r)=>{
-  let resultado='erro';
+  let resultado='erro',etapa='validar_retorno';const inicio=Date.now();
   try{
    const estado=typeof q.query['state']==='string'?q.query['state']:'';
    const cookie=(q.header('Cookie')??'').split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieNome+'='))?.slice(cookieNome.length+1)??'';
-   if(!deps.google||!estado||estado.length>200||!cookie||!timingSafeEqual(Buffer.from(hash(estado)),Buffer.from(hash(cookie))))throw Error('estado');
-   const codigo=typeof q.query['code']==='string'?q.query['code']:'';if(!codigo||codigo.length>3000||q.query['error'])throw Error('codigo');
+   if(!deps.google)throw new ErroCallbackGoogle('INTEGRACAO_INDISPONIVEL');
+   if(!estado||estado.length>200)throw new ErroCallbackGoogle('ESTADO_INVALIDO');
+   if(!cookie)throw new ErroCallbackGoogle('COOKIE_AUSENTE');
+   if(!timingSafeEqual(Buffer.from(hash(estado)),Buffer.from(hash(cookie))))throw new ErroCallbackGoogle('ESTADO_INVALIDO');
+   if(q.query['error'])throw new ErroCallbackGoogle(q.query['error']==='access_denied'?'AUTORIZACAO_RECUSADA':'AUTORIZACAO_FALHOU');
+   const codigo=typeof q.query['code']==='string'?q.query['code']:'';if(!codigo||codigo.length>3000)throw new ErroCallbackGoogle('CODIGO_AUSENTE_OU_INVALIDO');
+   etapa='consumir_estado';
    const o=(await deps.pool.query(`delete from google_planilhas_oauth where estado_hash=$1 and expira_em>now()
     returning medico_id,versao,pgp_sym_decrypt(verificador,$2) as verificador`,[hash(estado),deps.encryptionKey])).rows[0];
-   if(!o)throw Error('expirado');
+   if(!o)throw new ErroCallbackGoogle('ESTADO_EXPIRADO_OU_UTILIZADO');
+   etapa='trocar_codigo';
    const tokens=await deps.google.trocarCodigo(codigo,o.verificador);
-   if(!tokens.refreshToken)throw Error('sem_renovacao');
+   etapa='validar_tokens';
+   if(!tokens.refreshToken)throw new ErroCallbackGoogle('REFRESH_TOKEN_AUSENTE');
+   etapa='salvar_tokens';
    const salvo=await deps.pool.query(`update google_planilhas_conexoes set access_token=pgp_sym_encrypt($3,$5),
     refresh_token=pgp_sym_encrypt($4,$5),expira_em=$6,atualizado_em=now() where medico_id=$1 and versao=$2 returning medico_id`,[o.medico_id,o.versao,tokens.accessToken,tokens.refreshToken,deps.encryptionKey,new Date(tokens.expiraEm)]);
    // Token de callback superado é descartado; revogar aqui poderia invalidar uma conexão mais recente do mesmo grant.
-   if(!salvo.rows.length)throw Error('desconectado');resultado='conectado';
-  }catch{console.warn('[Google Planilhas]',{etapa:'oauth',resultado:'falha'});}
+   if(!salvo.rows.length)throw new ErroCallbackGoogle('CONEXAO_SUPERADA');resultado='conectado';
+   console.info('[Google Planilhas]',{rota:'/callback',etapa:'oauth',resultado:'concluido',duracaoMs:Date.now()-inicio});
+  }catch(e){
+   const codigoBanco=codigoBancoConhecido(e);
+   console.warn('[Google Planilhas]',{rota:'/callback',etapa,resultado:'falha',duracaoMs:Date.now()-inicio,
+    codigo:e instanceof ErroCallbackGoogle?e.codigo:codigoBanco?'BANCO_ERRO':'ERRO_INTERNO',
+    ...(codigoBanco?{codigoBanco}:{}),
+    ...(e instanceof ErroGooglePlanilhas?{etapa:e.etapa,codigo:e.codigo,statusHttp:e.statusHttp}:{})});
+  }
   limparCookie(r);r.redirect('/?google_planilhas='+resultado);
  });
  router.use(proteger(async(q,r,n)=>{

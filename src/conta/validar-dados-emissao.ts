@@ -11,7 +11,10 @@ export function nomeProfissionalValido(valor: unknown): boolean {
 }
 export function normalizarCrm(valor: unknown): string | null {
   if (typeof valor !== 'string') return null;
-  const resultado = limpar(valor).toUpperCase().replace(/^CRM\s*:?\s*/, '').match(/^(\d{1,12})(?:\s*[\/-]?\s*([A-Z]{2}))?$/);
+  const texto = limpar(valor).toUpperCase();
+  const invertido = texto.match(/^(?:CRM\s*[/: -]?\s*)?([A-Z]{2})\s*[:/ -]?\s*(\d{1,12})$/);
+  if (invertido) return ufs.has(invertido[1]) && /[1-9]/.test(invertido[2]) ? `${invertido[2]}/${invertido[1]}` : null;
+  const resultado = texto.replace(/^CRM\s*:?\s*/, '').match(/^(\d{1,12})(?:\s*[\/-]?\s*([A-Z]{2}))?$/);
   if (!resultado || !/[1-9]/.test(resultado[1]) || (resultado[2] && !ufs.has(resultado[2]))) return null;
   return resultado[1] + (resultado[2] ? `/${resultado[2]}` : '');
 }

@@ -21,8 +21,8 @@ test('resolve serviço, local e competência e preserva percentual zero confirma
   if (!r.ok) return;
   assert.equal(r.parametros.percentualTotTribSN, 0);
   assert.equal(r.parametros.municipioPrestacao, '3304557');
-  assert.equal(r.competencia, '2026-10-01');
-  assert.equal(r.origem.competencia, 'consulta_vinculada');
+  assert.equal(r.competencia, '2026-10-04');
+  assert.equal(r.origem.competencia, 'data_emissao');
 });
 test('não escolhe a primeira configuração quando existem duas', () => {
   const e = evidencias(); e.servicos.push(e.servicos[0]);
@@ -30,18 +30,18 @@ test('não escolhe a primeira configuração quando existem duas', () => {
   assert.equal(r.ok, false);
   if (!r.ok) assert.ok(r.pendencias.some(p => p.codigo === 'SERVICO_AMBIGUO'));
 });
-for (const alteracao of ['sem_politica', 'sem_confirmacao', 'perfil_alterado', 'fora_vigencia', 'competencia_ambigua', 'classificacao_divergente', 'reforma', 'valor_invalido']) {
+for (const alteracao of ['sem_politica', 'sem_confirmacao', 'perfil_alterado', 'fora_vigencia', 'competencia_invalida', 'classificacao_divergente', 'reforma', 'valor_invalido']) {
   test(`bloqueia ${alteracao} antes de criar DPS`, () => {
     const e = evidencias(), i = { ...item, cclassTrib: '' };
     if (alteracao === 'sem_politica') e.servicos[0].politica = null;
     if (alteracao === 'sem_confirmacao') e.perfil.confirmado = false;
     if (alteracao === 'perfil_alterado') e.perfil = { ...e.perfil, referencia: 'novo-xml' };
-    if (alteracao === 'fora_vigencia') e.datasConsultas = ['2026-09-30'];
-    if (alteracao === 'competencia_ambigua') e.datasConsultas.push('2026-10-02');
+    if (alteracao === 'fora_vigencia') e.servicos[0].politica!.parametros.vigenciaInicio = '2026-10-05';
+    const hoje = alteracao === 'competencia_invalida' ? '2026-02-30' : '2026-10-04';
     if (alteracao === 'classificacao_divergente') i.ctribNac = '080201';
     if (alteracao === 'reforma') i.cclassTrib = '000001';
     if (alteracao === 'valor_invalido') i.valorServicoCentavos = -1;
-    assert.equal(prepararEmissao(i, e, '2026-10-04').ok, false);
+    assert.equal(prepararEmissao(i, e, hoje).ok, false);
   });
 }
 test('MEI não exige percentual ou CST e não herda defaults do Simples', () => {
@@ -58,4 +58,16 @@ test('retido, não optante e CST com cálculo adicional não são substituídos 
   for (const mudanca of [{ tpRetISSQN: 2 }, { opcaoSimplesNacional: 'nao_optante' }, { cstPisCofins: '01' }, { percentualTotTribSN: undefined }, { ambiente: 'homologacao', vigenciaInicio: '2026-02-30' }]) {
     assert.equal(parametrosEmissaoSchema.safeParse({ ...p, ...mudanca }).success, false);
   }
+});
+
+test('consultas antigas e em várias datas não definem competência nem vigência da emissão', () => {
+  const e = evidencias();
+  e.datasConsultas = ['2026-01-05', '2026-02-10'];
+  e.competenciaInformada = '2026-01-05';
+  const descricao = 'REFERENTE A CONSULTAS NAS DATAS 05/01/2026 E 10/02/2026';
+  const r = prepararEmissao({ ...item, xdescServ: descricao }, e, '2026-10-08');
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.competencia, '2026-10-08');
+  assert.equal(r.origem.dadosAplicados.competencia, '2026-10-08');
 });

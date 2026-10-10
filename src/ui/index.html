@@ -916,6 +916,9 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+    #cardWhatsappPainel { margin-bottom: 1.25rem; }
+    #btnWhatsappPainel.is-connected,
+    #btnWhatsappPainel.is-connected:hover { background: #DDDDDF !important; color: var(--text-secondary) !important; opacity: 1; }
     .sheets-status {
       margin-top: 0.95rem;
       padding: 0.75rem 0.95rem;
@@ -1169,6 +1172,27 @@
 
           <!-- CENTRAL: CONTEÚDO PRINCIPAL (600px) -->
           <div class="painel-central">
+            <p id="avisoDadosProfissionais" role="status" hidden style="color:#c66a13;margin:0 0 18px;">
+              <button type="button" id="btnRevisarProfissional" class="btn-link" style="color:#c66a13 !important;padding:0;text-align:left;">Verifique se seus dados profissionais estão corretos em “Dados da Conta”.</button>
+            </p>
+            <div id="cardWhatsappPainel" class="sheets-card">
+              <div class="sheets-card-main">
+                <div class="sheets-card-left">
+                  <div class="sheets-logo-wrapper" aria-hidden="true">
+                    <svg width="34" height="34" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M16 2a14 14 0 0 0-12 21L2 30l7-2a14 14 0 1 0 7-26Z" fill="#25D366"/>
+                      <path d="M10 8c-1 0-2 2-2 3 0 5 6 11 11 11 2 0 4-2 4-3l-4-2-2 2c-3-1-5-3-6-6l2-2-2-3h-1Z" fill="#fff"/>
+                    </svg>
+                  </div>
+                  <div class="sheets-info-wrapper">
+                    <span class="sheets-title">WhatsApp</span>
+                    <span class="sheets-subtitle" id="whatsappPainelStatus" role="status" aria-live="polite">Verificando conexão...</span>
+                  </div>
+                </div>
+                <button type="button" class="sheets-btn-conectar" id="btnWhatsappPainel" disabled>Verificando...</button>
+              </div>
+            </div>
+
             <!-- TÍTULO DA SEÇÃO EM CAIXA ALTA -->
             <div class="secao-titulo-integracoes">INTEGRAÇÕES</div>
 
@@ -1241,6 +1265,13 @@
           <section id="contaSecaoDados" class="conta-secao hidden" aria-labelledby="tituloContaDados">
             <h2 class="access-title" id="tituloContaDados">Dados da conta</h2>
             <p id="contaPerfilStatus" role="status" aria-live="polite"></p>
+            <p id="contaEmpresaProfissional"></p>
+            <p id="contaRevisaoProfissionalStatus" role="status" aria-live="polite"></p>
+            <label for="selectResponsavelProfissional" id="labelResponsavelProfissional" hidden>Responsável encontrado</label>
+            <select id="selectResponsavelProfissional" hidden></select>
+            <label for="selectCrmProfissional" id="labelCrmProfissional" hidden>Registros encontrados</label>
+            <select id="selectCrmProfissional" hidden></select>
+            <ul id="fontesCrmProfissional"></ul>
             <div class="account-fields-list">
               <div class="account-field-group">
                 <label class="field-label-data">Nome Completo</label>
@@ -1297,6 +1328,7 @@
                 </div>
               </div>
             </div>
+            <button type="button" class="btn-action" id="btnConfirmarProfissional" hidden>Confirmar dados profissionais</button>
             <button type="button" class="btn-action btn-secondary" id="btnAtualizarConta">Atualizar dados</button>
           </section>
 
@@ -1411,7 +1443,12 @@
 
   <script>
     // Gerenciador de estado local
-    let sessaoAtual = JSON.parse(localStorage.getItem('notomed_sessao') || 'null');
+    let sessaoAtual = null;
+    try {
+      const salva = JSON.parse(localStorage.getItem('notomed_sessao') || 'null');
+      if (salva?.usuario && typeof salva.tokenAcesso === 'string' && salva.tokenAcesso) sessaoAtual = salva;
+      else localStorage.removeItem('notomed_sessao');
+    } catch { localStorage.removeItem('notomed_sessao'); }
     let certArquivoBase64 = '';
     let certNomeArquivo = '';
     let telefoneAtual = '';
@@ -1455,6 +1492,7 @@
       sessaoAtual = null;
       limparPreviaGoogle(); googleEl('resultadoImportacaoGoogle').replaceChildren();
       pararPollingConexao();
+      pararStatusWhatsappPainel();
 
       // Limpa os formulários
       inputTelefone.value = '';
@@ -1675,15 +1713,23 @@
 
     // --- CARREGAR ONBOARDING / PAINEL ---
     async function carregarFluxoOnboarding(abaFinal) {
-      if (!sessaoAtual?.usuario) return;
-      cardAuth.classList.add('hidden');
-      cardOnboarding.classList.remove('hidden');
+      if (!sessaoAtual?.usuario || !sessaoAtual.tokenAcesso) { efetuarLogout(); return; }
+      cardOnboarding.classList.add('hidden');
 
       const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
       try {
-        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`, {
+          headers: { Authorization: 'Bearer ' + sessaoAtual.tokenAcesso }
+        });
+        if (res.status === 401 || res.status === 403) {
+          efetuarLogout();
+          showAlert('Entre novamente com o código enviado pelo WhatsApp.');
+          return;
+        }
         const data = await res.json();
-        if (data.ok && data.status) {
+        if (res.ok && data.ok && data.status) {
+          cardAuth.classList.add('hidden');
+          cardOnboarding.classList.remove('hidden');
           if (data.medicoId || data.status.medicoId) {
             sessaoAtual.usuario.medicoId = data.medicoId || data.status.medicoId;
             localStorage.setItem('notomed_sessao', JSON.stringify(sessaoAtual));
@@ -1691,10 +1737,12 @@
           renderizarPassos(data.status);
           if (abaFinal && painelDisponivel) alternarAba(abaFinal);
         } else {
-          mostrarPasso(3);
+          throw new Error('Status indisponível');
         }
       } catch (err) {
-        mostrarPasso(3);
+        cardOnboarding.classList.add('hidden');
+        cardAuth.classList.remove('hidden');
+        showAlert('Não foi possível carregar seu cadastro. Recarregue para tentar novamente.');
       }
     }
 
@@ -1716,6 +1764,7 @@
     function mostrarPasso(passoNum) {
       hideAlert(alertBox); hideAlert(alertOnboarding);
       painelDisponivel = passoNum === 5;
+      if (!painelDisponivel) pararStatusWhatsappPainel();
       document.body.classList.toggle('onboarding-active', !painelDisponivel);
       document.getElementById('tabsNavigation').classList.toggle('hidden', !painelDisponivel);
       alternarAba('painel');
@@ -1728,6 +1777,7 @@
       if (passoNum === 4) step4View.classList.remove('hidden');
       if (passoNum === 5) {
         step5View.classList.remove('hidden');
+        void iniciarStatusWhatsappPainel();
         if (sessaoAtual?.usuario?.nome && sessaoAtual.usuario.nome !== 'Médico') {
           const elNome = document.getElementById('resumoNomeMedico');
           if (elNome) elNome.textContent = sessaoAtual.usuario.nome;
@@ -2119,6 +2169,60 @@
 
     document.getElementById('btnIniciarWhatsapp').addEventListener('click', () => iniciarConexaoWhatsapp());
     document.getElementById('btnConectarQr').addEventListener('click', () => iniciarConexaoWhatsapp('qrcode'));
+    // INICIO STATUS WHATSAPP
+    let intervaloStatusWhatsapp = null;
+    let geracaoStatusWhatsapp = 0;
+    let consultaStatusWhatsappPendente = false;
+    function pararStatusWhatsappPainel() {
+      clearInterval(intervaloStatusWhatsapp);
+      intervaloStatusWhatsapp = null;
+      geracaoStatusWhatsapp++;
+      consultaStatusWhatsappPendente = false;
+    }
+    async function atualizarStatusWhatsappPainel() {
+      if (!painelDisponivel || document.hidden || !sessaoAtual?.tokenAcesso || consultaStatusWhatsappPendente) return;
+      if (typeof atualizarRevisaoCadastro === 'function') void atualizarRevisaoCadastro();
+      const geracao = geracaoStatusWhatsapp;
+      const sessao = sessaoAtual;
+      consultaStatusWhatsappPendente = true;
+      const btn = document.getElementById('btnWhatsappPainel');
+      const status = document.getElementById('whatsappPainelStatus');
+      try {
+        const res = await fetch('/api/whatsapp/status', {
+          headers: { Authorization: 'Bearer ' + sessao.tokenAcesso },
+          cache: 'no-store', signal: AbortSignal.timeout(10000)
+        });
+        const data = await res.json();
+        if (geracao !== geracaoStatusWhatsapp || sessao !== sessaoAtual || !painelDisponivel) return;
+        if (!res.ok || !data.ok || typeof data.conectado !== 'boolean') throw Error('consulta');
+        btn.textContent = data.conectado ? 'Conectado' : 'Conectar';
+        btn.disabled = data.conectado;
+        btn.classList.toggle('is-connected', data.conectado);
+        status.textContent = data.conectado ? 'Seu WhatsApp está conectado.' : 'WhatsApp desconectado. Conecte para retomar a emissão pela conversa.';
+        document.getElementById('avisoConexaoWhatsappPainel').hidden = !whatsappJaVinculado || data.conectado;
+      } catch {
+        if (geracao !== geracaoStatusWhatsapp || sessao !== sessaoAtual || !painelDisponivel) return;
+        btn.textContent = 'Conectar'; btn.disabled = false;
+        btn.classList.toggle('is-connected', false);
+        status.textContent = 'Não foi possível verificar a conexão do WhatsApp. Tentaremos novamente.';
+      } finally {
+        if (geracao === geracaoStatusWhatsapp) consultaStatusWhatsappPendente = false;
+      }
+    }
+    function iniciarStatusWhatsappPainel() {
+      pararStatusWhatsappPainel();
+      const btn = document.getElementById('btnWhatsappPainel');
+      btn.textContent = 'Verificando...'; btn.disabled = true;
+      btn.classList.toggle('is-connected', false);
+      document.getElementById('whatsappPainelStatus').textContent = 'Verificando conexão...';
+      intervaloStatusWhatsapp = setInterval(atualizarStatusWhatsappPainel, 15000);
+      return atualizarStatusWhatsappPainel();
+    }
+    document.getElementById('btnWhatsappPainel').addEventListener('click', () => mostrarPasso(4));
+    document.addEventListener?.('visibilitychange', () => { if (!document.hidden) void atualizarStatusWhatsappPainel(); });
+    window.addEventListener?.('focus', () => { void atualizarStatusWhatsappPainel(); });
+    // FIM STATUS WHATSAPP
+
     document.getElementById('btnReconectarWhatsappPainel').addEventListener('click', () => mostrarPasso(4));
     document.getElementById('btnVoltarPainelWhatsapp').addEventListener('click', () => carregarFluxoOnboarding());
 
@@ -2266,6 +2370,7 @@
     function voltarMenuConta() {
       const cardSheets = document.getElementById('cardSheetsRapido');
       if (cardSheets) cardSheets.classList.remove('hidden');
+      document.getElementById('cardWhatsappPainel').classList.remove('hidden');
       document.getElementById('contaMenu').classList.remove('hidden');
       document.getElementById('contaInterna').classList.add('hidden');
       for (const slug of Object.values(secoesConta)) {
@@ -2278,6 +2383,7 @@
       if (!painelDisponivel || !secoesConta[secao]) return;
       const cardSheets = document.getElementById('cardSheetsRapido');
       if (cardSheets) cardSheets.classList.add('hidden');
+      document.getElementById('cardWhatsappPainel').classList.add('hidden');
       document.getElementById('contaMenu').classList.add('hidden');
       document.getElementById('contaInterna').classList.remove('hidden');
       document.getElementById('tabsNavigation').classList.add('hidden');
@@ -2296,6 +2402,93 @@
     }
     document.getElementById('btnVoltarConta').addEventListener('click', voltarMenuConta);
 
+    // INICIO REVISAO CADASTRO
+    let cadastroRevisao = null, cadastroEdicaoPendente = false, consultaCadastroPendente = false, aprovandoCadastro = false, cadastroSessao = null;
+    const cadastroEl = id => document.getElementById(id);
+    function marcarEdicaoCadastro() {
+      if (!cadastroRevisao?.trabalhoId) return;
+      cadastroEdicaoPendente = true;cadastroRevisao = { ...cadastroRevisao, aprovado: false };
+      cadastroEl('btnConfirmarProfissional').hidden = false;cadastroEl('avisoDadosProfissionais').hidden = false;
+    }
+    function renderizarRevisaoCadastro(r, preencher = false) {
+      cadastroEl('avisoDadosProfissionais').hidden = !r.trabalhoId || r.aprovado;
+      if (cadastroEdicaoPendente && cadastroRevisao && !preencher) {
+        if (cadastroRevisao.versao !== r.versao) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Os dados mudaram. Atualize a página e revise antes de confirmar.';
+        return;
+      }
+      cadastroRevisao = r;
+      const pronto = ['aguardando_confirmacao', 'concluido'].includes(r.estado) && r.whatsappConectado;
+      cadastroEl('btnConfirmarProfissional').hidden = !r.trabalhoId || r.aprovado;
+      cadastroEl('btnConfirmarProfissional').disabled = !pronto || aprovandoCadastro;
+      cadastroEl('contaEmpresaProfissional').textContent = r.empresa ? `Empresa: ${r.empresa.razaoSocial} · CNPJ: ${r.empresa.cnpj}` : '';
+      cadastroEl('contaRevisaoProfissionalStatus').textContent = r.aprovado ? 'Dados profissionais confirmados.'
+        : !r.trabalhoId ? 'Envie seu certificado A1 para consultar os dados da empresa.'
+        : !r.whatsappConectado ? 'Conecte seu WhatsApp antes de confirmar os dados profissionais.'
+        : !pronto ? 'Estamos consultando seus dados. Você pode acompanhar por aqui.'
+        : r.pesquisaCrm === 'indisponivel' ? 'Confira o nome e informe CRM com UF. A pesquisa automática de CRM está indisponível.'
+        : 'Confira ou corrija os dados do médico antes de confirmar. RQE é opcional.';
+      for (const [campo,id] of [['nome','inputContaNome'],['crm','inputContaCrm'],['rqe','inputContaRqe']]) {
+        const el = cadastroEl(id); if (el.readOnly) el.value = r[campo] || '';
+      }
+      const fontes = cadastroEl('fontesCrmProfissional');fontes.replaceChildren();
+      for (const registro of r.registros || []) {
+        if (!registro.urlOrigem) continue;
+        const item = document.createElement('li'), link = document.createElement('a');
+        link.href = registro.urlOrigem;link.target = '_blank';link.rel = 'noopener noreferrer';
+        link.textContent = `${registro.crm}/${registro.uf}${registro.rqes?.length ? " · RQE: " + registro.rqes.join(", ") : ""} — fonte da pesquisa (confira antes de aprovar)`;
+        item.appendChild(link);fontes.appendChild(item);
+      }
+      for (const [id,label,opcoes,valor,texto] of [
+        ['selectResponsavelProfissional','labelResponsavelProfissional',r.candidatos || [],c=>c.nome,c=>c.nome],
+        ['selectCrmProfissional','labelCrmProfissional',r.registros || [],c=>`${c.crm}/${c.uf}`,c=>`${c.crm}/${c.uf} — ${c.nomeCompleto}`]
+      ]) {
+        const select = cadastroEl(id);select.replaceChildren();select.hidden = opcoes.length < 2 || r.aprovado;cadastroEl(label).hidden = select.hidden;
+        const vazio = document.createElement('option');vazio.value = '';vazio.textContent = 'Selecione o registro correto';select.appendChild(vazio);
+        for (const c of opcoes) { const option = document.createElement('option');option.value = valor(c);option.textContent = texto(c);select.appendChild(option); }
+      }
+    }
+    async function atualizarRevisaoCadastro(preencher = false) {
+      if (!painelDisponivel || !sessaoAtual?.tokenAcesso || consultaCadastroPendente || aprovandoCadastro) return;
+      if (cadastroSessao !== sessaoAtual) { cadastroSessao = sessaoAtual;cadastroRevisao = null;cadastroEdicaoPendente = false; }
+      const sessao = sessaoAtual;consultaCadastroPendente = true;
+      try {
+        const res = await fetch('/api/conta/cadastro', { headers: { Authorization: 'Bearer ' + sessao.tokenAcesso }, cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        const data = await res.json();
+        if (sessao !== sessaoAtual || !painelDisponivel) return;
+        if (!res.ok || !data.ok) throw Error('consulta');
+        if (preencher) cadastroEdicaoPendente = false;
+        renderizarRevisaoCadastro(data.revisao, preencher);
+      } catch { if (sessao === sessaoAtual) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Não foi possível consultar o cadastro. Tente atualizar os dados.'; }
+      finally { consultaCadastroPendente = false; }
+    }
+    cadastroEl('btnRevisarProfissional').addEventListener('click', () => abrirSecaoConta('dados'));
+    cadastroEl('selectResponsavelProfissional').addEventListener('change', e => {
+      if (!e.target.value) return;marcarEdicaoCadastro();cadastroEl('inputContaNome').value = e.target.value;cadastroEl('inputContaCrm').value = '';
+    });
+    cadastroEl('selectCrmProfissional').addEventListener('change', e => {
+      if (!e.target.value) return;marcarEdicaoCadastro();cadastroEl('inputContaCrm').value = e.target.value;const registro=cadastroRevisao.registros.find(r=>`${r.crm}/${r.uf}`===e.target.value);cadastroEl('inputContaRqe').value=registro?.rqe || '';
+    });
+    for (const id of ['inputContaNome','inputContaCrm','inputContaRqe']) cadastroEl(id).addEventListener('input', marcarEdicaoCadastro);
+    cadastroEl('btnConfirmarProfissional').addEventListener('click', async () => {
+      if (!cadastroRevisao?.trabalhoId || aprovandoCadastro || !sessaoAtual?.tokenAcesso) return;
+      const sessao = sessaoAtual, revisao = cadastroRevisao, btn = cadastroEl('btnConfirmarProfissional');
+      aprovandoCadastro = true;btn.disabled = true;cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Confirmando dados profissionais…';
+      try {
+        const res = await fetch('/api/conta/cadastro/aprovar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sessao.tokenAcesso },
+          body: JSON.stringify({ trabalhoId: revisao.trabalhoId, versao: revisao.versao, nome: cadastroEl('inputContaNome').value.trim(), crm: cadastroEl('inputContaCrm').value.trim(), rqe: cadastroEl('inputContaRqe').value.trim() || null }) });
+        const data = await res.json();if (sessao !== sessaoAtual || !painelDisponivel) return;
+        if (!res.ok || !data.ok) { cadastroEl('contaRevisaoProfissionalStatus').textContent = data.detalhe || 'Não foi possível confirmar os dados.';return; }
+        for (const [id,action] of [['inputContaNome','btnActionNome'],['inputContaCrm','btnActionCrm'],['inputContaRqe','btnActionRqe']]) {
+          cadastroEl(id).readOnly = true;cadastroEl(id).classList.remove('is-editing');cadastroEl(action).classList.remove('is-saving');
+          cadastroEl(action).querySelector('.icon-edit')?.classList.remove('hidden');cadastroEl(action).querySelector('.btn-save-inline-text')?.classList.add('hidden');
+        }
+        cadastroEdicaoPendente = false;renderizarRevisaoCadastro(data.revisao, true);
+        await atualizarVisualizacaoConta();
+      } catch { if (sessao === sessaoAtual) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Não foi possível confirmar o salvamento. Atualize para verificar o cadastro.'; }
+      finally { aprovandoCadastro = false;if (sessao === sessaoAtual) btn.disabled = !cadastroRevisao?.whatsappConectado || !['aguardando_confirmacao','concluido'].includes(cadastroRevisao?.estado); }
+    });
+    // FIM REVISAO CADASTRO
+
     async function atualizarVisualizacaoConta() {
       const nome = sessaoAtual?.usuario?.nome || '';
       const tel = sessaoAtual?.usuario?.telefone || telefoneAtual || '';
@@ -2311,7 +2504,7 @@
       const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
       if (medicoId) {
         try {
-          const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`);
+          const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`, { headers: { Authorization: 'Bearer ' + sessaoAtual.tokenAcesso } });
           const data = await res.json();
           if (data.ok && data.status) {
             if (inputNome && inputNome.readOnly) inputNome.value = data.status.passos?.passo1Nome ? data.status.nomeUsuario : '';
@@ -2336,6 +2529,7 @@
           }
         } catch {}
       }
+      await atualizarRevisaoCadastro(true);
     }
 
     // INICIO GOOGLE PLANILHAS
@@ -2597,6 +2791,7 @@
           // Entrar em modo de edição
           valorOriginal = input.value;
           input.readOnly = false;
+          if (['nome','crm','rqe'].includes(campo)) marcarEdicaoCadastro();
           input.classList.add('is-editing');
           btn.classList.add('is-saving');
           if (icon) icon.classList.add('hidden');
@@ -2615,6 +2810,14 @@
           if (campo === 'nome' && novoValor.length < 2) {
             if (statusPerfil) statusPerfil.textContent = 'Informe o nome completo antes de salvar.';
             input.focus();
+            return;
+          }
+
+          if (['nome','crm','rqe'].includes(campo) && cadastroRevisao?.trabalhoId && !cadastroRevisao.aprovado) {
+            cadastroEdicaoPendente = true;
+            input.readOnly = true;input.classList.remove('is-editing');btn.classList.remove('is-saving');
+            if (icon) icon.classList.remove('hidden');if (txtSalvar) txtSalvar.classList.add('hidden');
+            if (statusPerfil) statusPerfil.textContent = 'Alteração preparada. Clique em “Confirmar dados profissionais” para gravar.';
             return;
           }
 

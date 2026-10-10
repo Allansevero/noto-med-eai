@@ -47,7 +47,7 @@ export class HubDesenvolvedorCpfClient implements ConsultaCpfProvider {
       const corpo: any = await resposta.json();
       return this.extrairDados(corpo);
     } catch (err: any) {
-      console.warn(`[HubDesenvolvedor] Falha ao consultar CPF ${cpfLimpo}:`, err?.message || err);
+      console.warn('[HubDesenvolvedor]', {codigo:'CPF_CONSULTA_INDISPONIVEL'});
       return null;
     }
   }
@@ -55,7 +55,7 @@ export class HubDesenvolvedorCpfClient implements ConsultaCpfProvider {
   private extrairDados(corpo: any): DadosConsultaCpf | null {
     if (!corpo || corpo.status !== true || !corpo.result) {
       if (corpo?.message) {
-        console.warn(`[HubDesenvolvedor] Resposta da API: ${corpo.message}`);
+        console.warn('[HubDesenvolvedor]', {codigo:'CPF_RESPOSTA_INVALIDA'});
       }
       return null;
     }

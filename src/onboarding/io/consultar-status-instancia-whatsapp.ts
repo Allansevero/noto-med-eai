@@ -10,6 +10,7 @@ export type ConsultarStatusWhatsappInput = {
   medicoId: string;
   evolutionUrl: string;
   evolutionApiKey: string;
+  aoConectar?: (medicoId: string) => void;
 };
 
 export type ResultadoStatusWhatsapp = {
@@ -41,7 +42,10 @@ export async function consultarStatusInstanciaWhatsapp(
     }
 
     const data = await res.json().catch(() => ({}));
-    const state = data?.instance?.state || 'connecting';
+    const state = data?.instance?.state;
+    if (!['open', 'close', 'connecting'].includes(state)) {
+      return { ok: false, conectado: false, status: 'erro', detalhe: 'Estado da conexão não reconhecido.' };
+    }
 
     if (state === 'open') {
       await pool.query(
@@ -50,6 +54,7 @@ export async function consultarStatusInstanciaWhatsapp(
          where nome_instancia = $1`,
         [nomeInstancia]
       );
+      input.aoConectar?.(medicoId);
       return { ok: true, conectado: true, status: 'conectado', state: 'open' };
     }
 

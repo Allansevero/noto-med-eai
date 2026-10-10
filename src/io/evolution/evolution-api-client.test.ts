@@ -61,3 +61,50 @@ describe('EvolutionApiClient OTP', () => {
     }
   });
 });
+
+it('envio de texto tem prazo limitado e falha sem confirmar entrega',async t=>{
+ let sinal:AbortSignal|null|undefined;
+ t.mock.method(globalThis,'fetch',async(_url:unknown,init?:RequestInit)=>{
+  sinal=init?.signal;
+  throw new Error('timeout sintético');
+ });
+ const client=new EvolutionApiClient('https://evolution.exemplo.com','chave','oficial');
+ const resposta=await client.enviarTexto({instanciaNome:'assistente',contatoTelefone:'5511999998888',texto:'Teste'});
+ assert.equal(resposta.sucesso,false);
+ assert.ok(sinal,'envio precisa de AbortSignal');
+});
+
+it('instância reservada ao OTP bloqueia texto e PDF comuns antes do HTTP',async t=>{
+ let requests=0;t.mock.method(globalThis,'fetch',async()=>{requests++;return Response.json({key:{id:'codigo'}});});
+ const client=new EvolutionApiClient('https://e.test','chave','oficial','oficial');
+ assert.equal((await client.enviarTexto({instanciaNome:'oficial',contatoTelefone:'5511999991234',texto:'conversa'})).sucesso,false);
+ assert.equal((await client.enviarPdf({instanciaNome:'oficial',contatoTelefone:'5511999991234',pdfPathOuUrl:'https://e.test/test.pdf',nomeArquivo:'teste.pdf'})).sucesso,false);
+ assert.equal(requests,0);assert.equal((await client.enviar({telefone:'5511999991234',codigo:'123456'})).sucesso,true);assert.equal(requests,1);
+});
+
+it('marca leitura com a chave original do webhook e timeout isolado', async t => {
+  let chamada: any;
+  t.mock.method(globalThis, 'fetch', async (url: unknown, init?: RequestInit) => {
+    chamada = { url: String(url), body: JSON.parse(String(init?.body)), signal: init?.signal };
+    return new Response('{}', { status: 201 });
+  });
+  const c = new EvolutionApiClient('https://evolution.exemplo.com', 'chave', 'oficial', 'oficial');
+  const resultado = await (c as any).marcarLida({ instanciaNome: 'assistente', mensagemId: 'msg-1', contatoTelefone: '5551999999999',
+    chaveMensagem: { id: 'msg-1', remoteJid: '123456@lid', remoteJidAlt: '5551999999999@s.whatsapp.net', fromMe: false } });
+  assert.equal(resultado.sucesso, true);
+  assert.equal(chamada.url, 'https://evolution.exemplo.com/chat/markMessageAsRead/assistente');
+  assert.deepEqual(chamada.body, { readMessages: [{ id: 'msg-1', remoteJid: '123456@lid', fromMe: false }] });
+  assert.ok(chamada.signal);
+});
+it('leitura protege canal oficial, grupos e mensagens próprias e informa HTTP sem corpo', async t => {
+  let chamadas = 0;
+  t.mock.method(globalThis, 'fetch', async () => { chamadas++; return new Response('segredo', { status: 500 }); });
+  const c = new EvolutionApiClient('https://evolution.exemplo.com', 'chave', 'oficial', 'oficial');
+  const entrada = { instanciaNome: 'assistente', mensagemId: 'msg', contatoTelefone: '5551999999999', chaveMensagem: { id: 'msg', remoteJid: '5551999999999@s.whatsapp.net', fromMe: false } };
+  assert.equal((await (c as any).marcarLida({ ...entrada, instanciaNome: 'oficial' })).sucesso, false);
+  assert.equal((await (c as any).marcarLida({ ...entrada, chaveMensagem: { ...entrada.chaveMensagem, fromMe: true } })).sucesso, false);
+  assert.equal((await (c as any).marcarLida({ ...entrada, chaveMensagem: { ...entrada.chaveMensagem, remoteJid: '123@g.us' } })).sucesso, false);
+  assert.equal(chamadas, 0);
+  const falha = await (c as any).marcarLida(entrada);
+  assert.equal(falha.sucesso, false); assert.equal(falha.erro, 'EVOLUTION_HTTP_500');
+});

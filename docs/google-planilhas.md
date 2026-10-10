@@ -40,11 +40,12 @@ Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
    a tela de consentimento OAuth. Em modo de teste, cadastrar os e-mails de teste;
    para uso público, cumprir a verificação exigida pelo Google para esse escopo.
 2. Criar credencial OAuth **Aplicativo Web** e cadastrar exatamente o redirect:
-   `https://notomed-web.6t32my.easypanel.host/api/integracoes/google-planilhas/callback`.
+   `https://notomed.tech/api/integracoes/google-planilhas/callback`.
+   Cadastrar `https://notomed.tech` nas origens JavaScript autorizadas da credencial.
 3. No Easypanel `notomed` → `web`, configurar `GOOGLE_CLIENT_ID`,
    `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` (o endereço acima), além de
    `GOOGLE_API_KEY` para o Picker, `GOOGLE_APP_ID` com o **número numérico do
-   projeto**, e `GROQ_API_KEY` e `GROQ_MODEL` já usados pelo Noto. OAuth, chave e
+   projeto**, e `NVIDIA_API_KEY` e `NVIDIA_MODEL` já usados pelo Noto. OAuth, chave e
    número devem pertencer ao mesmo projeto. O nome/ID textual do projeto, como
    `noto-integrations`, não serve como `GOOGLE_APP_ID`. Não usar URL HTTP em produção.
 4. Implantar código, executar `npm run migrate:planilhas` e reiniciar `web`.
@@ -54,8 +55,18 @@ Não copie URLs do Picker para logs ou suporte: elas contêm esse token.
    expirada, entrar novamente; a integração não confia no medicoId do navegador.
 
 Sem credenciais Google completas, a Conta mostra integração indisponível e os
-outros fluxos seguem funcionando. Testes simulam Google/Groq e usam PostgreSQL
+outros fluxos seguem funcionando. Testes simulam Google/NVIDIA e usam PostgreSQL
 local isolado; não demonstram consentimento, permissões ou importação em produção.
+
+O login e o início da conexão devem ocorrer em `https://notomed.tech`, no mesmo
+navegador usado para concluir a autorização. O retorno configurado anteriormente
+no domínio do Easypanel mudava a origem: o navegador não entregava o cookie
+HttpOnly da tentativa nem a sessão Noto guardada em localStorage no domínio
+público. Isso causava falha da conexão Google e novo pedido de código WhatsApp.
+Atualizar o endereço tanto na credencial do Google quanto no ambiente do Easypanel
+e reiniciar o serviço web antes de iniciar outra tentativa. Se a chave do Picker
+tiver restrição por site, incluir também `https://notomed.tech/*` nos referenciadores
+permitidos. Nenhuma migração de banco é necessária para essa correção.
 
 ## Diagnóstico de seleção da planilha
 
@@ -71,14 +82,39 @@ exige nova autorização; `ACESSO_RECUSADO` exige conferir a conta e a seleção
 do arquivo. Esses diagnósticos são distintos de um `502` HTML retornado pelo
 proxy: nesse caso, confira os logs do serviço e sua disponibilidade.
 
+Quando o retorno da autorização mostra “A conexão com o Google não foi concluída”,
+procure o log `[Google Planilhas]` com `rota: '/callback'`. Ele identifica a etapa
+sem registrar URL, código de autorização, cookie ou tokens:
+
+- `COOKIE_AUSENTE`: o navegador não devolveu o cookie da conexão. Confira se o
+  usuário iniciou a autorização no mesmo domínio do `GOOGLE_REDIRECT_URI` e
+  concluiu no mesmo navegador, sem apagar os cookies.
+- `ESTADO_INVALIDO`: o retorno não corresponde à tentativa aberta nesse navegador;
+  recomece a conexão em uma única aba.
+- `ESTADO_EXPIRADO_OU_UTILIZADO`: o prazo de dez minutos terminou ou o retorno já
+  foi consumido; inicie outra conexão.
+- `AUTORIZACAO_RECUSADA` ou `AUTORIZACAO_FALHOU`: o Google devolveu um erro de
+  autorização. Confira a tela de consentimento, os usuários de teste e as
+  políticas da conta Google antes de tentar novamente.
+- `RECONECTAR`, `CONEXAO_FALHOU` ou `HTTP_ERRO` em `trocar_codigo`: confira o
+  status HTTP e a configuração OAuth do serviço.
+- `REFRESH_TOKEN_AUSENTE`: o Google não entregou o token de renovação exigido
+  pela integração; confira a autorização offline da conta.
+- `CONEXAO_SUPERADA`: outra conexão ou desconexão alterou a tentativa; use a mais
+  recente.
+- `BANCO_ERRO`: a gravação ou leitura falhou; `codigoBanco` contém apenas um
+  SQLSTATE conhecido, para investigação da equipe.
+
+Esses logs distinguem falhas para investigação; não demonstram que uma conexão
+real com erro foi corrigida. Não compartilhe a URL completa do retorno OAuth.
+
 Referência: https://developers.google.com/workspace/drive/picker/guides/web-picker
 
 ## NVIDIA no mapeamento das colunas
 
 Configure `NVIDIA_API_KEY` no ambiente do serviço web e `NVIDIA_MODEL=moonshotai/kimi-k3`.
-Com a chave NVIDIA configurada, a importação usa esse provedor. Sem ela, mantém
-Groq conforme a configuração existente. Uma falha da NVIDIA não troca de provedor
-silenciosamente. As outras funções do Noto continuam com sua configuração de IA atual.
+Todos os fluxos de IA usam NVIDIA. Sem a chave, o mapeamento de colunas fica
+indisponível. Uma falha da NVIDIA não troca de provedor silenciosamente.
 
 O servidor chama o endpoint fixo `https://integrate.api.nvidia.com/v1/chat/completions`
 com `stream: false`, usando somente cabeçalhos reconhecidos e sanitizados. Nenhum

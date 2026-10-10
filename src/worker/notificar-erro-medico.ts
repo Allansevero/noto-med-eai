@@ -11,6 +11,7 @@ export interface NotificarMedicoParams {
   nomePaciente?: string | null;
   valorCentavos: number;
   motivoErro: string;
+  pendenciasFiscais?: Array<{ campo: string; codigo: string; mensagem: string }>;
 }
 
 export interface NotificarDesenvolvedorParams {

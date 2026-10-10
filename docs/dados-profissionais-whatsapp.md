@@ -10,7 +10,7 @@ separadas, ou campos explícitos `Nome completo:`, `CRM:` e `RQE:`. Dados válid
 existentes não são substituídos pela conversa; RQE só muda se informado.
 As mensagens seguem o guia integral em [noto-conversa.md](prompts/noto-conversa.md).
 O guia orienta comunicação, não concede poderes para alterar tributação ou emitir
-fora das ferramentas. As respostas são geradas pela IA configurada na Groq, usando o guia v2 completo,
+fora das ferramentas. As respostas são geradas pela IA configurada na NVIDIA, usando o guia v2 completo,
 o perfil, o caso e as últimas oito comunicações do médico. Também responde às
 mensagens de texto do médico reconhecido no WhatsApp Oficial. Perguntas sobre
 CPF ao paciente usam contexto separado, sem histórico privado do médico.
@@ -92,7 +92,7 @@ e novos durante a atualização. O worker novo não consome a fila enquanto falt
 a coluna da migração. Uma transmissão já iniciada antes da pausa não pode ser
 cancelada por essa alteração; conferir seu resultado antes de qualquer nova ação.
 
-Configurar `GROQ_API_KEY` e `GROQ_MODEL` válidos. O container inclui o guia em
+Configurar `NVIDIA_API_KEY` e `NVIDIA_MODEL` válidos. O container inclui o guia em
 `docs/prompts/noto-conversa.md`; o treino mantém as mensagens literais existentes.
 Sem IA disponível, não há fallback de comunicação fixa.
 

@@ -51,21 +51,23 @@ test('importa IBS/CBS, persiste, confirma e usa os códigos na nova DPS sem copi
   const parametros: any = { ...c.referencia().parametrosSugeridos, vigenciaInicio: '2026-10-01' };
   await confirmarPoliticaEmissao(c.deps.pool, { medicoId: 'med', parametrosEmissao: parametros, referenciaHash: c.referencia().hash });
   const politica = c.politica();
-  const item = { id: 'sol', medicoId: 'med', pacienteId: 'p', ctribNac: '040101', cnbs: '122051900', xdescServ: 'Nova consulta', valorServicoCentavos: 17005 };
+  const item = { id: 'sol', medicoId: 'med', pacienteId: 'p', ctribNac: '040101', cnbs: '122051900', xdescServ: 'Consulta realizada em 05/01/2026', valorServicoCentavos: 17005 };
   const preparo = prepararEmissao(item, { perfil: { ...politica.perfil, confirmado: true, referenciaFiscal: c.referencia() },
-    competenciaInformada: '2026-10-02', datasConsultas: [], servicos: [{ id: 'serv', ctribNac: '040101', cnbs: '122051900', ctribMun: '001', politica }] }, '2026-10-05');
+    competenciaInformada: '2026-10-02', datasConsultas: ['2026-01-05'], servicos: [{ id: 'serv', ctribNac: '040101', cnbs: '122051900', ctribMun: '001', politica }] }, '2026-10-05');
   assert.ok(preparo.ok);
   const resultado = gerarXmlDps({ nDPS: '43', tomador: { CPF: '98765432100', xNome: 'Paciente Novo' },
     xDescServ: item.xdescServ, vServ: 170.05, cTribNac: item.ctribNac, cNBS: item.cnbs, cTribMun: '001', cIndOp: '', cClassTrib: '',
     fiscal: { ...preparo.parametros, competencia: preparo.competencia } }, {
     cnpj: '11222333000181', im: '', codMunicipio: '3550308', ambiente: 2, serie: '12', pTotTribSN: 9,
     regTrib: { opSimpNac: 3, regApTribSN: 1, regEspTrib: 0 }
-  });
+  }, new Date('2026-10-06T01:00:00Z'));
   const dps = new XMLParser({ parseTagValue: false }).parse(resultado.xml).DPS.infDPS;
   assert.equal(dps.IBSCBS.valores.trib.gIBSCBS.CST, '000');
   assert.equal(dps.IBSCBS.valores.trib.gIBSCBS.cClassTrib, '000001');
   assert.equal(dps.IBSCBS.cIndOp, '100301');
-  assert.equal(dps.dCompet, '2026-10-02');
+  assert.equal(dps.dCompet, '2026-10-05');
+  assert.equal(dps.dhEmi.slice(0, 10), dps.dCompet);
+  assert.equal(dps.serv.cServ.xDescServ, 'Consulta realizada em 05/01/2026');
   assert.equal(dps.valores.vServPrest.vServ, '170.05');
   assert.equal(dps.valores.trib.totTrib.pTotTribSN, '0.00');
   assert.ok(!resultado.xml.includes('999.99') && !resultado.xml.includes('Paciente Anterior'));

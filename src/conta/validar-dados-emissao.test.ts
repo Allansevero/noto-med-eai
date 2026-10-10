@@ -19,3 +19,8 @@ test('resposta só coleta campos explícitos faltantes ou a etapa sequencial esp
   assert.deepEqual(interpretarRespostaProfissional('Nome completo: Outro Nome\nCRM: 555/RS', {nomeCompleto:'Ana Silva',crm:'123/SP'}), {});
   assert.deepEqual(interpretarRespostaProfissional('emita para Ana Silva CPF 12345', {nomeCompleto:null,crm:null}), {});
 });
+
+test('CRM aceita UF antes do número como informado no WhatsApp', () => {
+  for (const formato of ['CRM/RS 37341', 'CRM RS: 37341', 'RS 37341']) assert.equal(normalizarCrm(formato), '37341/RS');
+  for (const formato of ['CRM/XX 37341', 'CRM/RS 37341 123', 'CRM/SP 37341/RS']) assert.equal(normalizarCrm(formato), null);
+});

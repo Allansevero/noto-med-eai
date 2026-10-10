@@ -1,5 +1,5 @@
 /**
- * Parser e normalizador da resposta bruta retornada pela IA (Groq).
+ * Parser e normalizador da resposta bruta retornada pela IA.
  * Trata o retorno como dado não confiável, higienizando caracteres,
  * validando formato de CPF, e-mail e convertendo valores monetários para centavos.
  */

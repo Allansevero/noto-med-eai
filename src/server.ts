@@ -1,11 +1,18 @@
+import { assistenteConectado } from './cadastro/prontidao-evolution.js';
+import { ConfirmadorCadastro } from './cadastro/confirmador-cadastro.js';
+import { NvidiaDecisorCadastro } from './cadastro/nvidia-decisor-cadastro.js';
+import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
+import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
+import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
+import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
+import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
+import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
+import { CfmConsultaRegistro } from './cadastro/pesquisa-cfm.js';
 import { randomUUID } from 'node:crypto';
-import {diagnosticoEntradaWebhook,diagnosticoResultadoWebhook,diagnosticoErroWebhook} from './whatsapp/diagnostico-webhook.js';
-import {criarRouterGooglePlanilhas} from './integracoes/google-planilhas/router.js';
-import {GooglePlanilhasClient} from './integracoes/google-planilhas/google-client.js';
-import {NvidiaMapeadorColunas} from './integracoes/google-planilhas/nvidia-mapeador-colunas.js';
-import {GroqMapeadorColunas} from './integracoes/google-planilhas/groq-mapeador-colunas.js';
+import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
+import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
+import { GooglePlanilhasClient } from './integracoes/google-planilhas/google-client.js';
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
-import { GroqGeradorMensagemNoto } from './io/groq/groq-gerador-mensagem-noto.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
  * Expõe as rotas de webhook da Evolution API, API de autenticação por OTP
@@ -38,7 +45,6 @@ import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onbo
 import { resolverMedicoId } from './onboarding/io/resolver-medico-id.js';
 import { salvarPerfilProfissional, ErroPerfilProfissional } from './io/postgres/salvar-perfil-profissional.js';
 import { ZodError } from 'zod';
-import { GroqApiClient } from './io/groq/groq-api-client.js';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
 import { PostgresBillingRepositorio } from './io/postgres/postgres-billing-repositorio.js';
@@ -48,7 +54,6 @@ import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
 import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medico.js';
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
-import { criarDisparadorTreino } from './onboarding/fluxos/disparar-treino-onboarding.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
 import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
@@ -56,8 +61,15 @@ import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
 import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
 import { criarRouterTribemdDesenvolvedor } from './desenvolvedor/tribemd-router.js';
 import { NavegadorTribemd } from './desenvolvedor/tribemd-navegador.js';
-import { GroqDecisorTribemd } from './desenvolvedor/tribemd-agente.js';
+import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
+import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
+import { CfmBuscarMedicoOnlineProvider } from './medico/io/buscar-medico-online.js';
+import { FerramentasAssistenteNoto } from './agente-conversa/ferramentas-assistente-noto.js';
+import { PostgresAssistente } from './agente-conversa/postgres-assistente.js';
+import { AgenteAssistente } from './agente-conversa/agente-assistente.js';
+import { criarDisparadorAssistente } from './agente-conversa/iniciar-assistente-conectado.js';
+import { GerenciadorConversaOnboarding } from './agente-conversa/gerenciador-conversa-onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -77,35 +89,92 @@ export function criarAppExpress() {
   // Instanciação dos adaptadores de infraestrutura
   const otpRepo = new PostgresOtpRepositorio(pool);
   const atendimentoRepo = new PostgresAtendimentoRepositorio(pool, config.encryptionKey);
-  const dispararTreino = criarDisparadorTreino(pool, config);
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
-    config.evolutionOfficialInstanceName
+    config.evolutionOfficialInstanceName, config.evolutionOfficialInstanceName
   );
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, evolutionClient, config.evolutionOfficialInstanceName, new GroqGeradorMensagemNoto(config.groqApiKey, config.groqModel));
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, evolutionClient, config.evolutionOfficialInstanceName, comunicadorNoto);
+  const evolutionAssistantClient = new EvolutionApiClient(
+    config.evolutionAssistantUrl,
+    config.evolutionAssistantApiKey,
+    config.evolutionAssistantInstanceName, config.evolutionOfficialInstanceName
+  );
+  const paligemmaClient = new PaligemmaComprovanteClient(
+    config.nvidiaApiKey || '',
+    'https://ai.api.nvidia.com/v1/vlm/google/paligemma'
+  );
+  const buscarMedicoOnline = new CfmBuscarMedicoOnlineProvider();
+  const ferramentasAssistente = new FerramentasAssistenteNoto(
+    pool,
+    buscarMedicoOnline,
+    paligemmaClient,
+    evolutionAssistantClient
+  );
+  const ia = criarServicosIa(config);
+  const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente, ia.geradorMensagem);
+  const memoriaAssistente = new PostgresAssistente(pool);
+  const agenteAssistente = new AgenteAssistente(memoriaAssistente, ia.decisorAssistente, ia.geradorMensagem,
+    evolutionAssistantClient, config.evolutionAssistantInstanceName, evolutionAssistantClient, config.notoCadastroModo);
+  if (config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo && process.env.NODE_ENV !== 'test') {
+    let recuperando = false;
+    const timer = setInterval(() => {
+      if (recuperando) return;
+      recuperando = true;
+      void agenteAssistente.recuperar().catch(() => console.warn('[Assistente contextual] Falha na recuperação; confira migrate:assistente e configuração.'))
+        .finally(() => { recuperando = false; });
+    }, 5000);
+    timer.unref();
+    console.info('[Assistente contextual] Memória e fila ativadas.');
+  }
+  const iniciarAssistente = criarDisparadorAssistente({ pool, gerenciador: gerenciadorOnboarding,
+    salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
+    enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
+  const dispararAssistente = (medicoId: string) => {
+    if (config.notoCadastroModo !== 'conversacional') return;
+    if (!config.evolutionAssistantUrl || !config.evolutionAssistantApiKey || !config.evolutionAssistantInstanceName) {
+      console.warn('[Onboarding Assistente]', { medicoId, estado: 'configuracao_incompleta' });
+      return;
+    }
+    if(config.assistenteContextualAtivo){
+      void agenteAssistente.iniciarAoConectar(medicoId).catch(()=>console.warn('[Assistente contextual]',{medicoId,etapa:'apresentacao',estado:'falha_registrada'}));
+    }else iniciarAssistente(medicoId);
+  };
+  const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
+  const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo, config.notoCadastroModo);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
     pool
   );
-  const groqClient = new GroqApiClient({
-    apiKey: config.groqApiKey,
-    modeloPrincipal: config.groqModel,
-    modeloFallback: 'openai/gpt-oss-20b'
-  });
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
+  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), config.cfmPesquisaAtiva?new CfmConsultaRegistro(config.chromiumExecutablePath || '/usr/bin/chromium-browser'):new PesquisaRegistroIndisponivel(),
+    async (medicoId, certificadoId) => {
+      const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
+      if (!cert || cert.id !== certificadoId) return undefined;
+      return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
+    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, config.cfmPesquisaAtiva);
+  const confirmadorCadastro = new ConfirmadorCadastro(cadastroCertificado.repo,
+    new NvidiaDecisorCadastro(config.nvidiaApiKey || '', config.nvidiaModel), ia.geradorMensagem,
+    evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient,
+    () => assistenteConectado({url:config.evolutionAssistantUrl,chave:config.evolutionAssistantApiKey,instancia:config.evolutionAssistantInstanceName,instanciaOficial:config.evolutionOfficialInstanceName}));
+  if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
+    const timer = setInterval(() => {
+      void Promise.all([cadastroCertificado.recuperar(), confirmadorCadastro.recuperar()]).catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
+    }, 5000);
+    timer.unref();
+  }
+
   const billingRepo = new PostgresBillingRepositorio(pool);
   const adnNfseClient = new AdnNfseClient();
   const stripeService = config.stripeSecretKey
     ? new StripeService({
-        secretKey: config.stripeSecretKey,
-        priceId: config.stripePriceId || 'price_1UFaloBMqkVPUWioDTWXIPv6',
-        webhookSecret: config.stripeWebhookSecret
-      })
+      secretKey: config.stripeSecretKey,
+      priceId: config.stripePriceId || 'price_1UFaloBMqkVPUWioDTWXIPv6',
+      webhookSecret: config.stripeWebhookSecret
+    })
     : undefined;
 
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
@@ -133,7 +202,7 @@ export function criarAppExpress() {
   }));
   app.use('/api/desenvolvedor/tribemd', criarRouterTribemdDesenvolvedor({
     ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
-    configurado: Boolean(config.groqApiKey), decisor: new GroqDecisorTribemd(config.groqApiKey, config.groqModel, process.env['TRIBEMD_VISION_MODEL'] || 'meta-llama/llama-4-scout-17b-16e-instruct'),
+    configurado: Boolean(config.nvidiaApiKey), decisor: ia.decisorTribemd,
     criarNavegador: signal => NavegadorTribemd.criar(config.chromiumExecutablePath || '/usr/bin/chromium-browser', signal)
   }));
   if (config.desenvolvedorFiscalAtivo) {
@@ -157,13 +226,25 @@ export function criarAppExpress() {
     });
   }
 
+  app.use('/api/conta/cadastro', criarRouterCadastroPainel({
+    pool,repo:cadastroCertificado.repo,
+    autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; }
+  }));
+  app.use('/api/whatsapp', criarRouterStatusWhatsapp({
+    pool,
+    autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
+    consultar: medicoId => consultarStatusInstanciaWhatsapp(pool, {
+      medicoId, evolutionUrl: config.evolutionApiUrl, evolutionApiKey: config.evolutionGlobalApiKey,
+      aoConectar: dispararAssistente
+    })
+  }));
+
   app.use('/api/integracoes/google-planilhas', criarRouterGooglePlanilhas({
     pool, google: config.googleClientId && config.googleClientSecret && config.googleRedirectUri
-      ? new GooglePlanilhasClient({clientId:config.googleClientId,clientSecret:config.googleClientSecret,redirectUri:config.googleRedirectUri}) : undefined,
-    mapeador: config.nvidiaApiKey ? new NvidiaMapeadorColunas(config.nvidiaApiKey,config.nvidiaModel)
-      : config.groqApiKey ? new GroqMapeadorColunas(config.groqApiKey,config.groqModel) : undefined,
-    autenticar: async token => { const {data,error}=await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
-    encryptionKey:config.encryptionKey,pepper:config.appPepper,redirectUri:config.googleRedirectUri??'',
+      ? new GooglePlanilhasClient({ clientId: config.googleClientId, clientSecret: config.googleClientSecret, redirectUri: config.googleRedirectUri }) : undefined,
+    mapeador: ia.mapeadorPlanilhas,
+    autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
+    encryptionKey: config.encryptionKey, pepper: config.appPepper, redirectUri: config.googleRedirectUri ?? '',
     googleApiKey: config.googleApiKey,
     googleAppId: config.googleAppId,
     comunicador: comunicadorNoto
@@ -250,7 +331,16 @@ export function criarAppExpress() {
       if (!medicoIdRaw) {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
+      const token = req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
+      if (!token) return res.status(401).json({ ok: false, detalhe: 'Autenticação necessária' });
+      const { data: identidade, error: erroAuth } = await authAdminService.supabaseClient.auth.getUser(token);
+      if (erroAuth || !identidade.user) return res.status(401).json({ ok: false, detalhe: 'Sessão inválida' });
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
+      const vinculo = await pool.query(
+        'select m.id from medicos m join usuarios u on u.id = m.usuario_id where m.id = $1 and u.auth_user_id = $2 and u.ativo = true',
+        [medicoId, identidade.user.id]
+      );
+      if (!vinculo.rowCount) return res.status(403).json({ ok: false, detalhe: 'Cadastro não autorizado' });
       res.setHeader('Cache-Control', 'no-store');
       let status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
       // Reconcile an outdated local record before asking an already linked user to pair again.
@@ -258,14 +348,16 @@ export function criarAppExpress() {
         const conexao = await consultarStatusInstanciaWhatsapp(pool, {
           medicoId,
           evolutionUrl: config.evolutionApiUrl,
-          evolutionApiKey: config.evolutionGlobalApiKey
+          evolutionApiKey: config.evolutionGlobalApiKey,
+          aoConectar: dispararAssistente
         });
         if (conexao.ok && conexao.conectado) {
           status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
         }
       }
-      dispararTreino(medicoId);
+
       if (status.passos.passo4WhatsappConectado) {
+        dispararAssistente(medicoId);
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
           console.info('[Evolution] Histórico sincronizado:', resultado);
@@ -348,12 +440,14 @@ export function criarAppExpress() {
         || (titular.validoDe && titular.validoDe > new Date())) throw new Error('O certificado precisa estar válido e identificar seu titular.');
       const consulta = await adnNfseClient.buscarNfseMaisRecente(certificado.pfxBuffer, certificado.senhaCertificado, titular.documentoTitular);
       console.info('[ADN] Busca de referência concluída:', consulta.resumo);
-      const fiscal = await processarOnboardingXml({ pool, supabase: authAdminService.supabaseClient,
-        documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper },
-      medicoId, consulta.documento.xml);
+      const fiscal = await processarOnboardingXml({
+        pool, supabase: authAdminService.supabaseClient,
+        documentoTitularEsperado: titular.documentoTitular, chaveCriptografia: config.encryptionKey, pepperCpf: config.appPepper
+      },
+        medicoId, consulta.documento.xml);
       const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
         medicoId, fiscal.parametros.dadosReformaTributaria.hash);
-      if (adocaoFiscal.ok) dispararTreino(medicoId);
+
       return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu, adocaoFiscal });
     } catch (erro: any) {
       console.warn('[ADN] Busca de referência pendente:', { etapa: 'busca_referencia', codigo: erro?.codigo || 'BUSCA_FALHOU', diagnostico: erro?.diagnostico, mensagem: erro?.message });
@@ -423,7 +517,7 @@ export function criarAppExpress() {
         referenciaHash,
         usarReferencia: usarReferencia === true
       });
-      dispararTreino(medicoId);
+
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
       if (req.body?.usarReferencia === true) {
@@ -431,9 +525,11 @@ export function criarAppExpress() {
         if (err instanceof ErroAdocaoReferencia) return res.status(400).json({ ok: false, codigo: err.codigo, detalhe: err.message });
         return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos adotar a configuração completa dessa nota. Busque a referência novamente; se persistir, a equipe precisa analisar o caso antes de liberar a emissão.' });
       }
-      return res.status(400).json({ ok: false, detalhe: Array.isArray(err?.issues)
-        ? err.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ')
-        : err?.message || 'Erro ao confirmar parâmetros fiscais' });
+      return res.status(400).json({
+        ok: false, detalhe: Array.isArray(err?.issues)
+          ? err.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ')
+          : err?.message || 'Erro ao confirmar parâmetros fiscais'
+      });
     }
   });
 
@@ -471,6 +567,11 @@ export function criarAppExpress() {
         senhaCertificado: senha
       });
 
+      if (config.notoCadastroModo === 'confirmacao') {
+        void cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular}).catch(() =>
+          console.warn('[Cadastro automático]', {codigo:'AGENDAMENTO_FALHOU'}));
+      }
+
       if (consentimentoFiscal === versaoConsentimentoFiscal) {
         await registrarConsentimentoFiscal(pool, medicoId, resultado.certificadoId);
       }
@@ -495,7 +596,7 @@ export function criarAppExpress() {
 
         const adocaoFiscal = await adotarReferenciaConsentida({ pool, preparacaoFiscalAtiva: Boolean(config.preparacaoFiscalAtiva) },
           medicoId, fiscal.parametros.dadosReformaTributaria.hash);
-        if (adocaoFiscal.ok) dispararTreino(medicoId);
+
         return res.json({
           ...resultado,
           medicoId,
@@ -548,9 +649,10 @@ export function criarAppExpress() {
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey,
         appWebhookUrl: appUrl,
-        webhookSecret: config.evolutionWebhookSecret
+        webhookSecret: config.evolutionWebhookSecret,
+        aoConectar: dispararAssistente
       });
-      if (resultado.ok) dispararTreino(medicoId);
+
       if (resultado.diagnostico) {
         console.warn('[WhatsApp] Conexão pendente:', {
           medicoId, modoConexao: modoConexao || 'codigo', diagnostico: resultado.diagnostico
@@ -574,9 +676,10 @@ export function criarAppExpress() {
       const resultado = await consultarStatusInstanciaWhatsapp(pool, {
         medicoId,
         evolutionUrl: config.evolutionApiUrl,
-        evolutionApiKey: config.evolutionGlobalApiKey
+        evolutionApiKey: config.evolutionGlobalApiKey,
+        aoConectar: dispararAssistente
       });
-      if (resultado.conectado) dispararTreino(medicoId);
+
       return res.json({ ...resultado, medicoId });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status do WhatsApp' });
@@ -585,56 +688,69 @@ export function criarAppExpress() {
 
   // Rota Webhook da Evolution API (suporta rota direta e subrotas com eventos)
   const webhookHandler = async (req: Request, res: Response) => {
-    const referencia=randomUUID(),inicio=Date.now();
-    console.info('[Webhook Evolution]',{etapa:'recebido',referencia,...diagnosticoEntradaWebhook(req.body)});
+    const referencia = randomUUID(), inicio = Date.now();
+    console.info('[Webhook Evolution]', { etapa: 'recebido', referencia, ...diagnosticoEntradaWebhook(req.body) });
     try {
-    const tokenRecebido =
-      (req.headers['apikey'] as string) ||
-      (req.headers['x-webhook-secret'] as string) ||
-      (req.headers['authorization'] as string) ||
-      (req.query['secret'] as string) ||
-      (req.query['apikey'] as string) ||
-      (req.query['token'] as string);
+      const tokenRecebido =
+        (req.headers['apikey'] as string) ||
+        (req.headers['x-webhook-secret'] as string) ||
+        (req.headers['authorization'] as string) ||
+        (req.query['secret'] as string) ||
+        (req.query['apikey'] as string) ||
+        (req.query['token'] as string);
 
-    // Autentica com segredo do webhook ou API key global da Evolution
-    let segredoEsperado = config.evolutionWebhookSecret;
-    if (
-      tokenRecebido &&
-      (tokenRecebido === config.evolutionGlobalApiKey ||
-        tokenRecebido === config.evolutionWebhookSecret)
-    ) {
-      segredoEsperado = tokenRecebido;
-    }
-
-
-    const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
-      repositorio: atendimentoRepo,
-      dadosProfissionais,
-      comunicadorNoto,
-      billingRepositorio: billingRepo,
-      enviarMensagemPaciente: evolutionClient,
-      iaService: groqClient,
-      consultaCpfProvider: hubCpfClient,
-      segredoConfigurado: segredoEsperado,
-      pepper: config.appPepper,
-      instanciaOficialNome: config.evolutionOfficialInstanceName,
-      async aoAtualizarConexao(evento) {
-        if (evento.instancia === config.evolutionOfficialInstanceName) return;
-        const medicoId = await registrarConexaoWhatsapp(pool, evento);
-        if (medicoId) dispararTreino(medicoId);
+      // Autentica com segredo do webhook ou API key global da Evolution (oficial ou assistente)
+      let segredoEsperado = config.evolutionWebhookSecret;
+      if (
+        tokenRecebido &&
+        (tokenRecebido === config.evolutionGlobalApiKey ||
+          tokenRecebido === config.evolutionWebhookSecret ||
+          tokenRecebido === config.evolutionAssistantApiKey ||
+          tokenRecebido === config.evolutionAssistantWebhookSecret)
+      ) {
+        segredoEsperado = tokenRecebido;
       }
-    });
 
-    console.info('[Webhook Evolution]',{etapa:'concluido',referencia,duracaoMs:Date.now()-inicio,...diagnosticoResultadoWebhook(resultado)});
-    if (!resultado.ok) {
-      const status = resultado.motivo === 'autenticacao_invalida' ? 401 : 400;
-      return res.status(status).json(resultado);
-    }
+      const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
+        repositorio: atendimentoRepo,
+        dadosProfissionais,
+        comunicadorNoto,
+        billingRepositorio: billingRepo,
+        enviarMensagemPaciente: enviarConversas,
+        iaService: ia.extrator,
+        consultaCpfProvider: hubCpfClient,
+        segredoConfigurado: segredoEsperado,
+        pepper: config.appPepper,
+        instanciaOficialNome: config.evolutionOfficialInstanceName,
+        instanciaAssistenteNome: config.evolutionAssistantInstanceName,
+        enviarMensagemAssistente: evolutionAssistantClient,
+        modoCadastro: config.notoCadastroModo,
+        processarConfirmacaoCadastro: config.notoCadastroModo === 'confirmacao' ? entrada => confirmadorCadastro.receber(entrada) : undefined,
+        gerenciadorAssistente: config.notoCadastroModo === 'conversacional' ? gerenciadorOnboarding : undefined,
+        processarConversaAssistente: config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
+        async aoAtualizarConexao(evento) {
+          if (
+            evento.instancia === config.evolutionOfficialInstanceName ||
+            evento.instancia === config.evolutionAssistantInstanceName
+          ) return;
+          const medicoId = await registrarConexaoWhatsapp(pool, evento);
+          if (medicoId) {
 
-    return res.json(resultado);
+            dispararAssistente(medicoId);
+          }
+        }
+      });
+
+      console.info('[Webhook Evolution]', { etapa: 'concluido', referencia, duracaoMs: Date.now() - inicio, ...diagnosticoResultadoWebhook(resultado) });
+      if (!resultado.ok) {
+        const status = resultado.motivo === 'autenticacao_invalida' ? 401 : 400;
+        return res.status(status).json(resultado);
+      }
+
+      return res.json(resultado);
     } catch (erro) {
-      console.error('[Webhook Evolution]',{etapa:'falha',referencia,duracaoMs:Date.now()-inicio,...diagnosticoErroWebhook(erro)});
-      return res.status(500).json({ok:false,motivo:'falha_processamento',referencia});
+      console.error('[Webhook Evolution]', { etapa: 'falha', referencia, duracaoMs: Date.now() - inicio, ...diagnosticoErroWebhook(erro) });
+      return res.status(500).json({ ok: false, motivo: 'falha_processamento', referencia });
     }
   };
 
@@ -661,7 +777,7 @@ export function criarAppExpress() {
     }
   });
 
-  // Rota de Extração Inteligente de Dados com Groq AI
+  // Rota de Extração Inteligente de Dados com NVIDIA
   app.post('/api/ia/extrair-dados', async (req: Request, res: Response) => {
     try {
       const { texto, mensagens, dataReferencia } = req.body || {};
@@ -670,7 +786,7 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'Texto ou mensagens são obrigatórios' });
       }
       const dataRef = dataReferencia ? new Date(dataReferencia) : new Date();
-      const resultado = await groqClient.extrairDados(textoConsulta, dataRef);
+      const resultado = await ia.extrator.extrairDados(textoConsulta, dataRef);
       return res.json({ ok: true, dados: resultado });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro na extração de IA' });
@@ -825,18 +941,13 @@ export function criarAppExpress() {
   });
 
   if (process.env['NODE_ENV'] !== 'test') {
-    if (config.treinoOnboardingAtivo) {
-      // Retoma apenas intervalos entre mensagens já confirmadas, nunca envios incertos.
-      void pool.query(`select medico_id from onboarding_treinos_whatsapp where estado = 'pendente'`)
-        .then(({ rows }) => rows.forEach(row => dispararTreino(row.medico_id)))
-        .catch(() => console.warn('[TreinoOnboarding] Não foi possível consultar treinos pendentes. Verifique a migração.'));
-    }
     setTimeout(() => {
       void pool.query(
-        `select nome_instancia
+        `select nome_instancia, medico_id
          from whatsapp_instancias
          where status = 'conectado' and oficial = false`
       ).then(async ({ rows }) => {
+        rows.forEach(row => { if (row.medico_id) dispararAssistente(row.medico_id); });
         for (const row of rows) {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);

@@ -6,10 +6,11 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type pg from 'pg';
-import type {
+import {
   AuthAdminService,
   UsuarioAutenticadoInfo
 } from '../../auth/auth-admin-service.js';
+import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
 
 export class SupabaseAuthAdminService implements AuthAdminService {
   private readonly supabase: SupabaseClient;
@@ -33,14 +34,20 @@ export class SupabaseAuthAdminService implements AuthAdminService {
   }
 
   async buscarPorTelefone(telefone: string): Promise<UsuarioAutenticadoInfo | null> {
+    const variantes = gerarVariantesTelefoneBrasileiro(telefone);
+    const emailsFicticios = variantes.map((v) => `medico_${v}@auth.notomed.local`);
     const sql = `
       select u.id as usuario_id, u.auth_user_id, u.papel, u.nome, u.conta_id, m.id as medico_id
       from usuarios u
       left join medicos m on m.usuario_id = u.id
-      where u.telefone = $1 and u.ativo = true
+      where (
+        u.telefone = any($1)
+        or regexp_replace(coalesce(u.telefone, ''), '\\D', '', 'g') = any($1)
+        or u.email = any($2)
+      ) and u.ativo = true
       limit 1
     `;
-    const { rows } = await this.pool.query(sql, [telefone]);
+    const { rows } = await this.pool.query(sql, [variantes, emailsFicticios]);
     if (rows.length === 0) return null;
 
     let medicoId = rows[0].medico_id || undefined;
@@ -72,8 +79,12 @@ export class SupabaseAuthAdminService implements AuthAdminService {
     telefone: string;
     nomePadrao?: string;
   }): Promise<UsuarioAutenticadoInfo> {
+    const variantes = gerarVariantesTelefoneBrasileiro(params.telefone);
     const emailFicticio = `medico_${params.telefone}@auth.notomed.local`;
+    const emailsPossiveis = [emailFicticio, ...variantes.map((v) => `medico_${v}@auth.notomed.local`)];
     const nome = params.nomePadrao || `Médico ${params.telefone.slice(-4)}`;
+
+    let authUserId: string | undefined;
 
     const { data: authData, error: authError } = await this.supabase.auth.admin.createUser({
       email: emailFicticio,
@@ -83,14 +94,91 @@ export class SupabaseAuthAdminService implements AuthAdminService {
       user_metadata: { nome, papel: 'medico' }
     });
 
-    if (authError || !authData.user) {
-      throw new Error(`Falha ao criar usuário no Supabase Auth: ${authError?.message}`);
+    if (authData?.user?.id) {
+      authUserId = authData.user.id;
+    } else if (authError) {
+      const ehErroUsuarioJaExiste =
+        authError.message?.toLowerCase().includes('already been registered') ||
+        authError.message?.toLowerCase().includes('already exists') ||
+        (authError as any).code === 'email_exists' ||
+        (authError as any).code === 'user_already_exists';
+
+      if (ehErroUsuarioJaExiste) {
+        // Tenta recuperar o authUserId na lista de usuários do Supabase Auth
+        const { data: lista } = await this.supabase.auth.admin.listUsers({ perPage: 1000 });
+        const usuarioExistente = lista?.users?.find(
+          (u) =>
+            (u.email && emailsPossiveis.includes(u.email)) ||
+            (u.phone && variantes.includes(u.phone.replace(/\D/g, '')))
+        );
+
+        if (usuarioExistente) {
+          authUserId = usuarioExistente.id;
+        } else {
+          // Fallback: consulta id existente na base Postgres local se já vinculado
+          const { rows: uRows } = await this.pool.query(
+            'select auth_user_id from usuarios where email = any($1) or telefone = any($2) limit 1',
+            [emailsPossiveis, variantes]
+          );
+          if (uRows.length > 0) {
+            authUserId = uRows[0].auth_user_id;
+          }
+        }
+      }
+
+      if (!authUserId) {
+        throw new Error(`Falha ao criar usuário no Supabase Auth: ${authError.message}`);
+      }
     }
 
-    const authUserId = authData.user.id;
+    if (!authUserId) {
+      throw new Error('Falha ao criar usuário no Supabase Auth: id do usuário não encontrado.');
+    }
+
     const client = await this.pool.connect();
     try {
       await client.query('begin');
+
+      // Reconciliação: se o usuário já existe na base local, sincroniza e retorna
+      const { rows: existenteRows } = await client.query(
+        `select u.id as usuario_id, u.conta_id, u.nome, u.papel, u.auth_user_id, m.id as medico_id
+         from usuarios u
+         left join medicos m on m.usuario_id = u.id
+         where u.auth_user_id = $1 or u.email = any($2)
+         limit 1`,
+        [authUserId, emailsPossiveis]
+      );
+
+      if (existenteRows.length > 0) {
+        const u = existenteRows[0];
+        let medicoId = u.medico_id;
+
+        await client.query(
+          'update usuarios set telefone = $2, ativo = true, atualizado_em = now() where id = $1',
+          [u.usuario_id, params.telefone]
+        );
+
+        if (!medicoId && u.papel === 'medico') {
+          const { rows: medRows } = await client.query(
+            `insert into medicos (usuario_id, conta_id, nome_completo)
+             values ($1, $2, $3)
+             returning id`,
+            [u.usuario_id, u.conta_id, u.nome || nome]
+          );
+          medicoId = medRows[0].id;
+        }
+
+        await client.query('commit');
+        return {
+          usuarioId: u.usuario_id,
+          medicoId,
+          nome: u.nome || nome,
+          authUserId,
+          papel: u.papel || 'medico',
+          ehNovoUsuario: false
+        };
+      }
+
       const { rows: contaRows } = await client.query(
         `insert into contas (tipo, nome) values ('individual', $1) returning id`,
         [`Consultório ${nome}`]

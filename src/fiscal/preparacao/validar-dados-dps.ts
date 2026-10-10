@@ -19,7 +19,13 @@ export function validarDadosDps(input: EmissaoInput, cfg: ConfigPrestador): Pend
   };
   const doc = cfg.cnpj.replace(/\D/g, '');
   exigir(doc.length === 11 ? validarCpf(doc) : validarCnpj(doc), 'prestador.documento', 'Conferir CPF/CNPJ do emitente.');
-  exigir(validarCpf(input.tomador.CPF), 'tomador.cpf', 'Conferir o CPF do tomador.');
+  if (input.tomador.CPF) {
+    exigir(validarCpf(input.tomador.CPF), 'tomador.cpf', 'Conferir o CPF do tomador.');
+  } else if (input.tomador.CNPJ) {
+    exigir(validarCnpj(input.tomador.CNPJ.replace(/\D/g, '')), 'tomador.cnpj', 'Conferir o CNPJ do tomador.');
+  } else {
+    exigir(false, 'tomador.documento', 'Informar o CPF ou CNPJ do tomador.');
+  }
   exigir([1, 2].includes(cfg.ambiente), 'ambiente', 'Confirmar produção ou homologação.');
   exigir(/^\d{7}$/.test(cfg.codMunicipio), 'municipio', 'Conferir o código IBGE do emitente.');
   exigir(/^\d{1,5}$/.test(cfg.serie ?? ''), 'serie', 'Informar série da DPS de um a cinco dígitos.');

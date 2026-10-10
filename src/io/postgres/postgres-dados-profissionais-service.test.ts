@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PostgresDadosProfissionaisService } from './postgres-dados-profissionais-service.js';
-function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:boolean;telefone?:string;falharUsuario?:boolean;concluido?:boolean;datas?:string|null;legado?:string;datasAgenda?:string|null;semSolicitacoes?:boolean;confirmacao?:boolean;capturadaEm?:Date;comunicador?:any} = {}) {
+function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:boolean;telefone?:string;falharUsuario?:boolean;concluido?:boolean;datas?:string|null;legado?:string;datasAgenda?:string|null;semSolicitacoes?:boolean;confirmacao?:boolean;capturadaEm?:Date;comunicador?:any;assistenteAtivo?:boolean} = {}) {
   let medico = {id:'11111111-1111-4111-8111-111111111111',usuario_id:'22222222-2222-4222-8222-222222222222',nome_completo:opcoes.nome??'Médico 9886',crm:opcoes.crm??null,rqe:null,especialidade:'Cardiologia',telefone:opcoes.telefone??'5551999999999'};
   let pendencia = opcoes.concluido ? {estado:'concluido'} : opcoes.pendente ? {estado:'enviado'} : null;
   let revisao: any = opcoes.confirmacao ? {estado:'pendente', capturada_em:opcoes.capturadaEm??new Date('2026-10-07T00:00:00Z')} : null;
@@ -18,6 +18,7 @@ function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:bo
     if(sql.includes('from emissoes_pendentes_confirmacoes'))return {rows:revisao?[{...revisao}]:[]};
     if(sql.startsWith('update emissoes_pendentes_confirmacoes')){if(!revisao)return {rows:[],rowCount:0};if(sql.includes("set estado='reservado'") && revisao.estado!=='pendente')return {rows:[],rowCount:0};revisao.estado=sql.includes("set estado='confirmado'")?'confirmado':p[1]??'reservado';return {rows:[{medico_id:p[0]}],rowCount:1};}
     if(sql.startsWith('update solicitacoes_nota set aguardando_confirmacao_medico')){aguardaConfirmacao=false;return {rows:[],rowCount:1};}
+    if(sql.includes('from noto_assistente_sessoes'))return {rows:opcoes.assistenteAtivo?[{medico_id:medico.id}]:[],rowCount:opcoes.assistenteAtivo?1:0};
     if(sql.startsWith('select estado')) return {rows:pendencia?[{...pendencia}]:[]};
     if(sql.startsWith('insert into dados_profissionais_pendencias')){if(pendencia && !(pendencia.estado==='concluido' && sql.includes("where dados_profissionais_pendencias.estado='concluido'")))return {rows:[]};pendencia={estado:'reservado'};return {rows:[{medico_id:p[0]}]};}
     if(sql.startsWith('delete from dados_profissionais_pendencias')){if(pendencia?.estado==='reservado')pendencia=null;return {rows:[],rowCount:1};}
@@ -36,7 +37,7 @@ function ambiente(opcoes: {nome?:string;crm?:string;pendente?:boolean;falhar?:bo
     try{const r=await enviar.enviarTexto({instanciaNome:'noto_oficial',contatoTelefone:medico.telefone,texto});return {sucesso:r.sucesso,envioIniciado:true};}
     catch{return {sucesso:false,envioIniciado:true};}
   }};
-  return {service:new PostgresDadosProfissionaisService(pool,enviar,'noto_oficial',comunicador),envios,updates,queries,medico:()=>medico,pendencia:()=>pendencia,revisao:()=>revisao};
+  return {service:new PostgresDadosProfissionaisService(pool,enviar,'noto_oficial',comunicador,Boolean(opcoes.assistenteAtivo)),envios,updates,queries,medico:()=>medico,pendencia:()=>pendencia,revisao:()=>revisao};
 }
 test('reserva pedido persistente antes do envio oficial e não repete após erro incerto', async()=>{
   const a=ambiente({falhar:true}); await a.service.solicitar('11111111-1111-4111-8111-111111111111');await a.service.solicitar('11111111-1111-4111-8111-111111111111');
@@ -141,4 +142,11 @@ test('falha na IA não impede retomada de cadastro já completo',async()=>{
  const a=ambiente({nome:'Ana Silva',crm:'123/RS',confirmacao:true,comunicador:{enviar:async()=>{chamadas++;return {sucesso:false,envioIniciado:false};}}});
  assert.equal(await a.service.retomar('11111111-1111-4111-8111-111111111111'),1);
  assert.equal(chamadas,0);
+});
+
+test('coleta profissional paralela não repete perguntas quando assistente contextual conduz cadastro', async () => {
+  const a = ambiente({ assistenteAtivo: true });
+  await a.service.solicitar('11111111-1111-4111-8111-111111111111');
+  assert.equal(a.envios.length, 0);
+  assert.equal(a.pendencia(), null);
 });

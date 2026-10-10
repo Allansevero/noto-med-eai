@@ -6,6 +6,7 @@
 
 import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
 import { investigarFalha, type AgenteFiscalDeps } from '../agente-fiscal/investigar-falha.js';
+import { formatarMotivoFalhaEmissao } from './formatar-motivo-falha-emissao.js';
 import type { FalhaEmissao } from '../agente-fiscal/investigacao.js';
 import {
   excedeuTentativasEmissao,
@@ -148,13 +149,23 @@ async function tratarComAgente(item: ItemFilaComTentativas, falha: FalhaEmissao,
   const resultado = await investigarFalha({ item, falha }, {
     ...deps.agenteFiscal!, emissor: deps.emissorDps,
     concluir: (nota) => tratarSucessoEmissao(item, nota, deps),
-    notificar: async () => {
+    notificar: async (decisao) => {
+      if (decisao.responsavel === 'desenvolvedor') {
+        await deps.notificadorAlertas.notificarDesenvolvedorEmail({
+          assunto: `[Incidente Fiscal] ${decisao.motivo} (Solicitação ${item.id})`,
+          detalhesErro: `Falha técnica de competência dos desenvolvedores: ${decisao.motivo}\nAção recomendada: ${decisao.acaoSugerida}\nDetalhes do erro: ${formatarMotivoFalhaEmissao(falha)}`,
+          solicitacaoId: item.id,
+          medicoId: item.medicoId
+        });
+        return;
+      }
       const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
       if (!contexto) throw new Error('Contato do médico não localizado');
       await deps.notificadorAlertas.notificarMedicoWhatsApp({
-        telefoneMedico: contexto.telefoneMedico, medicoId:item.medicoId, solicitacaoId:item.id, nomePaciente: contexto.nomePaciente,
+        telefoneMedico: contexto.telefoneMedico, medicoId: item.medicoId, solicitacaoId: item.id, nomePaciente: contexto.nomePaciente,
         valorCentavos: item.valorServicoCentavos,
-        motivoErro: falha.erro
+        motivoErro: formatarMotivoFalhaEmissao(falha),
+        pendenciasFiscais: falha.pendenciasFiscais
       });
     }
   });

@@ -37,7 +37,8 @@ export function analisarReferenciaFiscal(xmlObj: any) {
   const trib = dps.valores?.trib;
   const naoOptante = String(dps.prest?.regTrib?.opSimpNac) === '1';
   detectar(trib, ['tribMun','tribFed','totTrib'], 'valores/trib');
-  detectar(trib?.tribMun, ['tribISSQN','tpRetISSQN', ...(naoOptante ? ['pAliq'] : [])], 'tribMun');
+  const permiteAliqMun = naoOptante || String(dps.prest?.regTrib?.regApTribSN) === '2' || String(trib?.tribMun?.tpRetISSQN) === '2';
+  detectar(trib?.tribMun, ['tribISSQN','tpRetISSQN', ...(permiteAliqMun ? ['pAliq'] : [])], 'tribMun');
   detectar(trib?.tribFed, ['piscofins'], 'tribFed');
   const pis = trib?.tribFed?.piscofins;
   const calculaPis = naoOptante && ['01', '02'].includes(String(pis?.CST).padStart(2, '0'));

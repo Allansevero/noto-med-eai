@@ -73,3 +73,39 @@ describe('consultarStatusInstanciaWhatsapp', () => {
     }
   });
 });
+
+it('resposta sem estado reconhecido não indica desconexão como fato', async () => {
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ instance: { state: 'unknown' } }) }) as any;
+  try {
+    const resultado = await consultarStatusInstanciaWhatsapp({ query: async () => assert.fail('Estado desconhecido não altera banco') } as any,
+      { medicoId: 'medico', evolutionUrl: 'https://evolution.test', evolutionApiKey: 'teste' });
+    assert.equal(resultado.ok, false); assert.equal(resultado.status, 'erro');
+  } finally { globalThis.fetch = fetchOriginal; }
+});
+
+
+it('inicia o assistente quando a consulta confirma conexão, mesmo sem webhook', async t => {
+  let atualizado = false;
+  const inicios: string[] = [];
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ instance: { state: 'open' } })));
+  const resultado = await consultarStatusInstanciaWhatsapp({ query: async () => {
+    atualizado = true; return { rowCount: 1 };
+  }} as any, {
+    medicoId: 'med-1', evolutionUrl: 'https://evolution.test', evolutionApiKey: 'teste',
+    aoConectar: (medicoId: string) => {
+      assert.equal(atualizado, true);
+      inicios.push(medicoId);
+    }
+  } as any);
+  assert.equal(resultado.conectado, true);
+  assert.deepEqual(inicios, ['med-1']);
+});
+
+it('não apresenta o assistente enquanto a conexão estiver pendente', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ instance: { state: 'connecting' } })));
+  await consultarStatusInstanciaWhatsapp({ query: async () => assert.fail('não atualiza') } as any, {
+    medicoId: 'med-1', evolutionUrl: 'https://evolution.test', evolutionApiKey: 'teste',
+    aoConectar: () => assert.fail('não inicia o assistente antes de conectar')
+  } as any);
+});

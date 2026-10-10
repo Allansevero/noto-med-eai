@@ -10,7 +10,7 @@ novas solicitações; não reescrevem notas nem solicitações anteriores.
 ## O que aproveitar
 
 - Evolution, instância oficial configurada, webhook e envio de mensagens.
-- Groq, com saída estruturada e ferramentas limitadas como no agente de exceções.
+- NVIDIA, com saída estruturada e ferramentas limitadas como no agente de exceções.
 - `usuarios`, `contadores` e `contador_medico` para identificar o responsável e
   delimitar quais médicos ele pode representar. O vínculo existe no esquema;
   ainda precisa ser usado e validado no novo fluxo de conversa.

@@ -68,8 +68,14 @@ export async function confirmarPoliticaEmissao(pool: pg.Pool, input: { medicoId:
           : explicarCamposPendentes(campos);
         throw new ErroAdocaoReferencia('REFERENCIA_FISCAL_PENDENTE', mensagem, { campos, pendencias: pendenciasReferencia });
       }
+      const hojeSp = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+      const inicioAno = `${hojeSp.slice(0, 4)}-01-01`;
+      const vigenciaInicio = typeof referencia.parametrosSugeridos?.vigenciaInicio === 'string' &&
+        referencia.parametrosSugeridos.vigenciaInicio <= hojeSp
+          ? referencia.parametrosSugeridos.vigenciaInicio
+          : inicioAno;
       const candidato = parametrosEmissaoSchema.safeParse({ ...referencia.parametrosSugeridos,
-        vigenciaInicio: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) });
+        vigenciaInicio });
       if (!candidato.success) {
         const campos = [...new Set(candidato.error.issues.map(erro => erro.path.join('.')))];
         const nomes: Record<string, string> = { ambiente: 'ambiente de emissão', municipioPrestacao: 'município da prestação',

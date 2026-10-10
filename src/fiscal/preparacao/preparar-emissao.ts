@@ -26,11 +26,12 @@ export function prepararEmissao(item: SolicitacaoEmissaoItem, evidencias: Eviden
   if (!validado.success) for (const erro of validado.error.issues) adicionar(erro.path.join('.'), 'PARAMETRO_INVALIDO', erro.message);
   if (validado.success) for (const erro of validarReferenciaFiscal(evidencias.perfil.referenciaFiscal,
     { ...politica, parametros: validado.data })) adicionar('referencia', 'REFERENCIA_PENDENTE', erro);
-  const datas = [...new Set(evidencias.datasConsultas)];
-  const competencia = evidencias.competenciaInformada ?? (datas.length === 1 ? datas[0] : undefined);
+  // A competência segue o dia da emissão; datas de consultas ficam na descrição.
+  // Valores históricos de competenciaInformada não alteram a regra atual.
+  const competencia = hoje;
   if (!competencia || !/^\d{4}-\d{2}-\d{2}$/.test(competencia) || !Number.isFinite(Date.parse(competencia)) ||
-      new Date(competencia).toISOString().slice(0, 10) !== competencia || competencia > hoje) {
-    adicionar('competencia', 'COMPETENCIA_INDEFINIDA', 'Definir uma competência válida. Consultas em datas diferentes exigem confirmação específica.');
+      new Date(competencia).toISOString().slice(0, 10) !== competencia) {
+    adicionar('competencia', 'COMPETENCIA_INDEFINIDA', 'Não foi possível determinar uma data válida para a emissão.');
   }
   if (validado.success && competencia && (competencia < validado.data.vigenciaInicio ||
       (validado.data.vigenciaFim && competencia > validado.data.vigenciaFim))) {
@@ -64,6 +65,6 @@ export function prepararEmissao(item: SolicitacaoEmissaoItem, evidencias: Eviden
   return { ok: true as const, parametros: validado.data, competencia, servico,
     origem: { versao: 1, servicoId: servico.id, parametrosConfirmadosEm: politica!.confirmadoEm,
       referenciaHash: politica!.referenciaHash,
-      competencia: evidencias.competenciaInformada ? 'solicitacao' : 'consulta_vinculada', classificacao: 'servico_revisado',
+      competencia: 'data_emissao', classificacao: 'servico_revisado',
       dadosAplicados: { competencia, ctribNac: servico.ctribNac, cnbs: servico.cnbs, ctribMun: servico.ctribMun, parametros: validado.data } } };
 }

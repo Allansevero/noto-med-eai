@@ -18,12 +18,17 @@ export interface AppConfig {
   evolutionGlobalApiKey: string;
   evolutionWebhookSecret: string;
   evolutionOfficialInstanceName: string;
+  evolutionAssistantUrl: string;
+  evolutionAssistantApiKey: string;
+  evolutionAssistantInstanceName: string;
+  evolutionAssistantWebhookSecret: string;
   resendApiKey?: string;
   devEmailAlerta?: string;
-  groqApiKey: string;
-  groqModel: string;
   nvidiaApiKey?: string;
   nvidiaModel?: string;
+  nvidiaVisionModel?: string;
+  notoCadastroModo?: 'conversacional' | 'confirmacao';
+  assistenteContextualAtivo?: boolean;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
   treinoOnboardingAtivo?: boolean;
@@ -38,6 +43,7 @@ export interface AppConfig {
   googleAppId?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
+  cfmPesquisaAtiva: boolean;
   stripeSecretKey?: string;
   stripePublishableKey?: string;
   stripePriceId?: string;
@@ -45,6 +51,9 @@ export interface AppConfig {
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  if (env['NOTO_CADASTRO_MODO'] && !['conversacional', 'confirmacao'].includes(env['NOTO_CADASTRO_MODO'])) {
+    throw new Error('NOTO_CADASTRO_MODO deve ser confirmacao ou conversacional.');
+  }
   if (env['PREPARACAO_FISCAL_ATIVA'] === 'true' && env['AGENTE_FISCAL_ATIVO'] !== 'true') {
     throw new Error('PREPARACAO_FISCAL_ATIVA requer AGENTE_FISCAL_ATIVO para tratar pendências sem retentativas cegas.');
   }
@@ -65,12 +74,17 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     evolutionGlobalApiKey: env['EVOLUTION_GLOBAL_API_KEY'] || '',
     evolutionWebhookSecret: env['EVOLUTION_WEBHOOK_SECRET'] || '',
     evolutionOfficialInstanceName: env['EVOLUTION_OFFICIAL_INSTANCE_NAME'] || 'notomed_oficial',
+    evolutionAssistantUrl: env['EVOLUTION_ASSISTANT_URL'] || env['EVOLUTION_API_URL'] || '',
+    evolutionAssistantApiKey: env['EVOLUTION_ASSISTANT_GLOBAL_API_KEY'] || env['EVOLUTION_ASSISTANT_API_KEY'] || env['EVOLUTION_GLOBAL_API_KEY'] || '',
+    evolutionAssistantInstanceName: env['EVOLUTION_ASSISTANT_INSTANCE_NAME'] || 'notomed_assistente',
+    evolutionAssistantWebhookSecret: env['EVOLUTION_ASSISTANT_WEBHOOK_SECRET'] || env['EVOLUTION_WEBHOOK_SECRET'] || '',
     resendApiKey: env['RESEND_API_KEY'],
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
-    groqApiKey: env['GROQ_API_KEY'] || '',
-    groqModel: env['GROQ_MODEL'] || 'openai/gpt-oss-120b',
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
+    nvidiaVisionModel: env['NVIDIA_VISION_MODEL']?.trim() || env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
+    notoCadastroModo: env['NOTO_CADASTRO_MODO'] === 'conversacional' ? 'conversacional' : 'confirmacao',
+    assistenteContextualAtivo: env['ASSISTENTE_CONTEXTUAL_ATIVO'] === 'true',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
     treinoOnboardingAtivo: env['TREINO_ONBOARDING_ATIVO'] === 'true',
@@ -85,6 +99,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     googleAppId: env['GOOGLE_APP_ID'],
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
+    cfmPesquisaAtiva: env['CFM_PESQUISA_ATIVA'] !== 'false',
     stripeSecretKey: env['STRIPE_SECRET_KEY'],
     stripePublishableKey: env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
     stripePriceId: env['STRIPE_PRICE_ID'] || 'price_1UFaloBMqkVPUWioDTWXIPv6',
