@@ -26,16 +26,57 @@ export class BrasilApiConsultaEmpresa implements ConsultaEmpresa {
 function deduplicar(candidatos:CandidatoResponsavel[]):CandidatoResponsavel[]{
  const nomes=new Set<string>();return candidatos.filter(c=>{const n=c.nome.toLocaleLowerCase('pt-BR');if(nomes.has(n))return false;nomes.add(n);return true;}).slice(0,50);
 }
-/** Parser da resposta publicada pelo Hub. Chamadas só após confirmar endpoint/auth. */
+/** Parser do contrato CNPJ documentado pelo Hub. */
 export function lerRespostaHubCnpj(corpo: unknown, cnpj: string): ResultadoConsulta<EmpresaConsultada> {
  const d=corpo as any, r=d?.result;
- if (!/^\d{14}$/.test(cnpj) || ![true,'true'].includes(d?.status) || typeof r?.numero_de_inscricao!=='string' || r.numero_de_inscricao.replace(/\D/g,'')!==cnpj || typeof r.nome!=='string') return falha();
+ if (!/^\d{14}$/.test(cnpj) || d?.return!=='OK' || ![true,'true'].includes(d?.status) || typeof r?.numero_de_inscricao!=='string' || r.numero_de_inscricao.replace(/\D/g,'')!==cnpj || typeof r.nome!=='string' || !r.nome.trim()) return falha();
  const origem='Hub do Desenvolvedor / quadro_socios';
  const candidatos:CandidatoResponsavel[]=(Array.isArray(r.quadro_socios)?r.quadro_socios:[]).flatMap((s:unknown)=>{
   if(typeof s!=='string')return [];
   const nome=s.replace(/\s+\d{2}\s*-\s*.+$/u,'').trim();return pessoa(nome)?[{nome,origem}]:[];
  });
  return {estado:'consultado',dados:{cnpj,razaoSocial:r.nome.slice(0,200),origem:'Hub do Desenvolvedor',candidatos:deduplicar(candidatos)}};
+}
+/** Consulta paga padrão: não força Receita nem adiciona consultas de IE. */
+export class HubConsultaEmpresa implements ConsultaEmpresa {
+ constructor(private token: string, private requisitar: typeof fetch = fetch) {}
+
+ async consultar(cnpj: string): Promise<ResultadoConsulta<EmpresaConsultada>> {
+  const indisponivel = (): ResultadoConsulta<EmpresaConsultada> => ({
+   estado: 'indisponivel', codigo: 'HUB_CNPJ_CONSULTA_INDISPONIVEL'
+  });
+  if (!this.token || !/^\d{14}$/.test(cnpj)) return indisponivel();
+  try {
+   const url = new URL('https://ws.hubdodesenvolvedor.com.br/v2/cnpj/');
+   url.searchParams.set('cnpj', cnpj);
+   url.searchParams.set('token', this.token);
+   const resposta = await this.requisitar(url, {
+    method: 'GET', headers: { Accept: 'application/json' },
+    redirect: 'error', signal: AbortSignal.timeout(300_000)
+   });
+   if (!resposta.ok) return indisponivel();
+   const resultado = lerRespostaHubCnpj(await resposta.json(), cnpj);
+   return resultado.estado === 'consultado' ? resultado : indisponivel();
+  } catch {
+   // Erros de transporte podem conter URL com documento/token: não propagá-los.
+   return indisponivel();
+  }
+ }
+}
+
+/** O Hub só é usado quando configurado; indisponibilidade permite a fonte secundária. */
+export function criarConsultaEmpresa(token?: string, requisitar: typeof fetch = fetch): ConsultaEmpresa {
+ const secundaria = new BrasilApiConsultaEmpresa(requisitar);
+ if (!token) return secundaria;
+ const principal = new HubConsultaEmpresa(token, requisitar);
+ return {
+  async consultar(cnpj) {
+   const resultado = await principal.consultar(cnpj);
+   if (resultado.estado === 'consultado') return resultado;
+   const alternativa = await secundaria.consultar(cnpj);
+   return alternativa.estado === 'consultado' ? alternativa : resultado;
+  }
+ };
 }
 export class PesquisaRegistroIndisponivel implements ConsultaRegistro {
  async buscar(_nome:string,_uf?:string):Promise<ResultadoConsulta<DadosMedicoOnline[]>>{return {estado:'indisponivel',codigo:'CRM_FONTE_NAO_CONFIGURADA'};}

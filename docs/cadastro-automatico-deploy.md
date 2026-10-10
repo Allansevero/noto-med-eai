@@ -6,9 +6,11 @@
 
 Ao salvar o A1, o upload agenda enriquecimento sem esperar consultas externas. O processo web recupera a fila a cada cinco segundos e agenda certificados ativos ainda sem trabalho. Certificados anteriores ficam obsoletos; alterações em nome/CRM invalidam perguntas antigas. A versão mantém histórico e não apaga cadastros.
 
-**Fontes atualmente disponíveis:** BrasilAPI como fonte cadastral secundária para empresa e possíveis responsáveis. Um candidato deve ser confirmado como médico responsável. O nome do secretário não é promovido ao do médico nem sobrescrito pelo nome encontrado. Para e-CPF, a consulta de CPF já existente do Hub pode fornecer um candidato se `HUB_DESENVOLVEDOR_TOKEN` estiver configurado.
+**Fontes atualmente disponíveis:** Hub como fonte CNPJ principal quando `HUB_DESENVOLVEDOR_TOKEN` está configurado; BrasilAPI como fonte secundária se o Hub estiver indisponível ou o token ausente. Um candidato deve ser confirmado como médico responsável. O nome do secretário não é promovido ao do médico nem sobrescrito pelo nome encontrado. Para e-CPF, a consulta de CPF já existente do Hub pode fornecer um candidato com o mesmo token configurado.
 
-**Limitações externas:** consulta de CNPJ do Hub não habilitada: faltam contrato de endpoint/autenticação e validação de acesso. Pesquisa de CRM automática não habilitada: página pública do CFM exige reCAPTCHA. Por enquanto, depois de identificar o médico, o Noto pede CRM com UF como dado declarado, sem RQE e sem retomar o roteiro antigo. Consulte [fontes](cadastro-automatico-fontes.md).
+**Limitações externas:** o acesso/saldo do token ao CNPJ do Hub não foi testado com consulta real. Pesquisa de CRM automática não habilitada: página pública do CFM exige reCAPTCHA. Por enquanto, depois de identificar o médico, o Noto pede CRM com UF como dado declarado, sem RQE e sem retomar o roteiro antigo. Consulte [fontes](cadastro-automatico-fontes.md).
+
+O Hub pode levar até 300 segundos; a reserva do trabalho dura seis minutos. Isso ocorre depois do upload, sem esperar a consulta na requisição de envio do A1. A chamada padrão pode consumir um crédito na base ou dois na Receita; não forçamos a Receita nem consultamos inscrições estaduais adicionais. Configurar o token no ambiente do backend, sem incluí-lo no código ou em URLs de logs. Trabalhos que já possuem empresa válida reutilizam seus dados, sem forçar nova consulta paga após esse deploy.
 
 A empresa é armazenada nos dados do trabalho cadastral; os parâmetros fiscais continuam vindo da referência ADN. Nenhum enquadramento fiscal é sobrescrito pela consulta secundária.
 
