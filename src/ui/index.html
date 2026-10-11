@@ -2455,7 +2455,7 @@
       const fontesRqe=cadastroEl('fontesRqeProfissional');fontesRqe.replaceChildren();
       for(const f of fontesTodasRqe){let url;try{url=new URL(f.urlOrigem);if(url.protocol!=='https:'||url.username||url.password)continue;}catch{continue;}
         const item=document.createElement('li'),link=document.createElement('a');link.href=url.toString();link.target='_blank';link.rel='noopener noreferrer';
-        link.textContent=`Sugestão não oficial: RQE ${f.numero}/${f.uf} · CRM ${f.crm}/${f.crmUf} · ${f.titulo||'fonte online'}`;item.appendChild(link);fontesRqe.appendChild(item);
+        link.textContent=`Sugestão não oficial: RQE ${f.numero}/${f.uf}${f.ufOrigem==='crm'?' (UF vinculada ao CRM)':''} · CRM ${f.crm}/${f.crmUf} · ${f.titulo||'fonte online'}`;item.appendChild(link);fontesRqe.appendChild(item);
       }
       for (const [id,label,opcoes,valor,texto] of [
         ['selectResponsavelProfissional','labelResponsavelProfissional',r.candidatos || [],c=>c.nome,c=>c.nome],

@@ -22,6 +22,7 @@ export interface DadosMedicoOnline {
 export interface FonteRqeProfissional {
   numero: string;
   uf: string;
+  ufOrigem?: 'rqe' | 'crm';
   titulo: string;
   urlOrigem: string;
   evidencia: string;

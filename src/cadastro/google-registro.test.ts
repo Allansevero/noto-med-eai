@@ -120,7 +120,7 @@ test('consulta Serper com o contrato exigido e passa resultados orgânicos à NV
   const headers = new Headers(requisicao?.init?.headers);
   assert.equal(headers.get('X-API-KEY'), 'serper-fixture');
   assert.equal(headers.get('Content-Type'), 'application/json');
-  assert.deepEqual(JSON.parse(String(requisicao?.init?.body)), { q: '"Bruna Botter" CRM RQE', gl: 'br', hl: 'pt-br', num: 10 });
+  assert.deepEqual(JSON.parse(String(requisicao?.init?.body)), { q: 'CRM Bruna Botter', gl: 'br', hl: 'pt-br', num: 10 });
   assert.match(JSON.stringify(mensagens), /não confiável/iu);
 });
 
@@ -129,7 +129,7 @@ test('JSON com registros vazios é ausência de evidência, não falha de format
     requisitar: (async () => Response.json({ organic: [{ title: fonte.titulo, snippet: fonte.trecho, link: fonte.url }] })) as typeof fetch,
     completar: async () => '{"registros":[]}'
   });
-  assert.deepEqual(await cliente.buscar(nome), { estado: 'nao_encontrado', codigo: 'SERPER_NAO_ENCONTRADO' });
+  assert.deepEqual(await cliente.buscar(nome), { estado: 'nao_encontrado', codigo: 'NVIDIA_SEM_REGISTROS' });
 });
 
 test('sem credenciais, resultado vazio e falhas externas são sanitizados e não repetem pesquisas', async () => {
@@ -138,7 +138,7 @@ test('sem credenciais, resultado vazio e falhas externas são sanitizados e não
   assert.deepEqual(await semCredenciais.buscar(nome), { estado: 'indisponivel', codigo: 'CRM_FONTE_NAO_CONFIGURADA' });
   assert.equal(chamadas, 0);
   const vazio = new GoogleConsultaRegistro({ serperApiKey: 'x', nvidiaApiKey: 'y', requisitar: (async () => Response.json({ organic: [] })) as typeof fetch });
-  assert.deepEqual(await vazio.buscar(nome), { estado: 'nao_encontrado', codigo: 'SERPER_NAO_ENCONTRADO' });
+  assert.deepEqual(await vazio.buscar(nome), { estado: 'nao_encontrado', codigo: 'SERPER_SEM_RESULTADOS_UTILIZAVEIS' });
   const falha = new GoogleConsultaRegistro({ serperApiKey: 'x', nvidiaApiKey: 'y', requisitar: (async () => { chamadas++; throw Error('token secreto e payload bruto'); }) as typeof fetch });
   const erro = await falha.buscar(nome);
   assert.deepEqual(erro, { estado: 'indisponivel', codigo: 'SERPER_CONSULTA_INDISPONIVEL' });

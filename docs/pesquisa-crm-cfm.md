@@ -5,9 +5,10 @@ A pesquisa de registros profissionais usa o Google via Serper e a NVIDIA para ex
 ## Fluxo
 
 - O fluxo do certificado A1 reutiliza o CNPJ e os candidatos já obtidos pelo Hub do Desenvolvedor. Um único candidato pode ser pesquisado pelo nome completo; com vários candidatos, a pesquisa aguarda a identificação do responsável.
-- A consulta envia `"NOME COMPLETO" CRM RQE`, com `gl=br`, `hl=pt-br` e até dez resultados orgânicos. Não consulta a pesquisa fiscal/ADN nem interfere nos parâmetros fiscais ou na emissão.
-- A NVIDIA só pode extrair dados com citações literais dos resultados. O backend valida CRM, UF e RQE no texto original, rejeita números inventados/truncados, UF não explicitada, perfis ambíguos e situação transferida, cancelada, inativa, suspensa ou cassada. Um RQE precisa estar na mesma evidência que o nome e o CRM correspondente. Dados de páginas diferentes não são combinados sem essa evidência.
+- A consulta envia `CRM NOME COMPLETO`, com `gl=br`, `hl=pt-br` e até dez resultados orgânicos. Não consulta a pesquisa fiscal/ADN nem interfere nos parâmetros fiscais ou na emissão.
+- A NVIDIA só pode extrair dados com citações literais dos resultados. O backend valida CRM, UF e RQE no texto original, rejeita números inventados/truncados, UF do CRM não explicitada, perfis ambíguos e situação transferida, cancelada, inativa, suspensa ou cassada. Um RQE precisa estar na mesma evidência que o nome e o CRM correspondente. Dados de páginas diferentes não são combinados sem essa evidência.
 - Sugestões têm `verificado=false`, mantêm fontes e links por RQE e só aparecem para confirmação em Dados da Conta. Divergências permanecem para escolha humana; quando há vários RQEs, nenhum é selecionado automaticamente.
+- Nome no título e registro no snippet podem ser citados separadamente quando pertencem ao mesmo resultado. Formatos como `CRM 30858 SC` são inscrições explícitas. Um RQE sem UF repetida pode ser vinculado ao único CRM/UF da mesma fonte, desde que a fonte também identifique literalmente o nome completo; a origem da UF fica registrada em `ufOrigem`. Um handle de rede social sem esse nome não basta para atribuir RQE.
 - O backend só salva os dados após a confirmação do profissional e exige WhatsApp conectado. A confirmação ocorre no painel. O onboarding continua certificado A1 → conexão do WhatsApp → painel, e o WhatsApp oficial permanece reservado ao OTP.
 
 ## Configuração e uso
@@ -25,6 +26,8 @@ Esse comando usa o mesmo adaptador da aplicação e imprime as sugestões estrut
 Falhas de rede, timeout, resposta HTTP e JSON inválido viram códigos sanitizados. A consulta paga não tem retentativa HTTP interna; a fila existente limita o processamento a três tentativas. Resultado vazio e falha ficam registrados e não reiniciam a cada ciclo de recuperação.
 
 A extração aceita JSON puro ou um único bloco Markdown envolvendo todo o JSON, mantendo a validação literal de cada registro. Os diagnósticos da NVIDIA distinguem `NVIDIA_JSON_INVALIDO` (conteúdo não parseável), `NVIDIA_FORMATO_INESPERADO` (objeto sem lista `registros`) e `NVIDIA_LIMITE_EXCEDIDO` (resposta ou lista acima do limite). Uma lista `registros` vazia significa ausência de evidência suficiente. Esses códigos não expõem a resposta bruta nem credenciais.
+
+Resultados vazios distinguem `SERPER_SEM_RESULTADOS_UTILIZAVEIS` (nenhum resultado orgânico utilizável), `NVIDIA_SEM_REGISTROS` (o modelo não extraiu candidatos) e `CRM_EVIDENCIA_NAO_CONFIRMADA` (os candidatos extraídos falharam na validação literal). Todos permanecem disponíveis para preenchimento manual, sem repetição automática da busca em cada ciclo.
 
 Ao ativar a integração, trabalhos pendentes de confirmação que ainda contenham resultado ou erro antigo da Infosimples/CFM são reagendados uma vez. O reagendamento preserva a consulta CNPJ do Hub, remove apenas o resultado profissional antigo e reinicia o orçamento de tentativas. Cadastros concluídos não são reabertos. Resultados novos do Serper não satisfazem o filtro legado.
 
