@@ -21,6 +21,14 @@ Para uma consulta manual sem gravação no banco, no terminal do contêiner Easy
 npm run consultar:registro -- "Nome completo do médico"
 ```
 
+Passe somente o nome; o adaptador acrescenta `CRM`. Para investigar uma rejeição, use:
+
+```sh
+npm run consultar:registro -- "Nome completo do médico" --diagnostico
+```
+
+Esse modo acrescenta contagens de resultados/candidatos e o motivo de validação de cada candidato. Por exemplo, `NOME_DIVERGENTE`, `EVIDENCIA_CRM_FONTE_INEXISTENTE` ou `EVIDENCIA_CRM_CITACAO_NAO_LITERAL`. Não imprime nomes, registros, links, credenciais ou respostas brutas no diagnóstico, não flexibiliza as regras e executa a mesma consulta única. A saída normal das sugestões permanece disponível. O argumento `--diagnostico` não é incluído no nome pesquisado.
+
 Esse comando usa o mesmo adaptador da aplicação e imprime as sugestões estruturadas e suas fontes. A chamada ao Serper pode consumir créditos. Não executamos consultas externas durante o desenvolvimento.
 
 Falhas de rede, timeout, resposta HTTP e JSON inválido viram códigos sanitizados. A consulta paga não tem retentativa HTTP interna; a fila existente limita o processamento a três tentativas. Resultado vazio e falha ficam registrados e não reiniciam a cada ciclo de recuperação.
