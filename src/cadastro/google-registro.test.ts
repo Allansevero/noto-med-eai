@@ -19,6 +19,34 @@ const registro = (overrides: Record<string, unknown> = {}) => ({
 });
 const fontes = [fonte];
 
+test('aceita JSON em bloco Markdown sem dispensar validação de evidência', () => {
+  const json = JSON.stringify({ registros: [registro()] });
+  for (const inicio of ['```json', '```']) {
+    assert.equal(validarExtracaoGoogle(nome, fontes, `${inicio}\n${json}\n\x60\x60\x60`)?.[0].crm, '30858');
+  }
+  const inventado = JSON.stringify({ registros: [registro({ crm: '99999' })] });
+  assert.deepEqual(validarExtracaoGoogle(nome, fontes, `\x60\x60\x60json\n${inventado}\n\x60\x60\x60`), []);
+  assert.equal(validarExtracaoGoogle(nome, fontes, `Explicação adicional\n\x60\x60\x60json\n${json}\n\x60\x60\x60`), null);
+});
+
+test('distingue falhas de JSON, estrutura e limite sem expor conteúdo nem repetir APIs', async () => {
+  for (const [resposta, codigo] of [
+    ['conteúdo secreto sem JSON', 'NVIDIA_JSON_INVALIDO'],
+    ['{}', 'NVIDIA_FORMATO_INESPERADO'],
+    ['{"registros":null}', 'NVIDIA_FORMATO_INESPERADO'],
+    [JSON.stringify({ registros: Array(21).fill({}) }), 'NVIDIA_LIMITE_EXCEDIDO'],
+    [' '.repeat(32_769), 'NVIDIA_LIMITE_EXCEDIDO']
+  ]) {
+    let pesquisas = 0, extracoes = 0;
+    const cliente = new GoogleConsultaRegistro({ serperApiKey: 'x', nvidiaApiKey: 'y',
+      requisitar: (async () => { pesquisas++; return Response.json({ organic: [{ title: fonte.titulo, snippet: fonte.trecho, link: fonte.url }] }); }) as typeof fetch,
+      completar: async () => { extracoes++; return resposta; }
+    });
+    assert.deepEqual(await cliente.buscar(nome), { estado: 'indisponivel', codigo });
+    assert.equal(pesquisas, 1);assert.equal(extracoes, 1);
+  }
+});
+
 test('aceita somente CRM e RQE literais ligados ao mesmo nome, registro e fonte', () => {
   const resultado = validarExtracaoGoogle(nome, fontes, JSON.stringify({ registros: [registro()] }));
   assert.equal(resultado?.length, 1);
@@ -83,7 +111,7 @@ test('consulta Serper com o contrato exigido e passa resultados orgânicos à NV
       requisicao = { url: String(input), init };
       return Response.json({ organic: [{ title: fonte.titulo, snippet: fonte.trecho, link: fonte.url }] });
     }) as typeof fetch,
-    completar: async (msgs) => { mensagens = msgs; return JSON.stringify({ registros: [registro()] }); }
+    completar: async (msgs) => { mensagens = msgs; return `\x60\x60\x60json\n${JSON.stringify({ registros: [registro()] })}\n\x60\x60\x60`; }
   });
   const resultado = await cliente.buscar(nome);
   assert.equal(resultado.estado, 'consultado');
@@ -94,6 +122,14 @@ test('consulta Serper com o contrato exigido e passa resultados orgânicos à NV
   assert.equal(headers.get('Content-Type'), 'application/json');
   assert.deepEqual(JSON.parse(String(requisicao?.init?.body)), { q: '"Bruna Botter" CRM RQE', gl: 'br', hl: 'pt-br', num: 10 });
   assert.match(JSON.stringify(mensagens), /não confiável/iu);
+});
+
+test('JSON com registros vazios é ausência de evidência, não falha de formato', async () => {
+  const cliente = new GoogleConsultaRegistro({ serperApiKey: 'x', nvidiaApiKey: 'y',
+    requisitar: (async () => Response.json({ organic: [{ title: fonte.titulo, snippet: fonte.trecho, link: fonte.url }] })) as typeof fetch,
+    completar: async () => '{"registros":[]}'
+  });
+  assert.deepEqual(await cliente.buscar(nome), { estado: 'nao_encontrado', codigo: 'SERPER_NAO_ENCONTRADO' });
 });
 
 test('sem credenciais, resultado vazio e falhas externas são sanitizados e não repetem pesquisas', async () => {

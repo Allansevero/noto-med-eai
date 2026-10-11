@@ -24,6 +24,8 @@ Esse comando usa o mesmo adaptador da aplicação e imprime as sugestões estrut
 
 Falhas de rede, timeout, resposta HTTP e JSON inválido viram códigos sanitizados. A consulta paga não tem retentativa HTTP interna; a fila existente limita o processamento a três tentativas. Resultado vazio e falha ficam registrados e não reiniciam a cada ciclo de recuperação.
 
+A extração aceita JSON puro ou um único bloco Markdown envolvendo todo o JSON, mantendo a validação literal de cada registro. Os diagnósticos da NVIDIA distinguem `NVIDIA_JSON_INVALIDO` (conteúdo não parseável), `NVIDIA_FORMATO_INESPERADO` (objeto sem lista `registros`) e `NVIDIA_LIMITE_EXCEDIDO` (resposta ou lista acima do limite). Uma lista `registros` vazia significa ausência de evidência suficiente. Esses códigos não expõem a resposta bruta nem credenciais.
+
 Ao ativar a integração, trabalhos pendentes de confirmação que ainda contenham resultado ou erro antigo da Infosimples/CFM são reagendados uma vez. O reagendamento preserva a consulta CNPJ do Hub, remove apenas o resultado profissional antigo e reinicia o orçamento de tentativas. Cadastros concluídos não são reabertos. Resultados novos do Serper não satisfazem o filtro legado.
 
 ## Testes
