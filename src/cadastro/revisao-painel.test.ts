@@ -16,3 +16,16 @@ test('RQE da pesquisa nunca é combinado com outro CRM já cadastrado',async()=>
  const r=montarRevisao({id:'t',estado:'aguardando_confirmacao',dados},{nome:'Ana de Souza',crm:'111/RS',rqe:null});
  assert.equal(r.crm,'111/RS');assert.equal(r.rqe,'');
 });
+
+test('não escolhe primeiro entre CRMs divergentes e conserva fontes individuais de RQE',async()=>{
+ const {montarRevisao}=await import('./revisao-painel.js');
+ const fontes=[{numero:'21234',uf:'SC',titulo:'Perfil A',urlOrigem:'https://medicos.example/a',evidencia:'Bruna Botter CRM-SC 30858 RQE-SC 21234'},
+  {numero:'44556',uf:'SC',titulo:'Perfil B',urlOrigem:'https://medicos.example/b',evidencia:'Bruna Botter CRM-SC 30858 RQE-SC 44556'}];
+ const dados:any={nomeConfirmado:'Bruna Botter',pesquisaProfissional:{nome:'Bruna Botter',estado:'consultado',registros:[
+  {nomeCompleto:'Bruna Botter',crm:'30858',uf:'SC',rqe:null,rqes:['21234','44556'],fontesRqe:fontes,verificado:false},
+  {nomeCompleto:'Bruna Botter',crm:'36584',uf:'PR',rqe:null,rqes:[],verificado:false}
+ ]}};
+ const revisao=montarRevisao({id:'t',estado:'aguardando_confirmacao',dados},{nome:'Médico 6133',crm:null,rqe:null});
+ assert.equal(revisao.crm,'');assert.equal(revisao.rqe,'');assert.equal(revisao.registros.length,2);
+ assert.deepEqual(revisao.registros[0].fontesRqe?.map(r=>r.urlOrigem),['https://medicos.example/a','https://medicos.example/b']);
+});

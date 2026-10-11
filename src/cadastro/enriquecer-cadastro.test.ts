@@ -16,6 +16,17 @@ test('pesquisa CRM pelo nome do sócio único antes da confirmação e mantém s
  assert.equal((r.dados as any).pesquisaProfissional?.registros[0].crm,'12345');
  await enriquecerCadastro({documento:'11222333000181',perfil,dados:r.dados},empresa,registro);assert.equal(consultas,1);
 });
+test('aguarda identificação quando o Hub retorna vários candidatos e não pesquisa nomes ambíguos',async()=>{
+ let consultas=0;
+ const empresaMultipla={consultar:async()=>({estado:'consultado' as const,dados:{cnpj:'11222333000181',razaoSocial:'Clínica',origem:'Hub',candidatos:[{nome:'Ana de Souza',origem:'Hub'},{nome:'Beatriz Lima',origem:'Hub'}]}})};
+ const r=await enriquecerCadastro({documento:'11222333000181',perfil,dados:{}},empresaMultipla,{buscar:async()=>{consultas++;return {estado:'consultado',dados:[]};}});
+ assert.equal(consultas,0);assert.deepEqual(r.dados.pendencia?.candidatos.map(c=>c.nome),['Ana de Souza','Beatriz Lima']);
+});
+test('pesquisa Serper não marca sugestão como validada nem salva CRM automaticamente',async()=>{
+ const r=await enriquecerCadastro({documento:null,perfil:{nome:'Ana de Souza',nomeConfirmado:true,crm:null},dados:{}},{consultar:async()=>{throw Error('não consultar empresa');}},{buscar:async()=>({estado:'consultado',dados:[{nomeCompleto:'Ana de Souza',crm:'30858',uf:'SC',verificado:false,origem:'Google via Serper (sugestão não oficial)'}]})});
+ assert.equal(r.estado,'aguardando_confirmacao');assert.equal(r.crm,undefined);assert.equal(r.dados.crmOrigem,undefined);
+ assert.equal(r.dados.pesquisaProfissional?.registros[0].verificado,false);
+});
 const empresa={consultar:async()=>({estado:'consultado' as const,dados:{cnpj:'11222333000181',razaoSocial:'Clínica',origem:'fonte',candidatos:[{nome:'Ana de Souza',origem:'fonte'}]}})};
 test('sócio único gera confirmação de vínculo antes de salvar pessoa',async()=>{
  const r=await enriquecerCadastro({documento:'11222333000181',perfil,dados:{}},empresa,new PesquisaRegistroIndisponivel());

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type pg from 'pg';
 import { ZodError } from 'zod';
 import type { PostgresCadastro } from './postgres-cadastro.js';
-import { aprovacaoPainelSchema, ErroRevisaoCadastro } from './revisao-painel.js';
+import { aprovacaoPainelSchema, pesquisaPainelSchema, ErroRevisaoCadastro } from './revisao-painel.js';
 
 export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadastro;autenticar:(token:string)=>Promise<string|null>}){
  const router=Router();
@@ -20,6 +20,14 @@ export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadast
  router.get('/',async(_req,res)=>{
   try{res.json({ok:true,revisao:await deps.repo.revisaoPainel(res.locals.medicoId)});}
   catch{res.status(503).json({ok:false,detalhe:'Não foi possível consultar seus dados profissionais.'});}
+ });
+ router.post('/pesquisar',async(req,res)=>{
+  try{const dados=pesquisaPainelSchema.parse(req.body);res.json({ok:true,revisao:await deps.repo.pesquisarPainel(res.locals.medicoId,dados)});}
+  catch(e){
+   if(e instanceof ZodError){res.status(400).json({ok:false,detalhe:e.issues[0]?.message});return;}
+   if(e instanceof ErroRevisaoCadastro){res.status(e.status).json({ok:false,detalhe:e.message});return;}
+   res.status(503).json({ok:false,detalhe:'Não foi possível iniciar a pesquisa. Atualize e tente novamente.'});
+  }
  });
  router.post('/aprovar',async(req,res)=>{
   try{const dados=aprovacaoPainelSchema.parse(req.body);res.json({ok:true,revisao:await deps.repo.aprovarPainel(res.locals.medicoId,dados)});}

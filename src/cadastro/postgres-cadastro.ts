@@ -3,7 +3,7 @@ import type pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import { criarPendencia, type DadosCadastro, type PerfilCadastro, type ResultadoEnriquecimento } from './enriquecer-cadastro.js';
-import { aprovacaoPainelSchema, ErroRevisaoCadastro, montarRevisao } from './revisao-painel.js';
+import { aprovacaoPainelSchema, pesquisaPainelSchema, ErroRevisaoCadastro, montarRevisao } from './revisao-painel.js';
 const versaoRevisaoSql="md5(jsonb_build_array(t.dados,t.snapshot,t.estado,t.atualizado_em,m.nome_completo,m.crm,m.rqe)::text)";
 export interface TrabalhoCadastro { id:string; medico_id:string; certificado_id:string; documento_titular:string|null; estado:string; dados:DadosCadastro; snapshot:{nome:string;crm:string|null}; tentativas:number }
 export interface ReservaCadastro { trabalho:TrabalhoCadastro; token:string; perfil:PerfilCadastro }
@@ -12,8 +12,15 @@ export interface RespostaCadastro { id:string; trabalho_id:string; pendencia_id:
 export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
  async agendarPesquisaProfissional():Promise<void>{
-  await this.pool.query(`update cadastro_certificado_trabalhos set estado='pendente',proxima_tentativa_em=now(),reserva=null,dados=dados-'pesquisaProfissional'
-   where estado='aguardando_confirmacao' and (not (dados ? 'pesquisaProfissional') or dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA' or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_')
+  await this.pool.query(`update cadastro_certificado_trabalhos t set estado='pendente',proxima_tentativa_em=now(),reserva=null,reservado_em=null,
+   tentativas=0,diagnostico=null,dados=dados-'pesquisaProfissional',atualizado_em=now()
+   where estado='aguardando_confirmacao' and (
+    dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA'
+    or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_'
+    or left(dados->'pesquisaProfissional'->>'codigo',12)='INFOSIMPLES_'
+    or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(dados #> '{pesquisaProfissional,registros}')='array'
+     then dados #> '{pesquisaProfissional,registros}' else '[]'::jsonb end) as r(registro) where r.registro->>'origem' ilike '%Infosimples%')
+   )
    and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`);
  }
  async revisaoPainel(medicoId:string){
@@ -24,6 +31,24 @@ export class PostgresCadastro {
    left join cadastro_certificado_trabalhos t on t.certificado_id=cert.id and t.medico_id=m.id where m.id=$1`,[medicoId])).rows[0];
   if(!r)throw new ErroRevisaoCadastro(404,'Cadastro não encontrado.');
   return {...montarRevisao(r.trabalho?{...r.trabalho,versao:r.versao}:null,r),whatsappConectado:r.whatsapp_conectado};
+ }
+ async pesquisarPainel(medicoId:string,entrada:unknown){
+  const e=pesquisaPainelSchema.parse(entrada);
+  await this.transacao(async c=>{
+   const t=(await c.query('select * from cadastro_certificado_trabalhos where id=$1 and medico_id=$2 for update',[e.trabalhoId,medicoId])).rows[0] as TrabalhoCadastro|undefined;
+   if(!t||t.estado!=='aguardando_confirmacao')throw new ErroRevisaoCadastro(409,'O cadastro mudou. Atualize os dados antes de pesquisar.');
+   const cert=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[medicoId])).rows[0];
+   const ativo=(await c.query('select u.ativo from usuarios u join medicos m on m.usuario_id=u.id where m.id=$1',[medicoId])).rows[0]?.ativo;
+   if(!ativo||cert?.id!==t.certificado_id)throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de pesquisar.');
+   const versao=(await c.query(`select ${versaoRevisaoSql} as versao from cadastro_certificado_trabalhos t join medicos m on m.id=t.medico_id where t.id=$1`,[t.id])).rows[0]?.versao;
+   if(versao!==e.versao)throw new ErroRevisaoCadastro(409,'Os dados foram atualizados. Revise novamente antes de pesquisar.');
+   const candidatos=t.dados.empresa?.candidatos??[];
+   if(!candidatos.some(candidato=>candidato.nome===e.nome))throw new ErroRevisaoCadastro(400,'Selecione um dos responsáveis encontrados para pesquisar.');
+   if(t.dados.nomeConfirmado===e.nome&&t.dados.pesquisaProfissional?.nome===e.nome)throw new ErroRevisaoCadastro(409,'Este nome já foi pesquisado. Revise o resultado ou escolha outro responsável.');
+   const dados:DadosCadastro={...t.dados,nomeConfirmado:e.nome};delete dados.pesquisaProfissional;delete dados.pendencia;
+   await c.query("update cadastro_certificado_trabalhos set estado='pendente',dados=$2,tentativas=0,proxima_tentativa_em=now(),reserva=null,reservado_em=null,diagnostico=null,atualizado_em=now() where id=$1",[t.id,JSON.stringify(dados)]);
+  });
+  return this.revisaoPainel(medicoId);
  }
  async aprovarPainel(medicoId:string,entrada:unknown){
   const e=aprovacaoPainelSchema.parse(entrada);

@@ -9,11 +9,22 @@ export interface DadosMedicoOnline {
   uf: string;
   rqe?: string | null;
   rqes?: string[];
+  fontesRqe?: FonteRqeProfissional[];
   especialidade?: string | null;
   situacao?: string;
   origem?: string;
   urlOrigem?: string;
+  tituloOrigem?: string;
+  evidenciaCrm?: string;
   verificado?: boolean;
+}
+
+export interface FonteRqeProfissional {
+  numero: string;
+  uf: string;
+  titulo: string;
+  urlOrigem: string;
+  evidencia: string;
 }
 
 export interface BuscarMedicoOnlineProvider {

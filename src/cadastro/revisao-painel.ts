@@ -9,6 +9,9 @@ export const aprovacaoPainelSchema = z.object({
   .refine((s):s is string => !!s?.includes('/'), 'Informe CRM com UF, como 37341/RS.'),
  rqe: z.string().trim().max(60).regex(/^\d*$/, 'Informe apenas números no RQE.').nullable().transform(s=>s||null)
 }).strict();
+export const pesquisaPainelSchema = z.object({
+ trabalhoId: z.string().uuid(), versao: z.string().min(1).max(200), nome
+}).strict();
 export class ErroRevisaoCadastro extends Error {
  constructor(readonly status:number, mensagem:string){super(mensagem);}
 }
