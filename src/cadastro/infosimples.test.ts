@@ -7,7 +7,7 @@ const item={nome:'ANA DE SOUZA',inscricao:'1111',endereco_uf:'RJ',primeira_inscr
 const resposta=(data:unknown[],parameters:unknown={nome:'Ana de Souza'})=>new Response(JSON.stringify({code:200,data_count:data.length,data,header:{parameters}}));
 test('consulta nome por POST e confirma UF com pesquisa restrita, sem usar UF do endereço',async()=>{
  const pedidos:URLSearchParams[]=[];
- const s=await fonte((async(url,o)=>{assert.equal(String(url),'https://api.infosimples.com/api/v2/consultas/cfm/cadastro');assert.equal(o?.method,'POST');const p=new URLSearchParams(String(o?.body));pedidos.push(p);return resposta([item],Object.fromEntries([...p].filter(([k])=>k!=='token')));}) as typeof fetch);
+ const s=await fonte((async(url,o)=>{assert.equal(String(url),'https://api.infosimples.com/api/v2/consultas/cfm/cadastro');assert.equal(o?.method,'POST');const p=new URLSearchParams(String(o?.body));assert.equal(p.get('timeout'),'600');pedidos.push(p);return resposta([item],Object.fromEntries([...p].filter(([k])=>k!=='token')));}) as typeof fetch);
  const r=await s.buscar('Ana de Souza');assert.equal(r.estado,'consultado');assert.equal(pedidos.length,2);assert.equal(pedidos[0].get('nome'),'Ana de Souza');assert.equal(pedidos[0].has('uf'),false);assert.equal(pedidos[1].get('uf'),'SP');assert.equal(pedidos[1].get('token'),'token-sintetico');
  if(r.estado==='consultado'){assert.equal(r.dados[0].uf,'SP');assert.equal(r.dados[0].rqe,'222');assert.equal(r.dados[0].verificado,false);}
 });

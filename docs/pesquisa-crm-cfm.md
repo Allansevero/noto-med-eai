@@ -1,6 +1,6 @@
 # Pesquisa de CRM e RQE com Infosimples
 
-A fonte é a API Infosimples v2 CFM/Cadastro, conforme documentação da conta fornecida em 10/10/2026. Endpoint: `POST https://api.infosimples.com/api/v2/consultas/cfm/cadastro`, corpo `application/x-www-form-urlencoded`, com `token`, `nome` completo e `timeout=90`. Não usa mais RPA no Chromium nem tem fallback para automação do portal.
+A fonte é a API Infosimples v2 CFM/Cadastro, conforme documentação da conta fornecida em 10/10/2026. Endpoint: `POST https://api.infosimples.com/api/v2/consultas/cfm/cadastro`, corpo `application/x-www-form-urlencoded`, com `token`, `nome` completo e `timeout=600`. Não usa mais RPA no Chromium nem tem fallback para automação do portal.
 
 ## Fluxo e confirmação
 
@@ -15,7 +15,7 @@ Os RQEs são extraídos de `especialidade_lista` ou `especialidade`. Um único R
 - Configure `INFOSIMPLES_TOKEN` somente no backend do Easypanel, sem incluir a chave no Git ou em logs.
 - `CFM_PESQUISA_ATIVA=true` é o padrão; `false` suspende a consulta. Sem token, o painel permite preenchimento manual e não faz consulta paga.
 - Reinicie o serviço web após configurar o token e publicar o código. Não há nova migração de banco.
-- Cada tentativa usa uma ou duas chamadas. A documentação informa adicional de R$ 0,04 por chamada, além do preço base. Falhas podem resultar em retentativas limitadas pela fila existente; o valor efetivo depende da cobrança Infosimples. Consultas externas podem levar até 90 segundos por chamada, fora da requisição de upload. A reserva do trabalho dura nove minutos para cobrir Hub (até 300 segundos) e duas chamadas Infosimples, evitando recuperação concorrente durante a consulta.
+- Cada tentativa usa uma ou duas chamadas. A documentação informa adicional de R$ 0,04 por chamada, além do preço base. Falhas podem resultar em retentativas limitadas pela fila existente; o valor efetivo depende da cobrança Infosimples. Consultas externas podem levar até 600 segundos por chamada, fora da requisição de upload. A reserva do trabalho dura trinta minutos para cobrir Hub (até 300 segundos) e duas chamadas Infosimples, evitando recuperação concorrente durante a consulta.
 - Resultados concluídos são reutilizados. Trabalhos pendentes de confirmação com falha antiga `CFM_*` ou sem fonte configurada são recuperados uma vez ao ativar a API, reutilizando a empresa consultada no Hub. Falhas Infosimples não são reagendadas a cada ciclo apenas por abrir o painel.
 
 ## Diagnóstico e validação
