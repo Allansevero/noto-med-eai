@@ -13,8 +13,8 @@ export class InfosimplesConsultaRegistro implements ConsultaRegistro {
  constructor(private token:string,private requisitar:typeof fetch=fetch){}
  private async consultar(nome:string,uf?:string):Promise<Consulta>{
   try{
-   const params=new URLSearchParams({token:this.token,nome,timeout:'90'});if(uf)params.set('uf',uf);
-   const r=await this.requisitar(ENDPOINT,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:params,redirect:'error',signal:AbortSignal.timeout(95000)});
+   const params=new URLSearchParams({token:this.token,nome,timeout:'600'});if(uf)params.set('uf',uf);
+   const r=await this.requisitar(ENDPOINT,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:params,redirect:'error',signal:AbortSignal.timeout(610000)});
    if(!r.ok)return {codigo:`INFOSIMPLES_HTTP_${r.status}`};
    const d=await r.json();
    if(d?.code!==200)return {codigo:Number.isInteger(d?.code)&&d.code>=100&&d.code<=999?`INFOSIMPLES_API_${d.code}`:'INFOSIMPLES_RESPOSTA_INVALIDA'};
