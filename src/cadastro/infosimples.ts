@@ -5,7 +5,7 @@ const ENDPOINT='https://api.infosimples.com/api/v2/consultas/cfm/cadastro';
 const normal=(s:string)=>s.normalize('NFD').replace(/\p{M}/gu,'').replace(/\s+/g,' ').trim().toUpperCase();
 const ufValida=(v:unknown):v is string=>typeof v==='string'&&/^[A-Z]{2}$/.test(v)&&normalizarCrm(`1/${v}`)!==null;
 const falha=(codigo:string):ResultadoConsulta<DadosMedicoOnline[]>=>({estado:'indisponivel',codigo});
-type Item={nome:string;inscricao:string;primeira_inscricao_uf_data?:unknown;normalizado_primeira_inscricao_uf_data?:unknown;especialidade?:unknown;especialidade_lista?:unknown;situacao?:unknown};
+type Item={nome:string;inscricao:string;endereco_uf?:unknown;especialidade?:unknown;especialidade_lista?:unknown;situacao?:unknown};
 type Consulta={item:Item;ufFiltro?:string}|{codigo:string;vazio?:boolean};
 
 /** Contrato v2 CFM/Cadastro fornecido pelo usuário. Nunca registra corpo ou token. */
@@ -34,11 +34,11 @@ export class InfosimplesConsultaRegistro implements ConsultaRegistro {
   let crm=normalizarCrm(consulta.item.inscricao.replace(/[.\s-]/g,''));
   if(crm?.includes('/')&&consulta.ufFiltro&&crm.split('/')[1]!==consulta.ufFiltro)return falha('INFOSIMPLES_UF_NAO_CONFIRMADA');
   if(!crm?.includes('/')&&!consulta.ufFiltro){
-   // A UF da primeira inscrição é apenas um filtro sugerido, nunca a UF do CRM.
-   // Confirmar a associação em outra consulta restrita ao mesmo nome + UF.
-   const primeira=consulta.item.normalizado_primeira_inscricao_uf_data??consulta.item.primeira_inscricao_uf_data;
-   if(!ufValida(primeira))return falha('INFOSIMPLES_UF_NAO_CONFIRMADA');
-   consulta=await this.consultar(nome.trim(),primeira);
+   // Os campos de primeira inscrição são datas. A UF do endereço serve apenas
+   // como filtro de outra consulta; jamais é atribuída diretamente à inscrição.
+   const filtro=typeof consulta.item.endereco_uf==='string'?consulta.item.endereco_uf.trim().toUpperCase():undefined;
+   if(!ufValida(filtro))return falha('INFOSIMPLES_UF_NAO_CONFIRMADA');
+   consulta=await this.consultar(nome.trim(),filtro);
    if('codigo' in consulta)return consulta.vazio?{estado:'nao_encontrado',codigo:consulta.codigo}:falha(consulta.codigo);
    crm=normalizarCrm(consulta.item.inscricao.replace(/[.\s-]/g,''));
   }

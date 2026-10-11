@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 async function fonte(fetcher:typeof fetch,token='token-sintetico'){
  const m=await import('./infosimples.js').catch(()=>null);assert.ok(m,'adaptador Infosimples deve existir');return new m.InfosimplesConsultaRegistro(token,fetcher);
 }
-const item={nome:'ANA DE SOUZA',inscricao:'1111',endereco_uf:'RJ',primeira_inscricao_uf_data:'SP',especialidade_lista:['CLÍNICA MÉDICA - RQE Nº: 222','ENDOCRINOLOGIA - RQE Nº: 222'],situacao:'Regular'};
+const item={nome:'ANA DE SOUZA',inscricao:'1111',endereco_uf:'SP',primeira_inscricao_uf_data:'27/07/2016',normalizado_primeira_inscricao_uf_data:'27/07/2016',especialidade_lista:['CLÍNICA MÉDICA - RQE Nº: 222','ENDOCRINOLOGIA - RQE Nº: 222'],situacao:'Regular'};
 const resposta=(data:unknown[],parameters:unknown={nome:'Ana de Souza'})=>new Response(JSON.stringify({code:200,data_count:data.length,data,header:{parameters}}));
-test('consulta nome por POST e confirma UF com pesquisa restrita, sem usar UF do endereço',async()=>{
+test('usa UF do endereço apenas como filtro e confirma registro em consulta restrita',async()=>{
  const pedidos:URLSearchParams[]=[];
  const s=await fonte((async(url,o)=>{assert.equal(String(url),'https://api.infosimples.com/api/v2/consultas/cfm/cadastro');assert.equal(o?.method,'POST');const p=new URLSearchParams(String(o?.body));assert.equal(p.get('timeout'),'600');pedidos.push(p);return resposta([item],Object.fromEntries([...p].filter(([k])=>k!=='token')));}) as typeof fetch);
  const r=await s.buscar('Ana de Souza');assert.equal(r.estado,'consultado');assert.equal(pedidos.length,2);assert.equal(pedidos[0].get('nome'),'Ana de Souza');assert.equal(pedidos[0].has('uf'),false);assert.equal(pedidos[1].get('uf'),'SP');assert.equal(pedidos[1].get('token'),'token-sintetico');
  if(r.estado==='consultado'){assert.equal(r.dados[0].uf,'SP');assert.equal(r.dados[0].rqe,'222');assert.equal(r.dados[0].verificado,false);}
 });
-test('não associa inscrição à UF do endereço quando falta fonte para restringir a busca',async()=>{
- const s=await fonte((async()=>resposta([{...item,primeira_inscricao_uf_data:''}])) as typeof fetch);
+test('não interpreta data de primeira inscrição como UF quando falta filtro válido',async()=>{
+ const s=await fonte((async()=>resposta([{...item,endereco_uf:'',primeira_inscricao_uf_data:'SP',normalizado_primeira_inscricao_uf_data:'SP'}])) as typeof fetch);
  assert.deepEqual(await s.buscar('Ana de Souza'),{estado:'indisponivel',codigo:'INFOSIMPLES_UF_NAO_CONFIRMADA'});
 });
 test('não reaproveita resultado parcial se segunda consulta diverge de nome ou UF',async()=>{
@@ -41,4 +41,9 @@ test('UF divergente na resposta da consulta restrita é rejeitada',async()=>{
 test('segunda consulta vazia encaminha preenchimento manual sem retentativas pagas',async()=>{
  let n=0;const s=await fonte((async()=>++n===1?resposta([item]):resposta([],{uf:'SP'})) as typeof fetch);
  assert.deepEqual(await s.buscar('Ana de Souza'),{estado:'nao_encontrado',codigo:'INFOSIMPLES_NAO_ENCONTRADO'});
+});
+
+test('UF do endereço não é atribuída ao CRM quando consulta restrita não retorna registro',async()=>{
+ let n=0;const s=await fonte((async()=>++n===1?resposta([item]):resposta([],{uf:'SP'})) as typeof fetch);
+ const r=await s.buscar('Ana de Souza');assert.equal(r.estado,'nao_encontrado');assert.equal('dados' in r,false);
 });
