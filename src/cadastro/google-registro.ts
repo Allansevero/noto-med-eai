@@ -162,19 +162,22 @@ function validarRegistro(contexto: { nome: string; fontes: ResultadoOrganicoGoog
       if (registroInativo(texto)) { informarRqe('REGISTRO_INATIVO_RQE');continue; }
       if (/\bveja tamb[eé]m\b/iu.test(texto)) { informarRqe('FONTE_VEJA_TAMBEM_RQE');continue; }
       if (!normalizarTexto(texto).includes(normalizarTexto(nome))) { informarRqe('NOME_AUSENTE_FONTE_RQE');continue; }
-      if (!normalizarTexto(evidencia.trecho).includes(normalizarTexto(nome))) { informarRqe('NOME_AUSENTE_CITACAO_RQE');continue; }
+      const trechoRqe = !normalizarTexto(evidencia.trecho).includes(normalizarTexto(nome)) && normalizarTexto(evidencia.fonte.titulo).includes(normalizarTexto(nome))
+        ? `${evidencia.fonte.titulo}\n${evidencia.trecho}` : evidencia.trecho;
+      if (trechoRqe.length > 500) { informarRqe('EVIDENCIA_RQE_CITACAO_LIMITE_EXCEDIDO');continue; }
+      if (!normalizarTexto(trechoRqe).includes(normalizarTexto(nome))) { informarRqe('NOME_AUSENTE_CITACAO_RQE');continue; }
       const crmsFonteRqe = extrairCrms(texto);
       if (crmsFonteRqe.length !== 1 || crmsFonteRqe[0].crm !== crm || crmsFonteRqe[0].uf !== uf) { informarRqe('CRM_FONTE_RQE_NAO_CONFIRMADO');continue; }
       const rqesFonte = extrairRqes(texto).filter(r => r.numero === rqe.numero);
       if (!rqesFonte.length) { informarRqe('RQE_AUSENTE_FONTE');continue; }
       if (rqesFonte.some(r => r.uf && r.uf !== uf)) { informarRqe('RQE_UF_FONTE_DIVERGENTE');continue; }
-      const crmsRelacionados = extrairCrms(evidencia.trecho);
-      const rqesRelacionados = extrairRqes(evidencia.trecho);
+      const crmsRelacionados = extrairCrms(trechoRqe);
+      const rqesRelacionados = extrairRqes(trechoRqe);
       if (crmsRelacionados.length !== 1 || crmsRelacionados[0].crm !== crm || crmsRelacionados[0].uf !== uf) { informarRqe('CRM_CITACAO_RQE_NAO_CONFIRMADO');continue; }
       if (rqesRelacionados.length !== 1 || rqesRelacionados[0].numero !== rqe.numero) { informarRqe('RQE_CITACAO_NAO_CONFIRMADO');continue; }
       const ufRqe = rqesRelacionados[0].uf;
       if (ufRqe && ufRqe !== uf) { informarRqe('RQE_UF_CITACAO_DIVERGENTE');continue; }
-      fontesRqe.push({ numero: rqe.numero, uf, ufOrigem: rqesFonte.some(r => r.uf) ? 'rqe' : 'crm', titulo: evidencia.fonte.titulo, urlOrigem: evidencia.fonte.url, evidencia: evidencia.trecho });
+      fontesRqe.push({ numero: rqe.numero, uf, ufOrigem: rqesFonte.some(r => r.uf) ? 'rqe' : 'crm', titulo: evidencia.fonte.titulo, urlOrigem: evidencia.fonte.url, evidencia: trechoRqe });
       informarRqe('ACEITO');
     }
   }

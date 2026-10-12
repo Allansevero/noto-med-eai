@@ -16,7 +16,7 @@ test('diagnóstico diferencia RQE omitido pelo modelo de RQE rejeitado pela vali
     [[{ numero: 21234, evidencia }], 'RQE_NUMERO_TIPO_INVALIDO'],
     [[{ numero: '21234', uf: 'PR', evidencia }], 'RQE_UF_DIVERGENTE'],
     [[{ numero: '21234', evidencia: { fonte: 9, trecho: fonte.snippet } }], 'EVIDENCIA_RQE_FONTE_INEXISTENTE'],
-    [[{ numero: '21234', evidencia: { fonte: 0, trecho: fonte.snippet } }], 'NOME_AUSENTE_CITACAO_RQE'],
+    [[{ numero: '21234', evidencia: { fonte: 0, trecho: fonte.snippet } }], 'ACEITO'],
     [[{ numero: '99999', evidencia }], 'RQE_AUSENTE_FONTE'],
     [[{ numero: '21234', evidencia }], 'ACEITO']
   ] as Array<[unknown[], string]>) {
