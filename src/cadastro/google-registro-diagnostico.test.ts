@@ -24,7 +24,7 @@ test('diagnóstico distingue a regra que rejeitou a extração sem publicar dado
       completar: async () => { extracoes++; return JSON.stringify({ registros: [{ ...registro, ...alteracao, desconhecido: 'payload-secreto' }] }); }
     });
     assert.deepEqual(await cliente.buscar('Bruna Botter'), { estado: 'nao_encontrado', codigo: 'CRM_EVIDENCIA_NAO_CONFIRMADA' });
-    assert.deepEqual(diagnosticos, [{ etapa: 'serper', resultados: 1, fontesUtilizaveis: 1 }, { etapa: 'nvidia', candidatos: 1 }, { etapa: 'validacao_crm', candidato: 0, motivo }]);
+    assert.deepEqual(diagnosticos, [{ etapa: 'serper', resultados: 1, fontesUtilizaveis: 1, fontesComMencaoRqe: 0 }, { etapa: 'nvidia', candidatos: 1 }, { etapa: 'validacao_crm', candidato: 0, motivo }]);
     assert.equal(pesquisas, 1);assert.equal(extracoes, 1);
     assert.doesNotMatch(JSON.stringify(diagnosticos), /Bruna|Botter|30858|clinica|secreta|secreto/);
   }
@@ -37,5 +37,5 @@ test('diagnóstico de sucesso informa contagens e não altera a validação', as
     completar: async () => JSON.stringify({ registros: [registro] })
   });
   assert.equal((await cliente.buscar('Bruna Botter')).estado, 'consultado');
-  assert.deepEqual(diagnosticos, [{ etapa: 'serper', resultados: 1, fontesUtilizaveis: 1 }, { etapa: 'nvidia', candidatos: 1 }, { etapa: 'validacao_crm', candidato: 0, motivo: 'ACEITO' }]);
+  assert.deepEqual(diagnosticos, [{ etapa: 'serper', resultados: 1, fontesUtilizaveis: 1, fontesComMencaoRqe: 0 }, { etapa: 'nvidia', candidatos: 1 }, { etapa: 'fontes_rqe', candidato: 0, fontesComNomeECrm: 1, fontesComNomeCrmERqe: 0 }, { etapa: 'nvidia_rqe', candidato: 0, candidatos: 0 }, { etapa: 'validacao_rqe', candidato: 0, motivo: 'NVIDIA_SEM_CANDIDATOS_RQE' }, { etapa: 'validacao_crm', candidato: 0, motivo: 'ACEITO' }]);
 });

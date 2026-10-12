@@ -31,6 +31,10 @@ Esse modo acrescenta contagens de resultados/candidatos e o motivo de validaçã
 
 Esse comando usa o mesmo adaptador da aplicação e imprime as sugestões estruturadas e suas fontes. A chamada ao Serper pode consumir créditos. Não executamos consultas externas durante o desenvolvimento.
 
+O diagnóstico também distingue RQE ausente da extração (`NVIDIA_SEM_CANDIDATOS_RQE`) de RQE descartado pela validação, com o motivo de cada descarte. `fontesComMencaoRqe` conta apenas resultados com a palavra RQE, sem afirmar que a evidência identifica o médico. A etapa `fontes_rqe` também conta resultados com nome e CRM/UF correspondentes e menção de RQE; a menção não substitui a validação completa do número e da UF. `candidato` e `indiceRqe` são índices, não números de registro. O nome em maiúsculas vindo do Hub continua válido.
+
+A consulta automática do cadastro salva esses eventos sanitizados junto à pesquisa e os devolve como `revisao.diagnosticoPesquisa` em `/api/conta/cadastro`. Assim é possível inspecionar a execução que originou o cadastro, em vez de comparar com outra consulta manual. Não há respostas brutas ou credenciais nesse campo. Pesquisas anteriores à instrumentação retornam uma lista vazia: os motivos antigos não podem ser reconstruídos, e cadastros concluídos não são reabertos. A pesquisa manual continua sem atualizar o cadastro.
+
 Falhas de rede, timeout, resposta HTTP e JSON inválido viram códigos sanitizados. A consulta paga não tem retentativa HTTP interna; a fila existente limita o processamento a três tentativas. Resultado vazio e falha ficam registrados e não reiniciam a cada ciclo de recuperação.
 
 A extração aceita JSON puro ou um único bloco Markdown envolvendo todo o JSON, mantendo a validação literal de cada registro. Os diagnósticos da NVIDIA distinguem `NVIDIA_JSON_INVALIDO` (conteúdo não parseável), `NVIDIA_FORMATO_INESPERADO` (objeto sem lista `registros`) e `NVIDIA_LIMITE_EXCEDIDO` (resposta ou lista acima do limite). Uma lista `registros` vazia significa ausência de evidência suficiente. Esses códigos não expõem a resposta bruta nem credenciais.

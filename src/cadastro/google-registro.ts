@@ -4,7 +4,9 @@
  */
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import { completarNvidia, ErroNvidiaChat, type MensagemNvidia } from '../io/nvidia/chat-client.js';
-import type { ConsultaRegistro, ResultadoConsulta } from './consultas.js';
+import type { ConsultaRegistro, ResultadoConsulta, ResultadoConsultaRegistro } from './consultas.js';
+import type { DiagnosticoPesquisaRegistro } from './diagnostico-pesquisa-registro.js';
+export type { DiagnosticoPesquisaRegistro } from './diagnostico-pesquisa-registro.js';
 import { lerExtracaoGoogle } from './ler-extracao-google.js';
 import type { DadosMedicoOnline, FonteRqeProfissional } from '../medico/io/buscar-medico-online.js';
 
@@ -23,10 +25,6 @@ interface ExtracaoRegistro {
   evidenciaCrm: Evidencia;
   rqes?: ExtracaoRqe[];
 }
-export type DiagnosticoPesquisaRegistro =
-  | { etapa: 'serper'; resultados: number; fontesUtilizaveis: number }
-  | { etapa: 'nvidia'; candidatos: number }
-  | { etapa: 'validacao_crm'; candidato: number; motivo: string };
 type Diagnosticar = (evento: DiagnosticoPesquisaRegistro) => void;
 interface OpcoesGoogleRegistro {
   serperApiKey?: string;
@@ -35,6 +33,7 @@ interface OpcoesGoogleRegistro {
   requisitar?: typeof fetch;
   completar?: (mensagens: MensagemNvidia[]) => Promise<string>;
   diagnosticar?: Diagnosticar;
+  incluirDiagnostico?: boolean;
 }
 type RegistroValidado = { crm: string; uf: string };
 
@@ -140,30 +139,43 @@ function validarRegistro(contexto: { nome: string; fontes: ResultadoOrganicoGoog
   if (/\bveja tamb[eé]m\b/iu.test(textoFonte)) return rejeitar('FONTE_VEJA_TAMBEM');
 
   const fontesRqe: FonteRqeProfissional[] = [];
+  const fontesIdentificadas = fontes.filter(f => {
+    const texto = `${f.titulo}\n${f.trecho}`, crms = extrairCrms(texto);
+    return normalizarTexto(texto).includes(normalizarTexto(nome)) && !registroInativo(texto) && !/\bveja tamb[eé]m\b/iu.test(texto)
+      && crms.length === 1 && crms[0].crm === crm && crms[0].uf === uf;
+  });
+  diagnosticar?.({ etapa: 'fontes_rqe', candidato, fontesComNomeECrm: fontesIdentificadas.length,
+    fontesComNomeCrmERqe: fontesIdentificadas.filter(f => /\bRQE\b/iu.test(`${f.titulo}\n${f.trecho}`)).length });
+  diagnosticar?.({ etapa: 'nvidia_rqe', candidato, candidatos: Array.isArray(item.rqes) ? item.rqes.length : 0 });
+  if (!Array.isArray(item.rqes) || !item.rqes.length) diagnosticar?.({ etapa: 'validacao_rqe', candidato, motivo: 'NVIDIA_SEM_CANDIDATOS_RQE' });
   if (Array.isArray(item.rqes)) {
-    for (const rqeBruto of item.rqes.slice(0, 20)) {
-      if (!rqeBruto || typeof rqeBruto !== 'object') continue;
+    for (const [indiceRqe, rqeBruto] of item.rqes.slice(0, 20).entries()) {
+      const informarRqe = (motivo: string) => diagnosticar?.({ etapa: 'validacao_rqe', candidato, indiceRqe, motivo });
+      if (!rqeBruto || typeof rqeBruto !== 'object') { informarRqe('RQE_FORMATO_INVALIDO');continue; }
       const rqe = rqeBruto as Partial<ExtracaoRqe>;
-      if (typeof rqe.numero !== 'string') continue;
-      if (rqe.uf != null && (typeof rqe.uf !== 'string' || rqe.uf.toUpperCase() !== uf)) continue;
-      if (!/^[1-9]\d{0,11}$/.test(rqe.numero)) continue;
-      const evidencia = lerEvidencia(rqe.evidencia, fontes);
+      if (typeof rqe.numero !== 'string') { informarRqe('RQE_NUMERO_TIPO_INVALIDO');continue; }
+      if (rqe.uf != null && (typeof rqe.uf !== 'string' || rqe.uf.toUpperCase() !== uf)) { informarRqe('RQE_UF_DIVERGENTE');continue; }
+      if (!/^[1-9]\d{0,11}$/.test(rqe.numero)) { informarRqe('RQE_NUMERO_FORMATO_INVALIDO');continue; }
+      const evidencia = lerEvidencia(rqe.evidencia, fontes, motivo => informarRqe(`EVIDENCIA_RQE_${motivo}`));
       if (!evidencia) continue;
       const texto = `${evidencia.fonte.titulo}\n${evidencia.fonte.trecho}`;
-      if (registroInativo(texto) || /\bveja tamb[eé]m\b/iu.test(texto)) continue;
-      if (!normalizarTexto(texto).includes(normalizarTexto(nome))) continue;
-      if (!normalizarTexto(evidencia.trecho).includes(normalizarTexto(nome))) continue;
+      if (registroInativo(texto)) { informarRqe('REGISTRO_INATIVO_RQE');continue; }
+      if (/\bveja tamb[eé]m\b/iu.test(texto)) { informarRqe('FONTE_VEJA_TAMBEM_RQE');continue; }
+      if (!normalizarTexto(texto).includes(normalizarTexto(nome))) { informarRqe('NOME_AUSENTE_FONTE_RQE');continue; }
+      if (!normalizarTexto(evidencia.trecho).includes(normalizarTexto(nome))) { informarRqe('NOME_AUSENTE_CITACAO_RQE');continue; }
       const crmsFonteRqe = extrairCrms(texto);
-      if (crmsFonteRqe.length !== 1 || crmsFonteRqe[0].crm !== crm || crmsFonteRqe[0].uf !== uf) continue;
+      if (crmsFonteRqe.length !== 1 || crmsFonteRqe[0].crm !== crm || crmsFonteRqe[0].uf !== uf) { informarRqe('CRM_FONTE_RQE_NAO_CONFIRMADO');continue; }
       const rqesFonte = extrairRqes(texto).filter(r => r.numero === rqe.numero);
-      if (!rqesFonte.length || rqesFonte.some(r => r.uf && r.uf !== uf)) continue;
+      if (!rqesFonte.length) { informarRqe('RQE_AUSENTE_FONTE');continue; }
+      if (rqesFonte.some(r => r.uf && r.uf !== uf)) { informarRqe('RQE_UF_FONTE_DIVERGENTE');continue; }
       const crmsRelacionados = extrairCrms(evidencia.trecho);
       const rqesRelacionados = extrairRqes(evidencia.trecho);
-      if (crmsRelacionados.length !== 1 || crmsRelacionados[0].crm !== crm || crmsRelacionados[0].uf !== uf) continue;
-      if (rqesRelacionados.length !== 1 || rqesRelacionados[0].numero !== rqe.numero) continue;
+      if (crmsRelacionados.length !== 1 || crmsRelacionados[0].crm !== crm || crmsRelacionados[0].uf !== uf) { informarRqe('CRM_CITACAO_RQE_NAO_CONFIRMADO');continue; }
+      if (rqesRelacionados.length !== 1 || rqesRelacionados[0].numero !== rqe.numero) { informarRqe('RQE_CITACAO_NAO_CONFIRMADO');continue; }
       const ufRqe = rqesRelacionados[0].uf;
-      if (ufRqe && ufRqe !== uf) continue;
+      if (ufRqe && ufRqe !== uf) { informarRqe('RQE_UF_CITACAO_DIVERGENTE');continue; }
       fontesRqe.push({ numero: rqe.numero, uf, ufOrigem: rqesFonte.some(r => r.uf) ? 'rqe' : 'crm', titulo: evidencia.fonte.titulo, urlOrigem: evidencia.fonte.url, evidencia: evidencia.trecho });
+      informarRqe('ACEITO');
     }
   }
   const rqes = [...new Set(fontesRqe.map(r => r.numero))];
@@ -229,7 +241,14 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
     this.completar = opcoes.completar ?? (mensagens => completarNvidia(opcoes.nvidiaApiKey || '', this.modelo, mensagens));
   }
 
-  async buscar(nome: string, _uf?: string): Promise<ResultadoConsulta<DadosMedicoOnline[]>> {
+  async buscar(nome: string, _uf?: string): Promise<ResultadoConsultaRegistro> {
+    const diagnostico: DiagnosticoPesquisaRegistro[] = [];
+    const informar: Diagnosticar = evento => { diagnostico.push(evento);this.opcoes.diagnosticar?.(evento); };
+    const resultado = await this.pesquisar(nome, informar);
+    return this.opcoes.incluirDiagnostico ? { ...resultado, diagnostico } : resultado;
+  }
+
+  private async pesquisar(nome: string, diagnosticar: Diagnosticar): Promise<ResultadoConsulta<DadosMedicoOnline[]>> {
     const chaveSerper = this.opcoes.serperApiKey?.trim();
     const chaveNvidia = this.opcoes.nvidiaApiKey?.trim();
     if (!chaveSerper || !chaveNvidia) return falha('CRM_FONTE_NAO_CONFIGURADA');
@@ -250,16 +269,17 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
     try { corpo = await resposta.json(); } catch { return falha('SERPER_RESPOSTA_INVALIDA'); }
     if (!corpo || typeof corpo !== 'object' || !Array.isArray((corpo as { organic?: unknown }).organic)) return falha('SERPER_RESPOSTA_INVALIDA');
     const fontes = (corpo as { organic: unknown[] }).organic.slice(0, 10).map(lerFonte).filter((f): f is ResultadoOrganicoGoogle => !!f);
-    this.opcoes.diagnosticar?.({ etapa: 'serper', resultados: (corpo as { organic: unknown[] }).organic.length, fontesUtilizaveis: fontes.length });
+    diagnosticar({ etapa: 'serper', resultados: (corpo as { organic: unknown[] }).organic.length, fontesUtilizaveis: fontes.length,
+      fontesComMencaoRqe: fontes.filter(f => /\bRQE\b/iu.test(`${f.titulo}\n${f.trecho}`)).length });
     if (!fontes.length) return { estado: 'nao_encontrado', codigo: 'SERPER_SEM_RESULTADOS_UTILIZAVEIS' };
     let extracao: string;
     try { extracao = await this.completar(mensagensExtracao(nome.trim(), fontes)); }
     catch (erro) { return falha(erro instanceof ErroNvidiaChat ? erro.codigo : 'NVIDIA_CONSULTA_INDISPONIVEL'); }
     const resultado = lerExtracaoGoogle(extracao);
     if (!resultado.ok) return falha(resultado.codigo);
-    this.opcoes.diagnosticar?.({ etapa: 'nvidia', candidatos: resultado.registros.length });
+    diagnosticar({ etapa: 'nvidia', candidatos: resultado.registros.length });
     if (!resultado.registros.length) return { estado: 'nao_encontrado', codigo: 'NVIDIA_SEM_REGISTROS' };
-    const registros = validarRegistrosGoogle({ nome: nome.trim(), fontes, registros: resultado.registros }, this.opcoes.diagnosticar);
+    const registros = validarRegistrosGoogle({ nome: nome.trim(), fontes, registros: resultado.registros }, diagnosticar);
     return registros.length ? { estado: 'consultado', dados: registros } : { estado: 'nao_encontrado', codigo: 'CRM_EVIDENCIA_NAO_CONFIRMADA' };
   }
 }

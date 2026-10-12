@@ -30,5 +30,6 @@ export function montarRevisao(t:TrabalhoRevisao|null,perfil:PerfilRevisao){
   aprovado:t?.estado==='concluido'&&!!dados.aprovacaoPainel&&dados.aprovacaoPainel.nome===perfil.nome&&dados.aprovacaoPainel.crm===perfil.crm&&dados.aprovacaoPainel.rqe===perfil.rqe,
   nome,crm:crm??'',rqe:(normal(nome)===normal(perfil.nome)?perfil.rqe:null)??registroEscolhido?.rqe??'',candidatos,registros:unicos,
   pesquisaCrm:dados.pesquisaProfissional?.estado??'pendente',
+  diagnosticoPesquisa:dados.pesquisaProfissional?.diagnostico??[],
   empresa:dados.empresa?{cnpj:dados.empresa.cnpj,razaoSocial:dados.empresa.razaoSocial,origem:dados.empresa.origem}:null};
 }
