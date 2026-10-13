@@ -9,6 +9,9 @@ export const aprovacaoPainelSchema = z.object({
   .refine((s):s is string => !!s?.includes('/'), 'Informe CRM com UF, como 37341/RS.'),
  rqe: z.string().trim().max(60).regex(/^\d*$/, 'Informe apenas números no RQE.').nullable().transform(s=>s||null)
 }).strict();
+export const pesquisaPainelSchema = z.object({
+ trabalhoId: z.string().uuid(), versao: z.string().min(1).max(200), nome
+}).strict();
 export class ErroRevisaoCadastro extends Error {
  constructor(readonly status:number, mensagem:string){super(mensagem);}
 }
@@ -27,5 +30,6 @@ export function montarRevisao(t:TrabalhoRevisao|null,perfil:PerfilRevisao){
   aprovado:t?.estado==='concluido'&&!!dados.aprovacaoPainel&&dados.aprovacaoPainel.nome===perfil.nome&&dados.aprovacaoPainel.crm===perfil.crm&&dados.aprovacaoPainel.rqe===perfil.rqe,
   nome,crm:crm??'',rqe:(normal(nome)===normal(perfil.nome)?perfil.rqe:null)??registroEscolhido?.rqe??'',candidatos,registros:unicos,
   pesquisaCrm:dados.pesquisaProfissional?.estado??'pendente',
+  diagnosticoPesquisa:dados.pesquisaProfissional?.diagnostico??[],
   empresa:dados.empresa?{cnpj:dados.empresa.cnpj,razaoSocial:dados.empresa.razaoSocial,origem:dados.empresa.origem}:null};
 }

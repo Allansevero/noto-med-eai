@@ -24,6 +24,7 @@ export interface AppConfig {
   evolutionAssistantWebhookSecret: string;
   resendApiKey?: string;
   devEmailAlerta?: string;
+  serperApiKey?: string;
   nvidiaApiKey?: string;
   nvidiaModel?: string;
   nvidiaVisionModel?: string;
@@ -43,8 +44,6 @@ export interface AppConfig {
   googleAppId?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
-  infosimplesToken?: string;
-  cfmPesquisaAtiva: boolean;
   stripeSecretKey?: string;
   stripePublishableKey?: string;
   stripePriceId?: string;
@@ -81,6 +80,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     evolutionAssistantWebhookSecret: env['EVOLUTION_ASSISTANT_WEBHOOK_SECRET'] || env['EVOLUTION_WEBHOOK_SECRET'] || '',
     resendApiKey: env['RESEND_API_KEY'],
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
+    serperApiKey: env['SERPER_API_KEY']?.trim() || undefined,
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
     nvidiaVisionModel: env['NVIDIA_VISION_MODEL']?.trim() || env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
@@ -100,8 +100,6 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     googleAppId: env['GOOGLE_APP_ID'],
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
-    infosimplesToken: env['INFOSIMPLES_TOKEN'],
-    cfmPesquisaAtiva: env['CFM_PESQUISA_ATIVA'] !== 'false',
     stripeSecretKey: env['STRIPE_SECRET_KEY'],
     stripePublishableKey: env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
     stripePriceId: env['STRIPE_PRICE_ID'] || 'price_1UFaloBMqkVPUWioDTWXIPv6',

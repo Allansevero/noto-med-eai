@@ -1,10 +1,12 @@
 import { nomeProfissionalValido } from '../conta/validar-dados-emissao.js';
 import type { DadosMedicoOnline } from '../medico/io/buscar-medico-online.js';
+import type { DiagnosticoPesquisaRegistro } from './diagnostico-pesquisa-registro.js';
 export interface CandidatoResponsavel { nome: string; origem: string }
 export interface EmpresaConsultada { cnpj: string; razaoSocial: string; candidatos: CandidatoResponsavel[]; origem: string }
 export type ResultadoConsulta<T> = { estado: 'consultado'; dados: T } | { estado: 'indisponivel' | 'nao_encontrado'; codigo: string };
 export interface ConsultaEmpresa { consultar(cnpj: string): Promise<ResultadoConsulta<EmpresaConsultada>> }
-export interface ConsultaRegistro { buscar(nome: string, uf?: string): Promise<ResultadoConsulta<DadosMedicoOnline[]>> }
+export type ResultadoConsultaRegistro = ResultadoConsulta<DadosMedicoOnline[]> & { diagnostico?: DiagnosticoPesquisaRegistro[] };
+export interface ConsultaRegistro { buscar(nome: string, uf?: string): Promise<ResultadoConsultaRegistro> }
 const falha = (): ResultadoConsulta<EmpresaConsultada> => ({estado:'indisponivel',codigo:'CNPJ_CONSULTA_INDISPONIVEL'});
 const pessoa = (nome: unknown): nome is string => nomeProfissionalValido(nome) && !/\b(ltda|limitada|eireli|sociedade|associacao|associação|empresa|clinica|clínica)\b/i.test(String(nome));
 /** Fonte secundária já utilizada pelo sistema. Não altera enquadramento fiscal. */

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import type { ConsultaEmpresa, ConsultaRegistro, EmpresaConsultada } from './consultas.js';
+import type { DiagnosticoPesquisaRegistro } from './diagnostico-pesquisa-registro.js';
 import type { DadosMedicoOnline } from '../medico/io/buscar-medico-online.js';
 export interface CandidatoCadastro { id:string; nome:string; crm?:string; uf?:string; origem?:string }
 export interface PendenciaCadastro { id:string; tipo:'responsavel'|'nome'|'crm'; candidatos:CandidatoCadastro[]; perguntaConfirmada:string|null; escolhasApresentadas?:Record<string,string> }
-export interface DadosCadastro { empresa?:EmpresaConsultada; nomeConfirmado?:string; pendencia?:PendenciaCadastro; cadastroIndisponivel?:boolean; crmOrigem?:string; pesquisaProfissional?:{nome:string;estado:'consultado'|'indisponivel'|'nao_encontrado';registros:DadosMedicoOnline[];codigo?:string}; aprovacaoPainel?:{nome:string;crm:string;rqe:string|null;confirmadoEm:string} }
+export interface DadosCadastro { empresa?:EmpresaConsultada; nomeConfirmado?:string; pendencia?:PendenciaCadastro; cadastroIndisponivel?:boolean; crmOrigem?:string; pesquisaProfissional?:{nome:string;estado:'consultado'|'indisponivel'|'nao_encontrado';registros:DadosMedicoOnline[];codigo?:string;diagnostico?:DiagnosticoPesquisaRegistro[]}; aprovacaoPainel?:{nome:string;crm:string;rqe:string|null;confirmadoEm:string} }
 export interface PerfilCadastro { nome:string; crm:string|null; nomeConfirmado:boolean }
 export interface ResultadoEnriquecimento { estado:'aguardando_confirmacao'|'concluido'|'retentar'; dados:DadosCadastro; nome?:string; crm?:string; codigo?:string }
 export function criarPendencia(tipo:PendenciaCadastro['tipo'],candidatos:CandidatoCadastro[]=[]):PendenciaCadastro{return {id:randomUUID(),tipo,candidatos,perguntaConfirmada:null};}
@@ -27,7 +28,7 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
   }
   if(candidatos.length===1 && dados.pesquisaProfissional?.nome!==candidatos[0].nome){
    const pesquisado=await registro.buscar(candidatos[0].nome);
-   dados.pesquisaProfissional={nome:candidatos[0].nome,estado:pesquisado.estado,registros:pesquisado.estado==='consultado'?pesquisado.dados:[],...(pesquisado.estado!=='consultado'?{codigo:pesquisado.codigo}:{})};
+   dados.pesquisaProfissional={nome:candidatos[0].nome,estado:pesquisado.estado,registros:pesquisado.estado==='consultado'?pesquisado.dados:[],...(pesquisado.estado!=='consultado'?{codigo:pesquisado.codigo}:{}),...(pesquisado.diagnostico?{diagnostico:pesquisado.diagnostico}:{})};
   }
   if(!candidatos.length && nomeProfissionalValido(entrada.perfil.nome))candidatos=[{id:randomUUID(),nome:entrada.perfil.nome,origem:'Cadastro existente, confirmação pendente'}];
   const anterior=entrada.dados.pendencia;
@@ -39,9 +40,9 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
  if(normalizarCrm(entrada.perfil.crm))return {estado:'concluido',dados};
  const pesquisa=dados.pesquisaProfissional;
  const r=pesquisa?.nome===nome && (pesquisa.estado!=='indisponivel' || pesquisa.codigo==='CRM_FONTE_NAO_CONFIGURADA')
-  ? pesquisa.estado==='consultado'?{estado:'consultado' as const,dados:pesquisa.registros}:{estado:pesquisa.estado,codigo:pesquisa.codigo||'CRM_CONSULTA_INDISPONIVEL'}
+  ? pesquisa.estado==='consultado'?{estado:'consultado' as const,dados:pesquisa.registros,diagnostico:pesquisa.diagnostico}:{estado:pesquisa.estado,codigo:pesquisa.codigo||'CRM_CONSULTA_INDISPONIVEL',diagnostico:pesquisa.diagnostico}
   :await registro.buscar(nome);
- dados.pesquisaProfissional={nome,estado:r.estado,registros:r.estado==='consultado'?r.dados:[],...(r.estado!=='consultado'?{codigo:r.codigo}:{})};
+ dados.pesquisaProfissional={nome,estado:r.estado,registros:r.estado==='consultado'?r.dados:[],...(r.estado!=='consultado'?{codigo:r.codigo}:{}),...(r.diagnostico?{diagnostico:r.diagnostico}:{})};
  if(r.estado==='consultado'){
   const validos=r.dados.filter(c=>normal(c.nomeCompleto)===normal(nome)&&normalizarCrm(`${c.crm}/${c.uf}`));
   const unicos=[...new Map(validos.map(c=>[normalizarCrm(`${c.crm}/${c.uf}`)!,c])).values()];

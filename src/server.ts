@@ -7,7 +7,7 @@ import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/c
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
-import { InfosimplesConsultaRegistro } from './cadastro/infosimples.js';
+import { GoogleConsultaRegistro } from './cadastro/google-registro.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
 import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
@@ -156,8 +156,11 @@ export function criarAppExpress() {
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
-  const pesquisaCrmConfigurada=config.cfmPesquisaAtiva&&!!config.infosimplesToken?.trim();
-  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), pesquisaCrmConfigurada?new InfosimplesConsultaRegistro(config.infosimplesToken!):new PesquisaRegistroIndisponivel(),
+  const pesquisaCrmConfigurada=!!config.serperApiKey&&!!config.nvidiaApiKey;
+  const consultaRegistro = pesquisaCrmConfigurada
+    ? new GoogleConsultaRegistro({serperApiKey:config.serperApiKey,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaModel,incluirDiagnostico:true})
+    : new PesquisaRegistroIndisponivel();
+  const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), consultaRegistro,
     async (medicoId, certificadoId) => {
       const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
       if (!cert || cert.id !== certificadoId) return undefined;

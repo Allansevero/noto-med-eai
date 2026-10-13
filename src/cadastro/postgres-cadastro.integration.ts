@@ -36,7 +36,7 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await pool!.query("update cadastro_certificado_trabalhos set reservado_em=now()-interval '4 minutes'");
    assert.equal(await repo.reservar(),null,'consulta Hub de até 300 segundos ainda conserva a reserva');
    await pool!.query("update cadastro_certificado_trabalhos set reservado_em=now()-interval '25 minutes'");
-   assert.equal(await repo.reservar(),null,'Hub e duas consultas Infosimples conservam reserva durante toda a janela');
+   assert.equal(await repo.reservar(),null,'Hub e consultas profissionais conservam reserva durante toda a janela');
    await pool!.query("update cadastro_certificado_trabalhos set reservado_em=now()-interval '31 minutes'");const nova=(await repo.reservar())!;
    assert.notEqual(antiga.token,nova.token);await repo.aplicar(antiga,{estado:'concluido',dados:{},crm:'999/RS'});
    assert.equal((await pool!.query('select crm from medicos')).rows[0].crm,null);
@@ -137,7 +137,7 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await pool!.query("insert into medico_certificados(id,medico_id,status) values($1,$2,'ativo')",[certificado,medico]);
    await repo.agendar({medicoId:medico,certificadoId:certificado,documentoTitular:'11222333000181'});
    const r=(await repo.reservar())!;
-   await repo.aplicar(r,{estado:'aguardando_confirmacao',dados:{empresa:{cnpj:'11222333000181',origem:'Hub',razaoSocial:'Clínica',candidatos:[{nome:'Ana de Souza',origem:'Hub'}]},pendencia:{id:randomUUID(),tipo:'responsavel',candidatos:[],perguntaConfirmada:null}}});
+   await repo.aplicar(r,{estado:'aguardando_confirmacao',dados:{empresa:{cnpj:'11222333000181',origem:'Hub',razaoSocial:'Clínica',candidatos:[{nome:'Ana de Souza',origem:'Hub'}]},pesquisaProfissional:{nome:'Ana de Souza',estado:'indisponivel',registros:[],codigo:'CFM_FONTE_NAO_CONFIGURADA'},pendencia:{id:randomUUID(),tipo:'responsavel',candidatos:[],perguntaConfirmada:null}}});
    await repo.agendarPesquisaProfissional();
    const pesquisa=(await repo.reservar())!;assert.equal(pesquisa.trabalho.id,r.trabalho.id);
    assert.ok(pesquisa.trabalho.dados.empresa); // Reutiliza o Hub já consultado.
@@ -147,7 +147,19 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await repo.agendarPesquisaProfissional();const migrado=(await repo.reservar())!;
    assert.equal(migrado.trabalho.id,r.trabalho.id);assert.ok(migrado.trabalho.dados.empresa);
    await repo.aplicar(migrado,{estado:'aguardando_confirmacao',dados:{...migrado.trabalho.dados,pesquisaProfissional:{nome:'Ana de Souza',estado:'indisponivel',registros:[],codigo:'INFOSIMPLES_API_600'}}});
-   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null,'não repete pesquisa paga a cada ciclo após falha Infosimples');
+   await pool!.query('update cadastro_certificado_trabalhos set tentativas=3 where id=$1',[r.trabalho.id]);
+   await repo.agendarPesquisaProfissional();const recuperado=(await repo.reservar())!;
+   assert.equal(recuperado.trabalho.id,r.trabalho.id);assert.equal(recuperado.trabalho.tentativas,1,'reinicia o orçamento de tentativas');
+   assert.ok(recuperado.trabalho.dados.empresa,'reutiliza a consulta CNPJ já feita no Hub');
+   assert.equal(recuperado.trabalho.dados.pesquisaProfissional,undefined,'remove o resultado antigo antes da pesquisa nova');
+   await repo.aplicar(recuperado,{estado:'aguardando_confirmacao',dados:{...recuperado.trabalho.dados,pesquisaProfissional:{nome:'Ana de Souza',estado:'nao_encontrado',registros:[],codigo:'SERPER_NAO_ENCONTRADO'}}});
+   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null,'não repete a pesquisa Serper após resultado vazio');
+   await pool!.query("update cadastro_certificado_trabalhos set dados=jsonb_set(dados,'{pesquisaProfissional,registros}', '[{\"nomeCompleto\":\"Ana de Souza\",\"crm\":\"12345\",\"uf\":\"RS\",\"origem\":\"Infosimples / CFM\"}]'::jsonb),tentativas=3 where id=$1",[r.trabalho.id]);
+   await repo.agendarPesquisaProfissional();const resultadoAntigo=(await repo.reservar())!;
+   assert.equal(resultadoAntigo.trabalho.id,r.trabalho.id,'também migra resultado antigo da Infosimples');
+   assert.equal(resultadoAntigo.trabalho.tentativas,1);
+   await repo.aplicar(resultadoAntigo,{estado:'aguardando_confirmacao',dados:{...resultadoAntigo.trabalho.dados,pesquisaProfissional:{nome:'Ana de Souza',estado:'indisponivel',registros:[],codigo:'SERPER_CONSULTA_INDISPONIVEL'}}});
+   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null,'não cria um loop após falha Serper');
    const revisao=await (repo as any).revisaoPainel(medico);assert.equal(revisao.nome,'Ana de Souza');assert.equal(revisao.aprovado,false);
    const body={trabalhoId:revisao.trabalhoId,versao:revisao.versao,nome:'Ana de Souza',crm:'37341/RS',rqe:null};
    await assert.rejects(()=>(repo as any).aprovarPainel(medico,{...body,versao:'antiga'}));
