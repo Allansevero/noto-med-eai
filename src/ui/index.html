@@ -19,8 +19,29 @@
       --primary-hover: #202020;
       --border-line: #121C22;
       --font-family: "Geist", sans-serif;
-      --font-size-base: 15px;
-      --title-size: 42px;
+      /* Escala aprovada: tamanho, entrelinha e tracking em pixels. */
+      --display-lg-size: 38.18px;
+      --display-lg-line: 43.53px;
+      --display-lg-tracking: -0.38px;
+      --display-md-size: 30.77px;
+      --display-md-line: 35.08px;
+      --display-md-tracking: -0.31px;
+      --headline-lg-size: 24.81px;
+      --headline-lg-line: 35.97px;
+      --headline-md-size: 21.48px;
+      --headline-md-line: 31.15px;
+      --title-lg-size: 18.61px;
+      --title-lg-line: 26.98px;
+      --body-lg-size: 15px;
+      --body-lg-line: 21.75px;
+      --body-md-size: 12.99px;
+      --body-md-line: 18.84px;
+      --body-sm-size: 11.25px;
+      --body-sm-line: 16.31px;
+      --caption-size: 9.75px;
+      --caption-line: 14.14px;
+      --type-weight-heading: 700;
+      --type-weight-body: 400;
       --gap: 2rem;
     }
 
@@ -48,8 +69,6 @@
     body {
       background-color: var(--bg);
       color: var(--text);
-      font-size: var(--font-size-base);
-      line-height: 1.5;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -89,19 +108,13 @@
 
     h1.access-title,
     .access-title {
-      font-size: var(--title-size);
-      font-weight: 500;
-      line-height: 1.12;
-      letter-spacing: -0.025em;
       color: var(--text);
       text-align: left;
       margin: 0;
     }
 
     .access-subtitle {
-      font-size: var(--font-size-base);
       color: var(--text-secondary);
-      line-height: 1.4;
       text-align: left;
       margin: 0;
     }
@@ -160,28 +173,20 @@
       background: transparent;
       outline: none;
       font-family: var(--font-family) !important;
-      font-size: 20px !important;
       color: var(--text);
       width: 100%;
       height: 100%;
       padding: 0;
-      font-weight: 500;
       text-align: left;
-      letter-spacing: 0.01em;
     }
 
     .phone-input::placeholder {
       font-family: var(--font-family) !important;
-      font-size: 20px !important;
       color: var(--text-muted);
-      font-weight: 400;
-      letter-spacing: 0;
     }
 
     /* Texto de Termos e Políticas */
     .legal-disclaimer {
-      font-size: 13px;
-      line-height: 1.5;
       color: var(--text);
       opacity: 0.85;
       text-align: left;
@@ -209,15 +214,12 @@
       border-radius: 12px; /* radium médio */
       color: var(--text);
       font-family: inherit;
-      font-size: var(--font-size-base);
-      font-weight: 600;
       padding: 1.05rem 1.75rem;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: background-color 0.15s ease, transform 0.1s ease;
-      line-height: 1;
       box-sizing: border-box;
     }
 
@@ -241,8 +243,6 @@
       width: 100%;
       padding: 0.85rem 1.25rem;
       border-radius: 14px;
-      font-size: 14px;
-      font-weight: 500;
       text-align: left;
       box-sizing: border-box;
     }
@@ -275,8 +275,6 @@
       width: 48px;
       height: 58px;
       text-align: center;
-      font-size: 24px;
-      font-weight: 700;
       color: var(--text);
       background: #FFFFFF;
       border: none;
@@ -294,7 +292,6 @@
       background: transparent;
       border: none;
       color: var(--text);
-      font-size: 14px;
       font-family: inherit;
       text-decoration: underline;
       text-underline-offset: 2px;
@@ -336,8 +333,6 @@
 
     .field-label {
       display: block;
-      font-size: 13px;
-      font-weight: 600;
       margin-bottom: 0.5rem;
       color: var(--text);
       text-align: left;
@@ -351,7 +346,6 @@
       border: none;
       border-radius: 12px; /* radium médio não 100% */
       font-family: inherit;
-      font-size: 16px;
       color: var(--text);
       outline: none;
       box-sizing: border-box;
@@ -381,29 +375,23 @@
     }
 
     .drop-zone .icon {
-      font-size: 2.25rem;
       margin-bottom: 0.5rem;
     }
 
     .drop-zone-title {
-      font-size: 14px;
       color: var(--text);
-      font-weight: 600;
       margin: 0;
     }
 
     .drop-zone-desc {
-      font-size: 12px;
       color: var(--text-muted);
       margin-top: 0.25rem;
     }
 
     .file-chosen-name {
-      font-weight: 700;
       color: var(--text);
       margin-top: 0.75rem;
       word-break: break-all;
-      font-size: 13px;
     }
 
     .params-card {
@@ -421,7 +409,6 @@
       align-items: center;
       padding: 0.65rem 0;
       border-bottom: 1px solid rgba(18, 28, 34, 0.08);
-      font-size: 13px;
     }
 
     .param-item:last-child {
@@ -430,14 +417,10 @@
 
     .param-label {
       color: var(--text-muted);
-      font-size: 11px;
       text-transform: uppercase;
-      font-weight: 600;
-      letter-spacing: 0.02em;
     }
 
     .param-val {
-      font-weight: 600;
       color: var(--text);
       text-align: right;
     }
@@ -463,9 +446,6 @@
     }
 
     .pairing-code {
-      font-size: 2.2rem;
-      font-weight: 700;
-      letter-spacing: 4px;
       color: var(--text);
       text-align: center;
       margin: 1rem 0;
@@ -477,7 +457,6 @@
       padding: 0.85rem 1rem;
       border-radius: 12px;
       font-family: monospace;
-      font-size: 12px;
       color: var(--text);
       margin-top: 0.5rem;
       text-align: left;
@@ -490,7 +469,6 @@
       align-items: center;
       padding: 0.85rem 0;
       border-bottom: 1px solid rgba(18, 28, 34, 0.12);
-      font-size: 14px;
     }
 
     .tag-active {
@@ -499,9 +477,6 @@
       color: #0b7330;
       padding: 0.25rem 0.75rem;
       border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
     }
 
     .dash-top-bar {
@@ -513,10 +488,7 @@
     }
 
     .dash-brand {
-      font-weight: 700;
-      font-size: 18px;
       color: var(--text);
-      letter-spacing: -0.02em;
     }
 
     .btn-logout-small {
@@ -524,8 +496,6 @@
       border: 1px solid rgba(18, 28, 34, 0.2);
       border-radius: 8px; /* radium médio */
       padding: 0.35rem 0.85rem;
-      font-size: 13px;
-      font-weight: 600;
       color: var(--text);
       cursor: pointer;
       font-family: inherit;
@@ -552,7 +522,6 @@
       color: #FFFFFF !important;
       border: none !important;
       border-radius: 12px !important; /* Radium médio */
-      font-weight: 600;
     }
 
     .btn-danger:hover {
@@ -564,7 +533,6 @@
       color: var(--text) !important;
       border: none !important;
       border-radius: 12px !important; /* Radium médio */
-      font-weight: 600;
     }
 
     .btn-secondary:hover {
@@ -594,13 +562,10 @@
       background: transparent;
       border-radius: 9999px; /* radium 100% */
       padding: 0.6rem 0.5rem;
-      font-size: 14px;
-      font-weight: 500;
       color: #2D3748;
       cursor: pointer;
       font-family: inherit;
       text-align: center;
-      line-height: 1.2;
       transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
       white-space: nowrap;
       user-select: none;
@@ -615,7 +580,6 @@
     .tab-btn.active {
       background: #FFFFFF; /* selecionado branco */
       color: var(--text);
-      font-weight: 600;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
     }
 
@@ -643,8 +607,6 @@
     }
 
     .field-label-data {
-      font-size: 13px;
-      font-weight: 600;
       color: var(--text-secondary);
       text-align: left;
     }
@@ -664,8 +626,6 @@
       border: none;
       border-radius: 12px; /* Radium médio */
       font-family: inherit;
-      font-size: 15px;
-      font-weight: 500;
       color: var(--text);
       outline: none;
       box-sizing: border-box;
@@ -702,8 +662,6 @@
     .btn-input-action.is-saving {
       background: var(--primary);
       color: var(--text);
-      font-weight: 600;
-      font-size: 13px;
     }
 
     .btn-input-action.is-saving:hover {
@@ -727,25 +685,17 @@
     body.onboarding-active .dash-top-bar,
     body.onboarding-active .tabs-wrapper,
     body.onboarding-active .tag-active { display: none; }
-    .access-title { font-size: 42px !important; font-weight: 500 !important; }
     body.onboarding-active h1,
-    body.onboarding-active h2 { font-size: 42px !important; font-weight: 500 !important; text-align: left; }
+    body.onboarding-active h2 { text-align: left; }
     body.onboarding-active p,
     body.onboarding-active label,
     body.onboarding-active .alert,
     body.onboarding-active .access-subtitle {
-      font-size: 15px !important;
-      font-weight: 400 !important;
       text-align: left !important;
     }
-    body.onboarding-active #notaPadraoStatus,
-    body.onboarding-active .param-label,
-    body.onboarding-active .param-val { font-size: 15px; font-weight: 400; }
     button {
       background: #000000 !important;
       color: #FFFFFF !important;
-      font-weight: 500 !important;
-      font-size: 15px;
     }
     button:hover { background: #202020 !important; }
     button.btn-link { width: 100%; padding: 1rem; border-radius: 12px; opacity: 1; text-decoration: none; }
@@ -772,22 +722,15 @@
     .drop-zone, .access-subtitle, .alert, .code-box { text-align: left !important; }
     .conta-menu-container { background: #DDDDDF; border-radius: 16px; padding: 0.35rem 0; width: 100%; }
     #contaMenu { width: 230px; display: flex; flex-direction: column; gap: 0.85rem; }
-    button.conta-menu-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0.85rem 1.15rem; border: none; background: transparent !important; color: var(--text) !important; text-align: left; cursor: pointer; border-radius: 0; font-size: 14px; }
+    button.conta-menu-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0.85rem 1.15rem; border: none; background: transparent !important; color: var(--text) !important; text-align: left; cursor: pointer; border-radius: 0; }
     button.conta-menu-item:hover { background: rgba(18, 28, 34, 0.05) !important; }
     button.conta-menu-item.conta-menu-danger { color: #C43232 !important; }
-    button.conta-sair { margin-top: 0.5rem; padding: 0.75rem 0 0; width: 100%; justify-content: center; text-align: center !important; font-size: 14px; }
+    button.conta-sair { margin-top: 0.5rem; padding: 0.75rem 0 0; width: 100%; justify-content: center; text-align: center !important; }
     .conta-interna, .conta-secao { display: flex; flex-direction: column; align-items: flex-start; gap: var(--gap); width: 100%; }
     .conta-secao > .access-title { margin: 0; }
     .fiscal-parametros { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem 1rem; margin-top: 1rem; }
-    .fiscal-parametros dt, .fiscal-parametros dd { overflow-wrap: anywhere; font-size: 15px; font-weight: 400; text-align: left; }
+    .fiscal-parametros dt, .fiscal-parametros dd { overflow-wrap: anywhere; text-align: left; }
     .fiscal-parametros dt { color: var(--text-secondary); }
-    @media (max-width: 600px) {
-      body { --font-size-base: 13px; font-size: 13px; }
-      body.onboarding-active p, body.onboarding-active label, body.onboarding-active .alert, body.onboarding-active .access-subtitle,
-      body p, body label, body .access-subtitle, body .alert, body .param-label, body .param-val,
-      body .code-box, body .stat-row, body .fiscal-parametros dt, body .fiscal-parametros dd,
-      body #notaPadraoStatus, body button { font-size: 13px !important; }
-    }
 
     .params-card, .input-data-field[readonly] { background: #DDDDDF; }
     button.tab-btn:focus-visible, button.btn-fiscal-edit:focus-visible, button.btn-input-action:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
@@ -799,7 +742,7 @@
     button.btn-fiscal-edit { padding: .35rem; width: 32px; min-width: 32px; display: inline-flex; align-items: center; justify-content: center; }
     .fiscal-parametros dd { margin: 0; min-width: 0; }
     .fiscal-campo { display: flex; align-items: center; gap: .25rem; }
-    .fiscal-campo input { width: 100%; min-width: 0; padding: .45rem; font-size: inherit; color: var(--text); background: white; border: 1px solid #999; border-radius: 6px; }
+    .fiscal-campo input { width: 100%; min-width: 0; padding: .45rem; color: var(--text); background: white; border: 1px solid #999; border-radius: 6px; }
     .fiscal-campo input[readonly] { background: transparent; border-color: transparent; }
     .fiscal-acoes { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
     @media (prefers-reduced-motion: reduce) { .segmented-control::before { transition: none; } }
@@ -840,11 +783,8 @@
 
     /* TÍTULO DA SEÇÃO EM CAIXA ALTA E CINZA CLARO */
     .secao-titulo-integracoes {
-      font-size: 15px;
-      font-weight: 600;
       color: rgba(18, 28, 34, 0.45);
       text-transform: uppercase;
-      letter-spacing: 0.04em;
       margin-bottom: 0.25rem;
       text-align: left;
       width: 100%;
@@ -886,15 +826,10 @@
       gap: 4px;
     }
     .sheets-title {
-      font-size: 15px;
-      font-weight: 600;
       color: var(--text);
-      line-height: 1.25;
     }
     .sheets-subtitle {
-      font-size: 11px;
       color: var(--text-secondary);
-      line-height: 1.4;
     }
     .sheets-btn-conectar {
       background: var(--primary);
@@ -902,8 +837,6 @@
       border: none;
       border-radius: 12px; /* Radium de 12px acompanhando os outros elementos do design */
       padding: 0.65rem 1.5rem;
-      font-size: 13px;
-      font-weight: 600;
       cursor: pointer;
       transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
       white-space: nowrap;
@@ -923,8 +856,6 @@
       margin-top: 0.95rem;
       padding: 0.75rem 0.95rem;
       border-radius: 8px;
-      font-size: 12px;
-      line-height: 1.45;
       background: #F4F4F5;
       color: var(--text);
       border-left: 3px solid #0F9D58;
@@ -965,6 +896,91 @@
         width: 100%;
         max-width: 600px;
         flex: 1 1 auto;
+      }
+    }
+
+    /* Tipografia semântica compartilhada entre login, onboarding e painel. */
+    body, p, input, button, select, textarea, .body-lg {
+      font-size: var(--body-lg-size);
+      line-height: var(--body-lg-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-body);
+    }
+    h1, .display-lg {
+      font-size: var(--display-lg-size);
+      line-height: var(--display-lg-line);
+      letter-spacing: var(--display-lg-tracking);
+      font-weight: var(--type-weight-heading);
+    }
+    h2, .display-md {
+      font-size: var(--display-md-size);
+      line-height: var(--display-md-line);
+      letter-spacing: var(--display-md-tracking);
+      font-weight: var(--type-weight-heading);
+    }
+    h3, .headline-lg, .otp-inputs input {
+      font-size: var(--headline-lg-size);
+      line-height: var(--headline-lg-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-heading);
+    }
+    h4, .headline-md {
+      font-size: var(--headline-md-size);
+      line-height: var(--headline-md-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-heading);
+    }
+    h5, .title-lg, .dash-brand, .sheets-title {
+      font-size: var(--title-lg-size);
+      line-height: var(--title-lg-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-heading);
+    }
+    h6 {
+      font-size: var(--body-lg-size);
+      line-height: var(--body-lg-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-heading);
+    }
+    .body-md, .field-label, .field-label-data, .param-label,
+    .code-box, .sheets-status, .secao-titulo-integracoes {
+      font-size: var(--body-md-size);
+      line-height: var(--body-md-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-body);
+    }
+    .body-sm, .legal-disclaimer, .drop-zone-desc, .sheets-subtitle, .tag-active {
+      font-size: var(--body-sm-size);
+      line-height: var(--body-sm-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-body);
+    }
+    small, .caption {
+      font-size: var(--caption-size);
+      line-height: var(--caption-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-body);
+    }
+    .phone-input, .phone-input::placeholder {
+      font-size: var(--title-lg-size);
+      line-height: var(--title-lg-line);
+      letter-spacing: normal;
+      font-weight: var(--type-weight-body);
+    }
+    /* Dígitos de pareamento ficam separados para facilitar a transcrição. */
+    .pairing-code {
+      font-size: var(--display-md-size);
+      line-height: var(--display-md-line);
+      letter-spacing: 4px;
+      font-weight: var(--type-weight-heading);
+    }
+    /* O tamanho do glifo decorativo não pertence à escala de texto. */
+    .drop-zone .icon { font-size: 2.25rem; }
+    @media (max-width: 600px) {
+      /* 16px nos campos editáveis evita zoom automático de foco no iOS. */
+      .input-text:not([readonly]), .input-data-field:not([readonly]),
+      .fiscal-campo input:not([readonly]), select, textarea {
+        font-size: max(16px, var(--body-lg-size));
       }
     }
   </style>
@@ -1022,7 +1038,7 @@
       <!-- ETAPA 2: DIGITAR O CÓDIGO DE 6 DÍGITOS -->
       <form id="formOtp" class="access-form hidden">
         <div class="access-header" style="gap: 0.5rem;">
-          <h2 style="font-size: 28px; font-weight: 700; color: var(--text);">Código de confirmação</h2>
+          <h2 style="color: var(--text);">Código de confirmação</h2>
           <p class="access-subtitle">
             Digite o código de 6 dígitos que enviamos para o seu WhatsApp no número <strong id="lblTelefoneDestino"></strong>:
           </p>
@@ -1075,7 +1091,7 @@
       <!-- ETAPA 2: CERTIFICADO A1 E BUSCA AUTOMATICA NO ADN -->
       <div id="step3View" class="step-view hidden">
         <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Certificado Digital A1</h2>
+          <h2 class="access-title">Certificado Digital A1</h2>
           <p class="access-subtitle">
             Usaremos o A1 para localizar sua última NFS-e no Ambiente Nacional e preencher seus dados fiscais automaticamente.
           </p>
@@ -1104,32 +1120,32 @@
       <!-- ETAPA 4: WHATSAPP DO CONSULTÓRIO -->
       <div id="step4View" class="step-view hidden">
         <div class="access-header">
-          <h2 class="access-title" style="font-size: 34px;">Conectar WhatsApp</h2>
+          <h2 class="access-title">Conectar WhatsApp</h2>
           <p class="access-subtitle">
             Conecte o número do seu consultório para ativar o disparo automático de notas.
           </p>
         </div>
 
         <div id="loadingQr" class="hidden" style="text-align: left; padding: 1rem 0;">
-          <p style="color: var(--text-secondary); font-size: 14px;">Gerando conexão segura com a Evolution API...</p>
+          <p class="body-md" style="color: var(--text-secondary);">Gerando conexão segura com a Evolution API...</p>
         </div>
 
         <div id="boxQrCode" class="hidden" style="width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center;">
           <div class="qr-container">
             <img id="imgQrCode" alt="QR Code WhatsApp" />
           </div>
-          <p id="statusEsperandoQr" style="color: #0b7330; font-weight: 600; font-size: 14px; margin-bottom: 0.5rem; text-align: center;">
+          <p class="body-md" id="statusEsperandoQr" style="color: #0b7330; margin-bottom: 0.5rem; text-align: center;">
             Aguardando leitura do QR Code no WhatsApp...
           </p>
-          <p style="font-size: 13px; color: var(--text-muted); text-align: center;">
+          <p class="body-md" style="color: var(--text-muted); text-align: center;">
             Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho
           </p>
         </div>
 
         <div id="boxPairingCode" class="hidden" style="width: 100%; text-align: center;">
-          <p style="font-size: 13px; color: var(--text-secondary);">Digite este código de pareamento no WhatsApp:</p>
+          <p class="body-md" style="color: var(--text-secondary);">Digite este código de pareamento no WhatsApp:</p>
           <div class="pairing-code" id="txtPairingCode">----</div>
-          <p style="font-size: 13px; color: var(--text-muted); text-align: center;">
+          <p class="body-md" style="color: var(--text-muted); text-align: center;">
             WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho &gt; Conectar com número de telefone
           </p>
         </div>
@@ -1231,8 +1247,8 @@
               <div style="width: 48px; height: 48px; border-radius: 9999px; background: rgba(37, 211, 102, 0.15); display: flex; align-items: center; justify-content: center; font-size: 22px;">
                 📄
               </div>
-              <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">Nenhuma emissão recente</h3>
-              <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+              <h3 style="color: var(--text); margin: 0;">Nenhuma emissão recente</h3>
+              <p class="body-md" style="color: var(--text-secondary); margin: 0;">
                 As notas emitidas automaticamente pelo WhatsApp com <code>/emissao [valor]</code> ficarão listadas aqui para download de PDF e XML.
               </p>
             </div>
@@ -1341,7 +1357,7 @@
             <h2 class="access-title" id="tituloContaFiscal">Dados fiscais</h2>
             <div id="step2View" class="step-view">
               <div class="access-header">
-                <h2 class="access-title" style="font-size: 34px;">Parâmetros fiscais</h2>
+                <h2 class="access-title">Parâmetros fiscais</h2>
                 <p class="access-subtitle">Buscamos sua nota pelo certificado e usamos a configuração tributária dela para as próximas consultas do mesmo tipo. Você não precisa enviar o XML nem preencher códigos fiscais.</p>
               </div>
               <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
@@ -1379,7 +1395,7 @@
             <h2 class="access-title" id="tituloContaFaturamento">Faturamento</h2>
             <div class="params-card" style="width: 100%;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                <span style="font-size: 15px; font-weight: 700; color: var(--text);">Plano &amp; Limites</span>
+                <span class="title-lg" style="color: var(--text);">Plano &amp; Limites</span>
                 <span id="badgePlano" class="tag-active">GRATUITO</span>
               </div>
               <div class="stat-row" style="padding: 0.5rem 0;">
@@ -1391,15 +1407,15 @@
                 <span id="lblNotasMes" style="font-weight: 700;">0 / 100 notas</span>
               </div>
               <div id="boxUpgrade" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                <p class="body-md" style="color: var(--text-secondary); margin: 0;">
                   Plano Mensal: 100 notas/mês por R$ 100,00. Liberação imediata via Stripe.
                 </p>
-                <button type="button" class="btn-action" id="btnAssinarPlano" style="height: 48px; font-size: 15px;">
+                <button type="button" class="btn-action" id="btnAssinarPlano" style="height: 48px;">
                   Assinar Plano Mensal (R$ 100/mês)
                 </button>
               </div>
               <div id="boxGerenciar" class="hidden" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                <button type="button" class="btn-action" id="btnGerenciarAssinatura" style="height: 48px; font-size: 14px; background: #FFFFFF; border: 1px solid var(--border-line); color: var(--text);">
+                <button type="button" class="btn-action" id="btnGerenciarAssinatura" style="height: 48px; background: #FFFFFF; border: 1px solid var(--border-line); color: var(--text);">
                   Gerenciar Assinatura (Stripe)
                 </button>
               </div>
