@@ -44,14 +44,23 @@ export function analisarReferenciaFiscal(xmlObj: any) {
   const calculaPis = naoOptante && ['01', '02'].includes(String(pis?.CST).padStart(2, '0'));
   detectar(pis, ['CST', ...(calculaPis ? ['vBCPisCofins','pAliqPis','pAliqCofins','vPis','vCofins','tpRetPisCofins'] : [])], 'tribFed/piscofins');
   if (calculaPis) {
-    const valor = Number(dps.valores?.vServPrest?.vServ);
-    const base = Number(pis.vBCPisCofins);
-    if (!Number.isFinite(base) || base <= 0 || base !== valor) pendencias.push('tribFed/piscofins: a base de cálculo precisa corresponder ao valor integral do serviço; base reduzida exige revisão.');
-    for (const [aliquota, montante] of [['pAliqPis','vPis'], ['pAliqCofins','vCofins']]) {
-      const taxa = Number(pis[aliquota]), declarado = Number(pis[montante]);
-      const esperadoCentavos = Math.round(Math.round(base * 100) * Math.round(taxa * 100) / 10000);
-      if (!/^\d+(?:\.\d{1,2})?$/.test(String(pis[aliquota])) || !/^\d+(?:\.\d{1,2})?$/.test(String(pis[montante])) || !Number.isFinite(taxa) || !Number.isFinite(declarado) || Math.round(declarado * 100) !== esperadoCentavos) {
-        pendencias.push(`tribFed/piscofins/${montante}: o valor não comprova o cálculo com a alíquota declarada.`);
+    if (pis?.vBCPisCofins !== undefined || pis?.vPis !== undefined || pis?.vCofins !== undefined) {
+      const valor = Number(dps.valores?.vServPrest?.vServ);
+      const base = Number(pis.vBCPisCofins);
+      if (!Number.isFinite(base) || base <= 0 || base !== valor) pendencias.push('tribFed/piscofins: a base de cálculo precisa corresponder ao valor integral do serviço; base reduzida exige revisão.');
+      for (const [aliquota, montante] of [['pAliqPis','vPis'], ['pAliqCofins','vCofins']]) {
+        const taxa = Number(pis[aliquota]), declarado = Number(pis[montante]);
+        const esperadoCentavos = Math.round(Math.round(base * 100) * Math.round(taxa * 100) / 10000);
+        if (!/^\d+(?:\.\d{1,2})?$/.test(String(pis[aliquota])) || !/^\d+(?:\.\d{1,2})?$/.test(String(pis[montante])) || !Number.isFinite(taxa) || !Number.isFinite(declarado) || Math.round(declarado * 100) !== esperadoCentavos) {
+          pendencias.push(`tribFed/piscofins/${montante}: o valor não comprova o cálculo com a alíquota declarada.`);
+        }
+      }
+    } else {
+      for (const aliquota of ['pAliqPis', 'pAliqCofins']) {
+        const taxa = Number(pis?.[aliquota]);
+        if (!/^\d+(?:\.\d{1,2})?$/.test(String(pis?.[aliquota])) || !Number.isFinite(taxa) || taxa < 0) {
+          pendencias.push(`tribFed/piscofins/${aliquota}: a alíquota precisa ser informada.`);
+        }
       }
     }
   }
