@@ -121,29 +121,9 @@ export function criarAppExpress() {
   const memoriaAssistente = new PostgresAssistente(pool);
   const agenteAssistente = new AgenteAssistente(memoriaAssistente, ia.decisorAssistente, ia.geradorMensagem,
     evolutionAssistantClient, config.evolutionAssistantInstanceName, evolutionAssistantClient, config.notoCadastroModo);
-  if (config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo && process.env.NODE_ENV !== 'test') {
-    let recuperando = false;
-    const timer = setInterval(() => {
-      if (recuperando) return;
-      recuperando = true;
-      void agenteAssistente.recuperar().catch(() => console.warn('[Assistente contextual] Falha na recuperação; confira migrate:assistente e configuração.'))
-        .finally(() => { recuperando = false; });
-    }, 5000);
-    timer.unref();
-    console.info('[Assistente contextual] Memória e fila ativadas.');
-  }
-  const iniciarAssistente = criarDisparadorAssistente({ pool, gerenciador: gerenciadorOnboarding,
-    salvarEstado: (medicoId, estado) => ferramentasAssistente.salvarEstadoOnboarding(medicoId, estado),
-    enviar: evolutionAssistantClient, instanciaNome: config.evolutionAssistantInstanceName });
-  const dispararAssistente = (medicoId: string) => {
-    if (config.notoCadastroModo !== 'conversacional') return;
-    if (!config.evolutionAssistantUrl || !config.evolutionAssistantApiKey || !config.evolutionAssistantInstanceName) {
-      console.warn('[Onboarding Assistente]', { medicoId, estado: 'configuracao_incompleta' });
-      return;
-    }
-    if(config.assistenteContextualAtivo){
-      void agenteAssistente.iniciarAoConectar(medicoId).catch(()=>console.warn('[Assistente contextual]',{medicoId,etapa:'apresentacao',estado:'falha_registrada'}));
-    }else iniciarAssistente(medicoId);
+  // Apresentação e questionários conversacionais foram substituídos pela revisão visual no painel web.
+  const dispararAssistente = (_medicoId: string) => {
+    // Desativado: o agente fiscal agora cuida da comunicação com o médico de forma autônoma.
   };
   const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
   const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
@@ -172,7 +152,8 @@ export function criarAppExpress() {
     () => assistenteConectado({url:config.evolutionAssistantUrl,chave:config.evolutionAssistantApiKey,instancia:config.evolutionAssistantInstanceName,instanciaOficial:config.evolutionOfficialInstanceName}));
   if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
-      void Promise.all([cadastroCertificado.recuperar(), confirmadorCadastro.recuperar()]).catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
+      // Enriquecimento automático de dados (Google/CFM) sem envio de perguntas no WhatsApp.
+      void cadastroCertificado.recuperar().catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
     }, 5000);
     timer.unref();
   }
@@ -396,7 +377,6 @@ export function criarAppExpress() {
       }
 
       if (status.passos.passo4WhatsappConectado) {
-        dispararAssistente(medicoId);
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
           console.info('[Evolution] Histórico sincronizado:', resultado);
@@ -776,9 +756,9 @@ export function criarAppExpress() {
             instanciaNome: config.evolutionAssistantInstanceName
           });
         },
-        processarConfirmacaoCadastro: config.notoCadastroModo === 'confirmacao' ? entrada => confirmadorCadastro.receber(entrada) : undefined,
-        gerenciadorAssistente: config.notoCadastroModo === 'conversacional' ? gerenciadorOnboarding : undefined,
-        processarConversaAssistente: config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
+        processarConfirmacaoCadastro: undefined,
+        gerenciadorAssistente: undefined,
+        processarConversaAssistente: undefined,
         async aoAtualizarConexao(evento) {
           if (
             evento.instancia === config.evolutionOfficialInstanceName ||
@@ -786,8 +766,17 @@ export function criarAppExpress() {
           ) return;
           const medicoId = await registrarConexaoWhatsapp(pool, evento);
           if (medicoId) {
-
-            dispararAssistente(medicoId);
+            const nomeInstancia = evento.instancia;
+            void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
+              console.info('[Evolution] Histórico sincronizado pós-conexão:', resultado);
+              void varrerESolicitarAprovacao(medicoId, {
+                repositorio: candidatosNotaRepo,
+                enviarMensagem: evolutionAssistantClient,
+                instanciaNome: config.evolutionAssistantInstanceName
+              }).catch(err => console.warn('[Agente Fiscal Pós-Conexão] Falha:', err?.message || err));
+            }).catch((erro: any) => {
+              console.warn('[Evolution] Histórico ainda indisponível pós-conexão:', erro?.message || erro);
+            });
           }
         }
       });
@@ -998,11 +987,17 @@ export function criarAppExpress() {
          from whatsapp_instancias
          where status = 'conectado' and oficial = false`
       ).then(async ({ rows }) => {
-        rows.forEach(row => { if (row.medico_id) dispararAssistente(row.medico_id); });
         for (const row of rows) {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
             console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
+            if (row.medico_id) {
+              void varrerESolicitarAprovacao(row.medico_id, {
+                repositorio: candidatosNotaRepo,
+                enviarMensagem: evolutionAssistantClient,
+                instanciaNome: config.evolutionAssistantInstanceName
+              }).catch(err => console.warn('[Agente Fiscal Boot] Falha:', err?.message || err));
+            }
           } catch (erro: any) {
             console.warn('[Evolution] Histórico não recuperado ao iniciar:', erro?.message || erro);
           }
