@@ -95,8 +95,19 @@ export function ehConsultaNotasSobDemanda(texto: string): boolean {
     .toLowerCase()
     .trim();
 
-  return (
-    /\b(?:tem|ha|ver|consultar|buscar|listar)?\s*(?:alguma\s*)?(?:nota|notas|comprovante|comprovantes)\s*(?:pendente|pendentes|para emitir|de hoje|de ontem)?\b/i.test(normal) ||
-    /\b(?:fechamento|fechamento do dia|notas de hoje|emitir notas)\b/i.test(normal)
-  );
+  // 1. Fechamento explícito
+  if (/\bfechamento\b/i.test(normal)) return true;
+
+  // 2. Ação, contexto ou qualificador associado a notas/comprovantes/recibos
+  const temAlvo = /\b(?:notas?|nfse?|comprovantes?|recibos?)\b/i.test(normal);
+  const temAcaoOuContexto = /\b(?:tem|ha|existe|alguma|ver|ve|olha|olhar|consulta|consultar|busca|buscar|lista|listar|checa|checar|confere|conferir|verifica|verificar|gera|gerar|emite|emitir|roda|rodar|puxa|puxar|aciona|acionar|fazer|faz|processar|como\s+estao|e\s+as)\b/i.test(normal);
+  const temQualificador = /\b(?:hoje|agora|pendente|pendentes|pendencia|pendencias|atrasadas?|recente|recentes)\b/i.test(normal);
+
+  if (temAlvo && (temAcaoOuContexto || temQualificador)) return true;
+
+  // 3. Gatilhos curtos diretos de emissão/fechamento
+  if (/\b(?:emitir|gerar|fechar)\s+(?:agora|tudo|hoje)\b/i.test(normal)) return true;
+
+  return false;
 }
+

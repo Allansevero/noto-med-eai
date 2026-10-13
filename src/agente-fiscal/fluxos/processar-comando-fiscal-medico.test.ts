@@ -12,6 +12,13 @@ describe('processarComandoFiscalMedico', () => {
     assert.equal(ehConsultaNotasSobDemanda('ver notas'), true);
     assert.equal(ehConsultaNotasSobDemanda('notas de hoje'), true);
     assert.equal(ehConsultaNotasSobDemanda('comprovantes pendentes'), true);
+    assert.equal(ehConsultaNotasSobDemanda('Quero emitir as notas agora'), true);
+    assert.equal(ehConsultaNotasSobDemanda('Gera as notas pra mim'), true);
+    assert.equal(ehConsultaNotasSobDemanda('Noto, confere se tem nota pra emitir'), true);
+    assert.equal(ehConsultaNotasSobDemanda('Pode rodar o fechamento?'), true);
+    assert.equal(ehConsultaNotasSobDemanda('Verifica os comprovantes de hoje'), true);
+    assert.equal(ehConsultaNotasSobDemanda('E as notas?'), true);
+    assert.equal(ehConsultaNotasSobDemanda('Alguma nota?'), true);
     assert.equal(ehConsultaNotasSobDemanda('bom dia'), false);
     assert.equal(ehConsultaNotasSobDemanda('obrigado'), false);
   });
