@@ -49,4 +49,116 @@ describe('processarComandoFiscalMedico', () => {
     assert.equal(res.tipo, 'consulta_sob_demanda');
     assert.equal(varreu, true);
   });
+
+  test('deve aprovar nota atual e puxar o próximo candidato pendente em cadeia', async () => {
+    let enfileirou = false;
+    const mensagensEnviadas: string[] = [];
+
+    const candidatoAtual = {
+      medicoId: 'med-1',
+      pacienteNome: 'Vanessa Lodi',
+      pacienteTelefone: '6699840654',
+      valorCentavos: 45000,
+      valorFormatado: '450,00',
+      dataConsulta: '30/10/2025',
+      dataConsultaIso: '2025-10-30'
+    };
+
+    const proximoCandidato = {
+      pacienteNome: 'Bruno Z',
+      pacienteTelefone: '5196854299',
+      valorCentavos: 40000,
+      valorFormatado: '400,00',
+      dataConsulta: '13/10/2026',
+      dataConsultaIso: '2026-10-13',
+      origemEvidencia: { mensagemPagamentoId: 'm-2' }
+    };
+
+    const repositorioFalso = {
+      obterCandidatoAguardandoAprovacao: async () => candidatoAtual,
+      enfileirarEmissaoAprovada: async () => {
+        enfileirou = true;
+        return { solicitacaoId: 'sol-1' };
+      },
+      obterDadosMedico: async () => ({ nomeCompleto: 'Dra. Alice Xavier', telefone: '51981680978' }),
+      buscarConversasComHistorico: async () => [
+        {
+          conversaId: 'c-2',
+          contatoTelefone: '5196854299',
+          contatoNome: 'Bruno Z',
+          mensagens: [
+            { id: 'm-1', direcao: 'enviada', tipo: 'texto', conteudo: 'Consulta em 13/10/2026. Valor 400,00', criadoEm: '2026-10-13T10:00:00Z' },
+            { id: 'm-2', direcao: 'recebida', tipo: 'imagem', conteudo: '', criadoEm: '2026-10-13T11:00:00Z' }
+          ]
+        }
+      ],
+      verificarSeJaPossuiNota: async () => false,
+      salvarCandidatoAguardandoAprovacao: async () => {}
+    } as unknown as PostgresCandidatosNotaRepositorio;
+
+    const enviadorFalso = {
+      enviarTexto: async ({ texto }: { texto: string }) => {
+        mensagensEnviadas.push(texto);
+        return { sucesso: true };
+      }
+    } as any;
+
+    const res = await processarComandoFiscalMedico('med-1', 'Sim, pode emitir', '51981680978', {
+      repositorio: repositorioFalso,
+      enviarMensagem: enviadorFalso,
+      instanciaNome: 'notomed_assistente'
+    });
+
+    assert.equal(res.tratado, true);
+    assert.equal(res.tipo, 'resposta_aprovacao');
+    assert.equal(enfileirou, true);
+    assert.equal(mensagensEnviadas.length, 2);
+    // 1ª mensagem: confirmação da Vanessa
+    assert.match(mensagensEnviadas[0], /Perfeito! Já coloquei a nota da paciente Vanessa Lodi/);
+    // 2ª mensagem: continuação com Bruno Z
+    assert.match(mensagensEnviadas[1], /^Também encontrei o pagamento de R\$ 400,00 da paciente Bruno Z/);
+    assert.match(mensagensEnviadas[1], /Posso emitir essa também\?/);
+  });
+
+  test('deve aprovar e informar conclusão quando não houver próximo candidato', async () => {
+    const mensagensEnviadas: string[] = [];
+
+    const candidatoAtual = {
+      medicoId: 'med-1',
+      pacienteNome: 'Vanessa Lodi',
+      pacienteTelefone: '6699840654',
+      valorCentavos: 45000,
+      valorFormatado: '450,00',
+      dataConsulta: '30/10/2025',
+      dataConsultaIso: '2025-10-30'
+    };
+
+    const repositorioFalso = {
+      obterCandidatoAguardandoAprovacao: async () => candidatoAtual,
+      enfileirarEmissaoAprovada: async () => ({ solicitacaoId: 'sol-1' }),
+      obterDadosMedico: async () => ({ nomeCompleto: 'Dra. Alice Xavier', telefone: '51981680978' }),
+      buscarConversasComHistorico: async () => [],
+      verificarSeJaPossuiNota: async () => false,
+      salvarCandidatoAguardandoAprovacao: async () => {}
+    } as unknown as PostgresCandidatosNotaRepositorio;
+
+    const enviadorFalso = {
+      enviarTexto: async ({ texto }: { texto: string }) => {
+        mensagensEnviadas.push(texto);
+        return { sucesso: true };
+      }
+    } as any;
+
+    const res = await processarComandoFiscalMedico('med-1', 'Pode emitir', '51981680978', {
+      repositorio: repositorioFalso,
+      enviarMensagem: enviadorFalso,
+      instanciaNome: 'notomed_assistente'
+    });
+
+    assert.equal(res.tratado, true);
+    assert.equal(res.tipo, 'resposta_aprovacao');
+    assert.equal(mensagensEnviadas.length, 2);
+    assert.match(mensagensEnviadas[0], /Perfeito! Já coloquei a nota da paciente Vanessa Lodi/);
+    assert.match(mensagensEnviadas[1], /Pronto! Todas as notas pendentes foram processadas por hoje/);
+  });
 });

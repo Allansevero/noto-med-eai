@@ -29,4 +29,27 @@ describe('redigirSolicitacaoAprovacao', () => {
     assert.equal(texto.includes('AVISO:'), false);
     assert.equal(texto.includes('Paciente:'), false);
   });
+
+  test('deve redigir mensagem de continuação com linguagem natural', () => {
+    const texto = redigirSolicitacaoAprovacao({
+      nomeMedico: 'Alice Xavier',
+      ehContinuacao: true,
+      candidato: {
+        pacienteNome: 'Bruno Z',
+        pacienteTelefone: '5196854299',
+        valorCentavos: 40000,
+        valorFormatado: '400,00',
+        dataConsulta: '13/10/2026',
+        dataConsultaIso: '2026-10-13',
+        origemEvidencia: {
+          mensagemPagamentoId: 'm-2',
+          trechoPagamento: 'pix'
+        }
+      }
+    });
+
+    assert.match(texto, /^Também encontrei o pagamento de R\$ 400,00 da paciente Bruno Z/);
+    assert.match(texto, /Posso emitir essa também\?/);
+    assert.equal(texto.includes('Oi,'), false);
+  });
 });

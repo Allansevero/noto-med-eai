@@ -100,19 +100,50 @@ export class PostgresCandidatosNotaRepositorio {
     const limpo = pacienteTelefone.replace(/\D/g, '');
     const telBusca = limpo.startsWith('55') ? limpo.slice(2) : limpo;
 
-    const sql = `
+    const sqlSol = `
       select s.id from solicitacoes_nota s
       left join pacientes p on p.id = s.paciente_id
       where s.medico_id = $1
         and s.valor_servico_centavos = $2
-        and (
-          p.telefone like '%' || $3 || '%'
-          or s.status in ('pronta', 'emitida', 'pendente')
-        )
+        and (p.telefone like '%' || $3 || '%' or s.xdesc_serv like '%' || $3 || '%')
+        and s.status in ('pronta', 'emitida', 'pendente', 'simulada')
       limit 1
     `;
-    const { rows } = await this.pool.query(sql, [medicoId, valorCentavos, telBusca]);
-    return rows.length > 0;
+    const { rows: solRows } = await this.pool.query(sqlSol, [medicoId, valorCentavos, telBusca]);
+    if (solRows.length > 0) return true;
+
+    const sqlDisp = `
+      select id from auditoria
+      where acao = 'agente_fiscal_candidato_dispensado'
+        and entidade_id = $1
+        and dados_novos->'candidato'->>'pacienteTelefone' like '%' || $2 || '%'
+      limit 1
+    `;
+    const { rows: dispRows } = await this.pool.query(sqlDisp, [medicoId, telBusca]);
+    return dispRows.length > 0;
+  }
+
+  /**
+   * Registra a dispensa de um candidato quando o médico recusa a emissão.
+   */
+  async dispensarCandidato(
+    medicoId: string,
+    candidato: CandidatoMemoriaContextual
+  ): Promise<void> {
+    const estadoJson = {
+      status: 'dispensada',
+      candidato,
+      dispensadaEm: new Date().toISOString()
+    };
+    await this.pool.query(
+      `insert into auditoria (acao, entidade, entidade_id, dados_novos)
+       values ('agente_fiscal_candidato_dispensado', 'medicos', $1, $2::jsonb)`,
+      [medicoId, JSON.stringify(estadoJson)]
+    );
+    await this.pool.query(
+      `update noto_assistente_sessoes set estado = $2::jsonb, atualizado_em = now() where medico_id = $1`,
+      [medicoId, JSON.stringify(estadoJson)]
+    );
   }
 
   /**

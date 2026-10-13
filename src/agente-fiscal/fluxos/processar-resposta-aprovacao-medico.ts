@@ -69,6 +69,9 @@ export async function processarRespostaAprovacaoMedico(
 
   // 2. Resposta negativa (não, cancela, espera, agora não, deixa)
   if (ehRespostaNegativa(texto)) {
+    if (deps.repositorio.dispensarCandidato) {
+      await deps.repositorio.dispensarCandidato(medicoId, candidato);
+    }
     const mensagemResposta = `Tudo bem! Cancelei a emissão da nota da paciente ${candidato.pacienteNome}.`;
 
     if (deps.enviarMensagem && deps.instanciaNome && deps.telefoneMedico) {

@@ -16,6 +16,7 @@ export interface VarrerESolicitarAprovacaoDeps {
   instanciaNome: string;
   dataCorte?: Date;
   telefoneDestinoSobrescrito?: string; // Para testes manuais onde o usuário quer receber no número oficial do Noto
+  ehContinuacao?: boolean;
 }
 
 export type ResultadoVarreduraAprovacao =
@@ -109,7 +110,8 @@ export async function varrerESolicitarAprovacao(
   // 4. Redigir a solicitação de aprovação no estilo natural do Noto
   const textoMensagem = redigirSolicitacaoAprovacao({
     candidato: candidatoEleito,
-    nomeMedico: dadosMedico.nomeCompleto
+    nomeMedico: dadosMedico.nomeCompleto,
+    ehContinuacao: deps.ehContinuacao
   });
 
   // 5. Salvar na memória contextual para quando o médico responder

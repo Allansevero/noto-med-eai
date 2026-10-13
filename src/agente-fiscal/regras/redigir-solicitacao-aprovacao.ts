@@ -12,13 +12,16 @@ import type { CandidatoNotaFiscal } from './correlacionar-consulta-pagamento.js'
 export interface ParametrosRedacaoAprovacao {
   candidato: CandidatoNotaFiscal;
   nomeMedico?: string | null;
+  ehContinuacao?: boolean;
 }
 
 export function redigirSolicitacaoAprovacao(params: ParametrosRedacaoAprovacao): string {
-  const { candidato, nomeMedico } = params;
+  const { candidato, nomeMedico, ehContinuacao } = params;
 
   const primeiroNomeMedico = extrairPrimeiroNome(nomeMedico);
-  const saudacao = primeiroNomeMedico ? `Oi, Dr(a). ${primeiroNomeMedico}!` : 'Oi!';
+  const saudacao = ehContinuacao
+    ? 'Também encontrei'
+    : (primeiroNomeMedico ? `Oi, Dr(a). ${primeiroNomeMedico}! Encontrei` : 'Oi! Encontrei');
 
   const nomePacienteFormatado = capitalizarNome(candidato.pacienteNome);
   const telefoneFormatado = formatarTelefoneVisual(candidato.pacienteTelefone);
@@ -27,9 +30,10 @@ export function redigirSolicitacaoAprovacao(params: ParametrosRedacaoAprovacao):
     : nomePacienteFormatado;
 
   const dataTexto = candidato.dataConsulta ? `da consulta de ${candidato.dataConsulta}` : 'da última consulta';
+  const perguntaFinal = ehContinuacao ? 'Posso emitir essa também?' : 'Posso emitir a nota fiscal dela?';
 
   // Formato natural em 1 a 2 linhas, sem campos com dois pontos ("Paciente: ..."), sem título robótico
-  return `${saudacao} Encontrei o pagamento de R$ ${candidato.valorFormatado} da paciente ${identificacaoPaciente}, ${dataTexto}. Posso emitir a nota fiscal dela?`;
+  return `${saudacao} o pagamento de R$ ${candidato.valorFormatado} da paciente ${identificacaoPaciente}, ${dataTexto}. ${perguntaFinal}`;
 }
 
 function extrairPrimeiroNome(nomeCompleto?: string | null): string {
@@ -44,13 +48,18 @@ function extrairPrimeiroNome(nomeCompleto?: string | null): string {
   return primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase();
 }
 
+const PREPOSICOES_NOME = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em']);
+
 function capitalizarNome(nome: string): string {
   if (!nome || !nome.trim()) return '';
   return nome
     .trim()
     .toLowerCase()
     .split(/\s+/)
-    .map(p => p.length > 2 ? p.charAt(0).toUpperCase() + p.slice(1) : p)
+    .map((p, idx) => {
+      if (idx > 0 && PREPOSICOES_NOME.has(p)) return p;
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    })
     .join(' ');
 }
 

@@ -26,6 +26,7 @@ export type ResultadoComandoFiscal =
       tratado: true;
       tipo: 'resposta_aprovacao';
       resultadoAprovacao: ResultadoProcessarRespostaAprovacao;
+      proximaVarredura?: ResultadoVarreduraAprovacao;
     }
   | {
       tratado: false;
@@ -77,10 +78,28 @@ export async function processarComandoFiscalMedico(
     });
 
     if (resAprovacao.processado) {
+      // Loop contínuo: buscar e notificar o próximo candidato pendente até zerar
+      const proximaVarredura = await varrerESolicitarAprovacao(medicoId, {
+        repositorio: deps.repositorio,
+        enviarMensagem: deps.enviarMensagem,
+        instanciaNome: deps.instanciaNome,
+        telefoneDestinoSobrescrito: telefoneMedico,
+        ehContinuacao: true
+      });
+
+      if (proximaVarredura.ok && proximaVarredura.status === 'nenhum_candidato_pendente') {
+        await deps.enviarMensagem.enviarTexto({
+          instanciaNome: deps.instanciaNome,
+          contatoTelefone: telefoneMedico,
+          texto: 'Pronto! Todas as notas pendentes foram processadas por hoje.'
+        });
+      }
+
       return {
         tratado: true,
         tipo: 'resposta_aprovacao',
-        resultadoAprovacao: resAprovacao
+        resultadoAprovacao: resAprovacao,
+        proximaVarredura
       };
     }
   }
