@@ -50,6 +50,7 @@ export interface ProcessarWebhookDeps {
   instanciaAssistenteNome?: string;
   enviarMensagemAssistente?: EnviarMensagemPaciente;
   modoCadastro?: 'conversacional' | 'confirmacao';
+  processarComandoFiscal?: (medicoId: string, texto: string, telefone: string) => Promise<{ tratado: boolean; detalhe?: any }>;
   processarConfirmacaoCadastro?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<{processado: boolean}>;
   processarConversaAssistente?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<unknown>;
   gerenciadorAssistente?: GerenciadorConversaOnboarding;
@@ -59,7 +60,7 @@ export interface ProcessarWebhookDeps {
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'descartada';
+      acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'comando_fiscal' | 'descartada';
       detalhe?: any;
       motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido' | 'canal_oficial_somente_otp' | 'historico_assistente_ignorado' | 'medico_nao_identificado' | 'mensagem_duplicada';
     }
@@ -125,6 +126,10 @@ export async function processarMensagemWebhook(
       ?await deps.repositorio.buscarMedicoAssistentePorTelefone(telefone,payload.instance)
       :await deps.repositorio.buscarMedicoPorTelefone(telefone);
     if(medico&&deps.segredoConfigurado){
+      if(deps.processarComandoFiscal){
+        const cmdFiscal = await deps.processarComandoFiscal(medico.id, texto, telefone);
+        if(cmdFiscal.tratado) return { ok: true, acao: 'comando_fiscal', detalhe: cmdFiscal.detalhe };
+      }
       if(deps.modoCadastro !== 'confirmacao' && !deps.processarConversaAssistente&&deps.dadosProfissionais){
         const resposta=await deps.dadosProfissionais.processarResposta({medicoId:medico.id,texto,mensagemId:payload.data.key.id});
         if(resposta.tratada)return {ok:true,acao:'resposta_perfil_medico',detalhe:resposta};

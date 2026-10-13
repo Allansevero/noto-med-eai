@@ -15,6 +15,10 @@ import { GooglePlanilhasClient } from './integracoes/google-planilhas/google-cli
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
 import { criarRouterNfse } from './api/nfse/nfse-router.js';
 import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-api-repositorio.js';
+import { PostgresCandidatosNotaRepositorio } from './agente-fiscal/io/postgres-candidatos-nota-repositorio.js';
+import { AgendadorFechamentoFiscal } from './agente-fiscal/agendador/agendador-fechamento-fiscal.js';
+import { processarComandoFiscalMedico } from './agente-fiscal/fluxos/processar-comando-fiscal-medico.js';
+import { varrerESolicitarAprovacao } from './agente-fiscal/fluxos/varrer-e-solicitar-aprovacao.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
  * Expõe as rotas de webhook da Evolution API, API de autenticação por OTP
@@ -179,6 +183,19 @@ export function criarAppExpress() {
       webhookSecret: config.stripeWebhookSecret
     })
     : undefined;
+
+  const candidatosNotaRepo = new PostgresCandidatosNotaRepositorio(pool, config.appPepper);
+  const agendadorFechamentoFiscal = new AgendadorFechamentoFiscal({
+    pool,
+    pepper: config.appPepper,
+    enviarMensagem: evolutionAssistantClient,
+    instanciaNome: config.evolutionAssistantInstanceName,
+    horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',
+    ativo: Boolean(config.agenteFiscalAtivo)
+  });
+  if (process.env['NODE_ENV'] !== 'test') {
+    agendadorFechamentoFiscal.iniciar();
+  }
 
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
     sincronizarHistoricoEvolutionUmaVez({
@@ -380,6 +397,11 @@ export function criarAppExpress() {
         const nomeInstancia = `medico_${medicoId.replace(/-/g, '').slice(0, 12)}`;
         void sincronizarHistoricoInstancia(nomeInstancia).then((resultado) => {
           console.info('[Evolution] Histórico sincronizado:', resultado);
+          void varrerESolicitarAprovacao(medicoId, {
+            repositorio: candidatosNotaRepo,
+            enviarMensagem: evolutionAssistantClient,
+            instanciaNome: config.evolutionAssistantInstanceName
+          }).catch(err => console.warn('[Agente Fiscal Pós-Sincronização] Falha:', err?.message || err));
         }).catch((erro: any) => {
           console.warn('[Evolution] Histórico ainda indisponível:', erro?.message || erro);
         });
@@ -744,6 +766,13 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         modoCadastro: config.notoCadastroModo,
+        processarComandoFiscal: async (medicoId, texto, telefone) => {
+          return processarComandoFiscalMedico(medicoId, texto, telefone, {
+            repositorio: candidatosNotaRepo,
+            enviarMensagem: evolutionAssistantClient,
+            instanciaNome: config.evolutionAssistantInstanceName
+          });
+        },
         processarConfirmacaoCadastro: config.notoCadastroModo === 'confirmacao' ? entrada => confirmadorCadastro.receber(entrada) : undefined,
         gerenciadorAssistente: config.notoCadastroModo === 'conversacional' ? gerenciadorOnboarding : undefined,
         processarConversaAssistente: config.notoCadastroModo === 'conversacional' && config.assistenteContextualAtivo ? entrada => agenteAssistente.receber(entrada) : undefined,
