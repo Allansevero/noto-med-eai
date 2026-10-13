@@ -13,6 +13,8 @@ import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErro
 import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
 import { GooglePlanilhasClient } from './integracoes/google-planilhas/google-client.js';
 import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
+import { criarRouterNfse } from './api/nfse/nfse-router.js';
+import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-api-repositorio.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
  * Expõe as rotas de webhook da Evolution API, API de autenticação por OTP
@@ -250,6 +252,22 @@ export function criarAppExpress() {
     googleAppId: config.googleAppId,
     comunicador: comunicadorNoto
   }));
+
+  // API de Emissão de NFS-e (compatível com Focus NFe + Zero-Config)
+  const emissaoApiRepo = new PostgresEmissaoApiRepositorio(pool, config.encryptionKey, config.appPepper);
+  const routerNfse = criarRouterNfse({
+    repositorio: emissaoApiRepo,
+    autenticar: async token => {
+      const { data, error } = await authAdminService.supabaseClient.auth.getUser(token);
+      if (!error && data.user?.id) {
+        return resolverMedicoId(pool, data.user.id).catch(() => null);
+      }
+      return resolverMedicoId(pool, token).catch(() => null);
+    }
+  });
+  app.use('/api/v1/nfse', routerNfse);
+  app.use('/v2/nfse', routerNfse);
+  app.use('/v2/nfsen', routerNfse);
 
   // UI Web de Entrada e Assets Estáticos
   app.use('/assets', express.static(join(__dirname, 'assets')));

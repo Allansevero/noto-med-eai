@@ -800,7 +800,13 @@
     .fiscal-parametros dd { margin: 0; min-width: 0; }
     .fiscal-campo { display: flex; align-items: center; gap: .25rem; }
     .fiscal-campo input { width: 100%; min-width: 0; padding: .45rem; font-size: inherit; color: var(--text); background: white; border: 1px solid #999; border-radius: 6px; }
+    .fiscal-campo select { width: 100%; min-width: 0; padding: .45rem; font-size: inherit; color: var(--text); background: white; border: 1px solid #999; border-radius: 6px; }
     .fiscal-campo input[readonly] { background: transparent; border-color: transparent; }
+    .fiscal-campo select:disabled { background: transparent; border-color: transparent; }
+    .fiscal-adicionar-parametro { margin-top: 1rem; padding-top: .75rem; border-top: 1px dashed var(--border, #e5e7eb); width: 100%; }
+    .fiscal-campo-adicionar { display: flex; align-items: center; gap: .5rem; width: 100%; }
+    .fiscal-campo-adicionar select { flex: 1; min-width: 0; padding: .45rem; font-size: inherit; color: var(--text); background: white; border: 1px solid #999; border-radius: 6px; }
+    button.btn-fiscal-remove { background: transparent !important; color: #dc2626 !important; border: none; box-shadow: none; padding: .35rem; width: 32px; min-width: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; font-weight: bold; }
     .fiscal-acoes { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
     @media (prefers-reduced-motion: reduce) { .segmented-control::before { transition: none; } }
     body:not(.onboarding-active) { padding-top: calc(2.5rem + env(safe-area-inset-top)); padding-bottom: 2.5rem; }
@@ -1350,6 +1356,14 @@
                   <p id="resumoIbscbs"></p>
                   <p id="pendenciasNotaReferencia" role="status"></p>
                   <dl id="parametrosFiscaisConta" class="fiscal-parametros"></dl>
+                  <div id="containerAdicionarParametroFiscal" class="fiscal-adicionar-parametro hidden">
+                    <div class="fiscal-campo-adicionar">
+                      <select id="selectNovoParametroFiscal" class="input-select" aria-label="Selecione um parâmetro fiscal para adicionar">
+                        <option value="">+ Selecionar parâmetro para adicionar...</option>
+                      </select>
+                      <button type="button" id="btnAdicionarParametroFiscal" class="btn-action btn-secondary" style="margin-left: 8px;">Adicionar</button>
+                    </div>
+                  </div>
                   <div class="fiscal-acoes">
                     <button type="button" id="btnEditarFiscal" class="btn-action">Editar parâmetros</button>
                     <button type="button" id="btnSalvarFiscal" class="btn-action hidden">Salvar parâmetros</button>
@@ -1847,6 +1861,105 @@
       parametrosFiscaisAtuais = JSON.parse(JSON.stringify(parametros));
       renderizarParametrosFiscais(parametros);
     }
+    const catalogoNovosParametros = {
+      aliquotaIss: { nome: 'Alíquota de ISS (%)', tipo: 'number', step: '0.01', placeholder: 'Ex: 2.00', min: 0, max: 9.99, padrao: 2.00 },
+      serieDps: { nome: 'Série da DPS', tipo: 'text', placeholder: 'Ex: 1', padrao: '1' },
+      proximoNumeroDps: { nome: 'Próximo número da DPS', tipo: 'number', placeholder: 'Ex: 1', min: 1, padrao: 1 },
+      regimeEspecialTributacao: { nome: 'Regime especial de tributação', tipo: 'select', opcoes: [
+        { valor: '0', texto: '0 - Nenhum / Operação normal' },
+        { valor: '1', texto: '1 - Microempresa municipal' },
+        { valor: '2', texto: '2 - Estimativa' },
+        { valor: '3', texto: '3 - Sociedade de profissionais' },
+        { valor: '4', texto: '4 - Cooperativa' },
+        { valor: '5', texto: '5 - Microempresário individual' },
+        { valor: '6', texto: '6 - Microempresa e EPP' }
+      ], padrao: '0' },
+      cstPisCofins: { nome: 'CST de PIS/COFINS', tipo: 'select', opcoes: [
+        { valor: '00', texto: '00 - Tributável alíquota básica' },
+        { valor: '01', texto: '01 - Operação tributável alíquota básica' },
+        { valor: '02', texto: '02 - Operação tributável alíquota diferenciada' },
+        { valor: '04', texto: '04 - Tributação monofásica' },
+        { valor: '06', texto: '06 - Alíquota zero' },
+        { valor: '07', texto: '07 - Isenta' },
+        { valor: '08', texto: '08 - Sem incidência' },
+        { valor: '09', texto: '09 - Com suspensão' }
+      ], padrao: '08' },
+      regimeApuracaoSn: { nome: 'Regime de apuração do Simples', tipo: 'select', opcoes: [
+        { valor: 'regime_1', texto: 'Regime 1 - Competência' },
+        { valor: 'regime_2', texto: 'Regime 2 - Caixa' }
+      ], padrao: 'regime_1' },
+      vigenciaFim: { nome: 'Vigência final', tipo: 'date', padrao: '' },
+      percentualTotTribSN: { nome: 'Tributos do Simples (%)', tipo: 'number', step: '0.01', min: 0, max: 100, placeholder: 'Ex: 6.00', padrao: 6.00 },
+      'pisCofinsCalculo.aliquotaPis': { nome: 'Alíquota de PIS (%)', tipo: 'number', step: '0.01', min: 0, max: 99.99, placeholder: 'Ex: 0.65', padrao: 0.65 },
+      'pisCofinsCalculo.aliquotaCofins': { nome: 'Alíquota de COFINS (%)', tipo: 'number', step: '0.01', min: 0, max: 99.99, placeholder: 'Ex: 3.00', padrao: 3.00 }
+    };
+    function atualizarOpcoesNovoParametro() {
+      const select = document.getElementById('selectNovoParametroFiscal');
+      if (!select) return;
+      select.replaceChildren();
+      const optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.textContent = '+ Selecionar parâmetro para adicionar...';
+      select.append(optDefault);
+      for (const [chave, config] of Object.entries(catalogoNovosParametros)) {
+        if (!camposFiscaisEdicao.has(chave)) {
+          const opt = document.createElement('option');
+          opt.value = chave;
+          opt.textContent = config.nome;
+          select.append(opt);
+        }
+      }
+    }
+    function adicionarParametroFiscalDinamico(chave, valorInicial) {
+      const config = catalogoNovosParametros[chave];
+      if (!config || camposFiscaisEdicao.has(chave)) return;
+      const lista = document.getElementById('parametrosFiscaisConta');
+      const termo = document.createElement('dt'), detalhe = document.createElement('dd');
+      termo.textContent = config.nome;
+      const grupo = document.createElement('div');
+      grupo.className = 'fiscal-campo';
+      let inputEl;
+      if (config.tipo === 'select') {
+        inputEl = document.createElement('select');
+        inputEl.setAttribute('aria-label', config.nome);
+        for (const op of config.opcoes) {
+          const opt = document.createElement('option');
+          opt.value = op.valor;
+          opt.textContent = op.texto;
+          if (op.valor === String(valorInicial ?? config.padrao)) opt.selected = true;
+          inputEl.append(opt);
+        }
+        inputEl.value = String(valorInicial ?? config.padrao);
+      } else {
+        inputEl = document.createElement('input');
+        inputEl.type = config.tipo;
+        if (config.step) inputEl.step = config.step;
+        if (config.min !== undefined) inputEl.min = String(config.min);
+        if (config.max !== undefined) inputEl.max = String(config.max);
+        if (config.placeholder) inputEl.placeholder = config.placeholder;
+        inputEl.setAttribute('aria-label', config.nome);
+        inputEl.value = valorInicial !== undefined ? String(valorInicial) : (config.padrao !== '' ? String(config.padrao) : '');
+      }
+      inputEl.required = true;
+      const remover = document.createElement('button');
+      remover.type = 'button';
+      remover.className = 'btn-fiscal-remove';
+      remover.setAttribute('aria-label', 'Remover ' + config.nome);
+      remover.textContent = '✕';
+      remover.addEventListener('click', () => {
+        if (salvandoFiscal) return;
+        camposFiscaisEdicao.delete(chave);
+        termo.remove();
+        detalhe.remove();
+        atualizarOpcoesNovoParametro();
+      });
+      camposFiscaisEdicao.set(chave, { input: inputEl, original: valorInicial ?? config.padrao });
+      grupo.append(inputEl, remover);
+      detalhe.append(grupo);
+      lista.append(termo, detalhe);
+      atualizarOpcoesNovoParametro();
+      inputEl.focus();
+    }
     function renderizarParametrosFiscais(parametros) {
       const lista = document.getElementById('parametrosFiscaisConta');
       lista.replaceChildren();
@@ -1886,16 +1999,32 @@
         }
       }
       adicionar(parametros);
+      atualizarOpcoesNovoParametro();
     }
     function atualizarAcoesFiscais() {
       document.getElementById('btnEditarFiscal').classList.toggle('hidden', edicaoFiscal);
       document.getElementById('btnSalvarFiscal').classList.toggle('hidden', !edicaoFiscal);
       document.getElementById('btnCancelarFiscal').classList.toggle('hidden', !edicaoFiscal);
+      const containerAdd = document.getElementById('containerAdicionarParametroFiscal');
+      if (containerAdd) containerAdd.classList.toggle('hidden', !edicaoFiscal);
       document.getElementById('btnSalvarFiscal').disabled = salvandoFiscal;
       document.getElementById('btnCancelarFiscal').disabled = salvandoFiscal;
       document.getElementById('btnBuscarReferencia').disabled = edicaoFiscal;
+      const btnAdd = document.getElementById('btnAdicionarParametroFiscal');
+      if (btnAdd) btnAdd.disabled = salvandoFiscal;
+      const selAdd = document.getElementById('selectNovoParametroFiscal');
+      if (selAdd) selAdd.disabled = salvandoFiscal;
       for (const { input } of camposFiscaisEdicao.values()) input.disabled = salvandoFiscal;
     }
+    document.getElementById('btnAdicionarParametroFiscal').addEventListener('click', () => {
+      if (salvandoFiscal) return;
+      const sel = document.getElementById('selectNovoParametroFiscal');
+      const chave = sel ? sel.value : '';
+      if (chave) {
+        adicionarParametroFiscalDinamico(chave);
+        sel.value = '';
+      }
+    });
     document.getElementById('btnEditarFiscal').addEventListener('click', () => {
       if (!referenciaFiscalAtual || referenciaFiscalAtual.versao !== 2 || !referenciaFiscalAtual.hash) {
         document.getElementById('statusEdicaoFiscal').textContent = 'Busque uma nota de referência antes de editar os parâmetros.'; return;
@@ -1903,7 +2032,7 @@
       edicaoFiscal = true; hashEdicaoFiscal = referenciaFiscalAtual.hash; camposFiscaisEdicao.clear();
       const rascunho = JSON.parse(JSON.stringify(parametrosFiscaisAtuais));
       if (!rascunho.vigenciaInicio) rascunho.vigenciaInicio = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-      document.getElementById('statusEdicaoFiscal').textContent = 'Use o ícone para editar cada campo. As alterações serão validadas ao salvar.';
+      document.getElementById('statusEdicaoFiscal').textContent = 'Edite os campos ou adicione novos parâmetros fiscais. As alterações serão validadas ao salvar.';
       renderizarParametrosFiscais(rascunho); atualizarAcoesFiscais();
     });
     document.getElementById('btnCancelarFiscal').addEventListener('click', () => {
@@ -1915,24 +2044,35 @@
       if (!edicaoFiscal || salvandoFiscal) return;
       const mensagem = document.getElementById('statusEdicaoFiscal');
       const parametros = {};
+      let serieDpsValor, proximoNumeroDpsValor, aliquotaIssValor;
       for (const [caminho, { input, original }] of camposFiscaisEdicao) {
         if (!input.value.trim() || !input.checkValidity()) { mensagem.textContent = 'Confira os campos preenchidos antes de salvar.'; input.focus(); return; }
-        const valor = typeof original === 'number' ? Number(input.value) : input.value.trim();
+        const valor = (typeof original === 'number' || input.type === 'number') ? Number(input.value) : input.value.trim();
         if (typeof valor === 'number' && !Number.isFinite(valor)) { mensagem.textContent = 'Informe um número válido.'; return; }
+        if (caminho === 'serieDps') { serieDpsValor = String(valor); continue; }
+        if (caminho === 'proximoNumeroDps') { proximoNumeroDpsValor = Number(valor); continue; }
+        if (caminho === 'aliquotaIss') { aliquotaIssValor = Number(valor); }
         const partes = caminho.split('.'); let destino = parametros;
         for (const parte of partes.slice(0, -1)) destino = destino[parte] || (destino[parte] = {});
         destino[partes[partes.length - 1]] = valor;
       }
+      if (parametros.pisCofinsCalculo && !parametros.pisCofinsCalculo.base) {
+        parametros.pisCofinsCalculo.base = 'valor_servico';
+      }
       salvandoFiscal = true; atualizarAcoesFiscais(); mensagem.textContent = 'Validando e salvando parâmetros…';
       try {
         const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+        const payload = { medicoId, referenciaHash: hashEdicaoFiscal, usarReferencia: false, parametrosEmissao: parametros };
+        if (serieDpsValor !== undefined) payload.serieDps = serieDpsValor;
+        if (proximoNumeroDpsValor !== undefined) payload.proximoNumeroDps = proximoNumeroDpsValor;
+        if (aliquotaIssValor !== undefined) payload.aliquotaIss = aliquotaIssValor;
         const res = await fetch('/api/onboarding/confirmar-fiscal', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ medicoId, referenciaHash: hashEdicaoFiscal, usarReferencia: false, parametrosEmissao: parametros }) });
+          body: JSON.stringify(payload) });
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não foi possível salvar. Confira os parâmetros e tente novamente.');
         edicaoFiscal = false; camposFiscaisEdicao.clear(); exibirParametrosConta(parametros);
         await atualizarVisualizacaoConta();
-        mensagem.textContent = 'Parâmetros salvos.';
+        mensagem.textContent = 'Parâmetros salvos com sucesso.';
       } catch (erro) { mensagem.textContent = erro.message; }
       finally { salvandoFiscal = false; atualizarAcoesFiscais(); }
     });

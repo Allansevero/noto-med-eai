@@ -255,7 +255,7 @@ test('falha ao renovar QR suspende renovação mas continua verificando a conex�
   assert.equal(vm.runInContext('pollingConexaoId', t.contexto), null);
 });
 
- test('refresh com armazenamento inválido ou sem token mantém login', () => {
+test('refresh com armazenamento inválido ou sem token mantém login', () => {
   for (const salvo of ['{invalido', JSON.stringify({ usuario: { medicoId: 'med' } })]) {
     const t = tela(salvo);
     assert.equal(t.node('cardAuth').classList.contains('hidden'), false);
@@ -263,6 +263,7 @@ test('falha ao renovar QR suspende renovação mas continua verificando a conex�
     assert.equal(t.pedidos.length, 0);
   }
 });
+
 test('sessão rejeitada e falha de rede não abrem certificado', async () => {
   for (const codigo of [401, 403, 500]) {
     const t = tela();
@@ -283,6 +284,7 @@ test('refresh com sessão válida restaura etapa consultada no servidor', async 
   assert.equal(t.node('cardOnboarding').classList.contains('hidden'), false);
   assert.equal(t.node('step3View').classList.contains('hidden'), false);
 });
+
 test('queda de rede durante restauração não simula certificado pendente', async () => {
   const t = tela();
   t.contexto.fetch = async () => { throw new Error('offline'); };
@@ -291,3 +293,31 @@ test('queda de rede durante restauração não simula certificado pendente', asy
   assert.equal(t.node('cardOnboarding').classList.contains('hidden'), true);
   assert.match(t.node('alertBox').textContent, /Não foi possível carregar/);
 });
+
+test('adicionar novo parâmetro fiscal inclui campo dinâmico e persiste na confirmação', async () => {
+  const t = tela();
+  vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }; referenciaFiscalAtual = { hash: "ref-dinamica", versao: 2 }; exibirParametrosConta({ambiente:"producao",vigenciaInicio:"2026-10-06"})', t.contexto);
+  t.node('btnEditarFiscal').handlers.click();
+  assert.equal(t.node('containerAdicionarParametroFiscal').classList.contains('hidden'), false);
+
+  // Adicionar cstPisCofins
+  t.node('selectNovoParametroFiscal').value = 'cstPisCofins';
+  t.node('btnAdicionarParametroFiscal').handlers.click();
+  assert.equal(vm.runInContext('camposFiscaisEdicao.has("cstPisCofins")', t.contexto), true);
+  vm.runInContext('camposFiscaisEdicao.get("cstPisCofins").input.value = "08"', t.contexto);
+
+  // Adicionar serieDps
+  t.node('selectNovoParametroFiscal').value = 'serieDps';
+  t.node('btnAdicionarParametroFiscal').handlers.click();
+  assert.equal(vm.runInContext('camposFiscaisEdicao.has("serieDps")', t.contexto), true);
+  vm.runInContext('camposFiscaisEdicao.get("serieDps").input.value = "1"', t.contexto);
+
+  // Salvar
+  await t.node('btnSalvarFiscal').handlers.click();
+  const pedido = t.pedidos.find(p => p.url === '/api/onboarding/confirmar-fiscal' && p.body.referenciaHash === 'ref-dinamica');
+  assert.ok(pedido);
+  assert.equal(pedido.body.parametrosEmissao.cstPisCofins, '08');
+  assert.equal(pedido.body.serieDps, '1');
+  assert.equal(pedido.body.usarReferencia, false);
+});
+
