@@ -48,7 +48,8 @@ export async function processarHistoricoWebhook(
     const conversa = await deps.repositorio.buscarOuCriarConversa(
       instancia.id,
       instancia.medicoId,
-      telefone
+      telefone,
+      historico.nomeContato
     );
     const resultado = await sincronizarHistoricoConversa(
       conversa,

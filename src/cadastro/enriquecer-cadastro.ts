@@ -7,7 +7,7 @@ export interface CandidatoCadastro { id:string; nome:string; crm?:string; uf?:st
 export interface PendenciaCadastro { id:string; tipo:'responsavel'|'nome'|'crm'; candidatos:CandidatoCadastro[]; perguntaConfirmada:string|null; escolhasApresentadas?:Record<string,string> }
 export interface DadosCadastro { empresa?:EmpresaConsultada; nomeConfirmado?:string; pendencia?:PendenciaCadastro; cadastroIndisponivel?:boolean; crmOrigem?:string; pesquisaProfissional?:{nome:string;estado:'consultado'|'indisponivel'|'nao_encontrado';registros:DadosMedicoOnline[];codigo?:string;diagnostico?:DiagnosticoPesquisaRegistro[]}; aprovacaoPainel?:{nome:string;crm:string;rqe:string|null;confirmadoEm:string} }
 export interface PerfilCadastro { nome:string; crm:string|null; nomeConfirmado:boolean }
-export interface ResultadoEnriquecimento { estado:'aguardando_confirmacao'|'concluido'|'retentar'; dados:DadosCadastro; nome?:string; crm?:string; codigo?:string }
+export interface ResultadoEnriquecimento { estado:'aguardando_confirmacao'|'concluido'|'retentar'; dados:DadosCadastro; nome?:string; crm?:string; rqe?:string|null; codigo?:string }
 export function criarPendencia(tipo:PendenciaCadastro['tipo'],candidatos:CandidatoCadastro[]=[]):PendenciaCadastro{return {id:randomUUID(),tipo,candidatos,perguntaConfirmada:null};}
 const normal=(s:string)=>s.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().trim();
 export async function enriquecerCadastro(entrada:{documento:string|null;perfil:PerfilCadastro;dados:DadosCadastro},empresa:ConsultaEmpresa,registro:ConsultaRegistro,consultarCpf?:(cpf:string)=>Promise<{nome:string}|null>):Promise<ResultadoEnriquecimento>{
@@ -26,9 +26,12 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
    if(!pessoa || !nomeProfissionalValido(pessoa.nome))return {estado:'retentar',dados,codigo:'CPF_CONSULTA_INDISPONIVEL'};
    candidatos=[{id:randomUUID(),nome:pessoa.nome,origem:'Hub do Desenvolvedor / CPF do titular'}];
   }
-  if(candidatos.length===1 && dados.pesquisaProfissional?.nome!==candidatos[0].nome){
+  if(candidatos.length===1 && (dados.pesquisaProfissional?.nome!==candidatos[0].nome || dados.pesquisaProfissional?.estado==='indisponivel')){
    const pesquisado=await registro.buscar(candidatos[0].nome);
    dados.pesquisaProfissional={nome:candidatos[0].nome,estado:pesquisado.estado,registros:pesquisado.estado==='consultado'?pesquisado.dados:[],...(pesquisado.estado!=='consultado'?{codigo:pesquisado.codigo}:{}),...(pesquisado.diagnostico?{diagnostico:pesquisado.diagnostico}:{})};
+   if(pesquisado.estado==='indisponivel' && pesquisado.codigo!=='CRM_FONTE_NAO_CONFIGURADA'){
+    return {estado:'retentar',dados,codigo:pesquisado.codigo};
+   }
   }
   if(!candidatos.length && nomeProfissionalValido(entrada.perfil.nome))candidatos=[{id:randomUUID(),nome:entrada.perfil.nome,origem:'Cadastro existente, confirmação pendente'}];
   const anterior=entrada.dados.pendencia;

@@ -42,9 +42,9 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     };
   }
 
-  async buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string): Promise<ConversaRegistro> {
+  async buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string, contatoNome?: string | null): Promise<ConversaRegistro> {
     const sqlBusca = `
-      select id, instancia_id, medico_id, contato_telefone, paciente_id, aguardando_cpf_desde
+      select id, instancia_id, medico_id, contato_telefone, contato_nome, paciente_id, aguardando_cpf_desde
       from whatsapp_conversas
       where instancia_id = $1 and contato_telefone = $2
       limit 1
@@ -55,27 +55,33 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         await this.pool.query(`update whatsapp_conversas set medico_id = $2 where id = $1`, [rowsBusca[0].id, medicoId]);
         rowsBusca[0].medico_id = medicoId;
       }
+      if (!rowsBusca[0].contato_nome && contatoNome) {
+        await this.pool.query(`update whatsapp_conversas set contato_nome = $2 where id = $1`, [rowsBusca[0].id, contatoNome]);
+        rowsBusca[0].contato_nome = contatoNome;
+      }
       return {
         id: rowsBusca[0].id,
         instanciaId: rowsBusca[0].instancia_id,
         medicoId: rowsBusca[0].medico_id,
         contatoTelefone: rowsBusca[0].contato_telefone,
+        contatoNome: rowsBusca[0].contato_nome,
         pacienteId: rowsBusca[0].paciente_id,
         aguardandoCpfDesde: rowsBusca[0].aguardando_cpf_desde ? new Date(rowsBusca[0].aguardando_cpf_desde) : null
       };
     }
 
     const sqlInsere = `
-      insert into whatsapp_conversas (instancia_id, medico_id, contato_telefone, ultima_mensagem_em)
-      values ($1, $2, $3, now())
-      returning id, instancia_id, medico_id, contato_telefone, paciente_id, aguardando_cpf_desde
+      insert into whatsapp_conversas (instancia_id, medico_id, contato_telefone, contato_nome, ultima_mensagem_em)
+      values ($1, $2, $3, $4, now())
+      returning id, instancia_id, medico_id, contato_telefone, contato_nome, paciente_id, aguardando_cpf_desde
     `;
-    const { rows: rowsInsere } = await this.pool.query(sqlInsere, [instanciaId, medicoId, contatoTelefone]);
+    const { rows: rowsInsere } = await this.pool.query(sqlInsere, [instanciaId, medicoId, contatoTelefone, contatoNome ?? null]);
     return {
       id: rowsInsere[0].id,
       instanciaId: rowsInsere[0].instancia_id,
       medicoId: rowsInsere[0].medico_id,
       contatoTelefone: rowsInsere[0].contato_telefone,
+      contatoNome: rowsInsere[0].contato_nome,
       pacienteId: rowsInsere[0].paciente_id,
       aguardandoCpfDesde: null
     };

@@ -16,6 +16,7 @@ export class PostgresCadastro {
    tentativas=0,diagnostico=null,dados=dados-'pesquisaProfissional',atualizado_em=now()
    where estado='aguardando_confirmacao' and (
     dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA'
+    or dados->'pesquisaProfissional'->>'estado'='indisponivel'
     or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_'
     or left(dados->'pesquisaProfissional'->>'codigo',12)='INFOSIMPLES_'
     or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(dados #> '{pesquisaProfissional,registros}')='array'
@@ -121,8 +122,8 @@ export class PostgresCadastro {
    }
    if(resultado.nome && !nomeProfissionalValido(resultado.nome))throw Error('NOME_INVALIDO');
    if(resultado.crm && !normalizarCrm(resultado.crm))throw Error('CRM_INVALIDO');
-   if(resultado.nome || (resultado.crm&&!normalizarCrm(m.crm))){
-    await c.query('update medicos set nome_completo=coalesce($2,nome_completo),crm=coalesce($3,crm),atualizado_em=now() where id=$1',[t.medico_id,resultado.nome??null,normalizarCrm(m.crm)?null:resultado.crm??null]);
+   if(resultado.nome || (resultado.crm&&!normalizarCrm(m.crm)) || (resultado.rqe&&!m.rqe)){
+    await c.query('update medicos set nome_completo=coalesce($2,nome_completo),crm=coalesce($3,crm),rqe=coalesce($4,rqe),atualizado_em=now() where id=$1',[t.medico_id,resultado.nome??null,normalizarCrm(m.crm)?null:resultado.crm??null,m.rqe?null:resultado.rqe??null]);
     // O interlocutor pode ser secretário: nunca mudar automaticamente usuarios.nome.
    }
    let dados=resultado.dados;let estado:string=resultado.estado;let espera=0;

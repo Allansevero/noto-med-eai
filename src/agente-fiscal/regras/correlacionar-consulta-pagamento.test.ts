@@ -162,4 +162,47 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].valorFormatado, '700,00');
     assert.equal(candidatos[0].dataConsulta, '13/10/2026');
   });
+
+  test('nunca extrai cumprimentos como Tudo Bem ou podemos confirmar e limpa tags de prontuário', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-1',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá, Tudo bem?\nEstamos confirmando sua consulta para 16/09 às 14h.',
+        criadoEm: '2026-09-10T10:00:00.000Z'
+      },
+      {
+        id: 'msg-2',
+        direcao: 'recebida',
+        tipo: 'texto',
+        conteudo: 'Olá! Eu tinha anotado que a consulta seria na quinta dia 27. Mas podemos confirmar na quarta 16/09.',
+        criadoEm: '2026-09-10T11:00:00.000Z'
+      },
+      {
+        id: 'msg-3',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Bom dia Elisa, tudo bem? Segue chave pix.',
+        criadoEm: '2026-09-15T09:00:00.000Z'
+      },
+      {
+        id: 'msg-4',
+        direcao: 'recebida',
+        tipo: 'texto',
+        conteudo: 'Comprovante Pix de R$ 400,00',
+        criadoEm: '2026-09-16T15:00:00.000Z'
+      }
+    ];
+
+    // Sem nome cadastrado: deve extrair "Elisa" e nunca "Tudo bem" ou "podemos confirmar"
+    const c1 = correlacionarConsultaPagamento(mensagens, '555192927022');
+    assert.equal(c1.length, 1);
+    assert.equal(c1[0].pacienteNome, 'Elisa');
+
+    // Com nome de contato com tag clínica "PCT Roberta": deve limpar para "Elisa Ferreira"
+    const c2 = correlacionarConsultaPagamento(mensagens, '555192927022', 'Elisa Ferreira PCT Roberta');
+    assert.equal(c2.length, 1);
+    assert.equal(c2[0].pacienteNome, 'Elisa Ferreira');
+  });
 });

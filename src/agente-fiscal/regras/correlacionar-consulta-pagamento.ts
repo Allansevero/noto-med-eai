@@ -202,7 +202,7 @@ function extrairContextoConsultaAnterior(
   nomeCadastro: string | null | undefined,
   agora: Date
 ): ContextoConsultaDetectado {
-  let nomeEncontrado = nomeCadastro ? nomeCadastro.trim() : '';
+  let nomeEncontrado = limparNomeContato(nomeCadastro);
   let dataConsultaFormatada = '';
   let dataConsultaIso = '';
   let mensagemId: string | undefined;
@@ -213,11 +213,14 @@ function extrairContextoConsultaAnterior(
     const msg = mensagensAnteriores[i];
     const texto = msg.conteudo || '';
 
-    // Extrair nome da saudação caso ainda não tenhamos nome completo
-    if (!nomeEncontrado) {
-      const matchSaudacao = texto.match(/ol[áa],?\s*\*?([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)*)\*?/i);
-      if (matchSaudacao && matchSaudacao[1].length >= 3) {
-        nomeEncontrado = matchSaudacao[1].trim();
+    // Extrair nome quando a mensagem enviada pela clínica se dirige ao paciente pelo nome
+    if (!nomeEncontrado && msg.direcao === 'enviada') {
+      const matchSaudacaoNome = texto.match(/(?:bom\s+dia|boa\s+tarde|boa\s+noite|ol[áa]|oi),?\s*\*?([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\*?(?:,|\s+tudo\s+bem|\s+como\s+vai|\.|\!|\?|\s+voc[êe]|\s+pode|\s+obrigad|\s+estamos|\n|$)/i);
+      if (matchSaudacaoNome && matchSaudacaoNome[1].length >= 3) {
+        const cand = matchSaudacaoNome[1].trim();
+        if (!ehTermoInvalidoNome(cand)) {
+          nomeEncontrado = cand;
+        }
       }
     }
 
@@ -281,4 +284,46 @@ function limparTelefone(tel: string): string {
     return limpo.slice(2);
   }
   return limpo;
+}
+
+function limparNomeContato(nome?: string | null): string {
+  if (!nome || !nome.trim()) return '';
+  const limpo = nome
+    .trim()
+    .replace(/\s*(?:pct|paciente|dra?\.?|dr\.?|doutor|doutora|consulta|psiquiatria).*$/i, '')
+    .replace(/\s*[\(\[].*?[\)\]]/g, '')
+    .replace(/[^\p{L}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (limpo.length < 3 || ehTermoInvalidoNome(limpo)) return '';
+  return limpo;
+}
+
+const TERMOS_INVALIDOS_NOME = new Set([
+  'tudo bem', 'tudo bom', 'tudo certo', 'como vai', 'como esta', 'como voce esta',
+  'podemos confirmar', 'posso confirmar', 'precisa confirmar', 'favor confirmar', 'para confirmar',
+  'confirmar', 'confirmando', 'confirmada', 'confirmado', 'confirmacao',
+  'bom dia', 'boa tarde', 'boa noite', 'ola', 'oi',
+  'dr', 'dra', 'doutor', 'doutora', 'medico', 'medica', 'paciente', 'secretaria', 'assistente',
+  'agendado', 'agendamento', 'consulta', 'horario', 'atendimento', 'sessao', 'procedimento',
+  'obrigado', 'obrigada', 'muito obrigado', 'muito obrigada', 'grata', 'grato',
+  'claro', 'perfeito', 'valeu', 'beleza', 'show', 'sim', 'nao', 'ok',
+  'me chamo', 'sou assistente', 'eu tinha anotado', 'segue', 'segue sua nota', 'segue o comprovante',
+  'estamos confirmando', 'voce', 'voces', 'temos', 'vamos', 'posso', 'pode', 'podemos',
+  'quero', 'gostaria', 'aguardo', 'envio', 'comprovante', 'pagamento', 'reajuste'
+]);
+
+function ehTermoInvalidoNome(termo: string): boolean {
+  const norm = termo
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .trim()
+    .toLowerCase();
+  if (TERMOS_INVALIDOS_NOME.has(norm)) return true;
+  const partes = norm.split(/\s+/);
+  if (partes.length === 1 && TERMOS_INVALIDOS_NOME.has(partes[0])) return true;
+  if (partes.some(p => ['tudo', 'bem', 'bom', 'podemos', 'confirmar', 'confirmando', 'dia', 'tarde', 'noite', 'ola', 'oi'].includes(p))) {
+    return true;
+  }
+  return false;
 }

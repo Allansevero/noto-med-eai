@@ -18,6 +18,7 @@ export interface ConversaRegistro {
   instanciaId: string;
   medicoId: string | null;
   contatoTelefone: string;
+  contatoNome?: string | null;
   pacienteId: string | null;
   aguardandoCpfDesde: Date | null;
 }
@@ -62,7 +63,7 @@ export interface SolicitacaoAguardandoDataRegistro {
 
 export interface AtendimentoRepositorio {
   buscarInstanciaPorNome(nomeInstancia: string): Promise<InstanciaRegistro | null>;
-  buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string): Promise<ConversaRegistro>;
+  buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string, contatoNome?: string | null): Promise<ConversaRegistro>;
   buscarRespostasRapidasMedico(medicoId: string): Promise<RespostaRapidaModelo[]>;
   buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null>;
   buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null>;

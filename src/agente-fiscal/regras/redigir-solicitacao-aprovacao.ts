@@ -25,9 +25,10 @@ export function redigirSolicitacaoAprovacao(params: ParametrosRedacaoAprovacao):
 
   const nomePacienteFormatado = capitalizarNome(candidato.pacienteNome);
   const telefoneFormatado = formatarTelefoneVisual(candidato.pacienteTelefone);
-  const identificacaoPaciente = telefoneFormatado
-    ? `${nomePacienteFormatado} (${telefoneFormatado})`
-    : nomePacienteFormatado;
+  const ehNomeGenerico = !nomePacienteFormatado || nomePacienteFormatado.toLowerCase() === 'paciente';
+  const identificacaoPaciente = ehNomeGenerico
+    ? (telefoneFormatado ? `(${telefoneFormatado})` : 'identificada')
+    : (telefoneFormatado ? `${nomePacienteFormatado} (${telefoneFormatado})` : nomePacienteFormatado);
 
   const dataTexto = candidato.dataConsulta ? `da consulta de ${candidato.dataConsulta}` : 'da última consulta';
   const perguntaFinal = ehContinuacao ? 'Posso emitir essa também?' : 'Posso emitir a nota fiscal dela?';
@@ -42,9 +43,10 @@ function extrairPrimeiroNome(nomeCompleto?: string | null): string {
     .trim()
     .replace(/^(?:dr[a-z]?\.?|m[ée]dic[oa]\.?)\s+/i, '')
     .trim();
+  if (/^\d+$/.test(limpo) || /^m[ée]dic/i.test(limpo)) return '';
   const partes = limpo.split(/\s+/);
   const primeiro = partes[0] || '';
-  if (!primeiro) return '';
+  if (!primeiro || primeiro.length < 2 || /^\d+$/.test(primeiro)) return '';
   return primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase();
 }
 
