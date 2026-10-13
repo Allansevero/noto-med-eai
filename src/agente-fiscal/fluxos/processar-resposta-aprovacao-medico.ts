@@ -17,7 +17,7 @@ export interface ProcessarRespostaAprovacaoDeps {
 export type ResultadoProcessarRespostaAprovacao =
   | {
       processado: true;
-      acao: 'emissao_enfileirada';
+      acao: 'emissao_enfileirada' | 'emissao_aguardando_cpf';
       solicitacaoId: string;
       pacienteNome: string;
       mensagemResposta: string;
@@ -47,8 +47,29 @@ export async function processarRespostaAprovacaoMedico(
 
   // 1. Resposta afirmativa (sim, pode emitir, emite, por favor, claro, confirmo, ok)
   if (ehRespostaAfirmativa(texto)) {
-    const { solicitacaoId } = await deps.repositorio.enfileirarEmissaoAprovada(medicoId, candidato);
-    const mensagemResposta = `Perfeito! Já coloquei a nota da paciente ${candidato.pacienteNome} (R$ ${candidato.valorFormatado}) na fila de emissão. Assim que for autorizada eu te aviso.`;
+    const resEnfileirar = await deps.repositorio.enfileirarEmissaoAprovada(medicoId, candidato);
+    let mensagemResposta: string;
+
+    if (resEnfileirar.aguardandoCpf) {
+      mensagemResposta = `Perfeito! Como ainda não temos o CPF de ${candidato.pacienteNome} cadastrado, deixei a solicitação criada e enviei uma mensagem solicitando o CPF no WhatsApp. Assim que o paciente responder, a nota será emitida automaticamente e eu te aviso!`;
+
+      // Envia solicitação humanizada de CPF diretamente ao WhatsApp do paciente
+      if (deps.enviarMensagem && deps.instanciaNome && resEnfileirar.pacienteTelefone) {
+        const primeiroNome = candidato.pacienteNome.trim().split(/\s+/)[0] || '';
+        const saudacao = primeiroNome && primeiroNome !== 'Paciente' ? `Olá, ${primeiroNome}!` : 'Olá!';
+        try {
+          await deps.enviarMensagem.enviarTexto({
+            instanciaNome: deps.instanciaNome,
+            contatoTelefone: resEnfileirar.pacienteTelefone,
+            texto: `${saudacao} Para eu emitir sua nota fiscal da consulta, você poderia me confirmar seu CPF por favor?`
+          });
+        } catch (e) {
+          console.warn('[processarRespostaAprovacaoMedico] Falha ao enviar pedido de CPF:', e);
+        }
+      }
+    } else {
+      mensagemResposta = `Perfeito! Já coloquei a nota da paciente ${candidato.pacienteNome} (R$ ${candidato.valorFormatado}) na fila de emissão. Assim que for autorizada eu te aviso.`;
+    }
 
     if (deps.enviarMensagem && deps.instanciaNome && deps.telefoneMedico) {
       await deps.enviarMensagem.enviarTexto({
@@ -60,8 +81,8 @@ export async function processarRespostaAprovacaoMedico(
 
     return {
       processado: true,
-      acao: 'emissao_enfileirada',
-      solicitacaoId,
+      acao: resEnfileirar.aguardandoCpf ? 'emissao_aguardando_cpf' : 'emissao_enfileirada',
+      solicitacaoId: resEnfileirar.solicitacaoId,
       pacienteNome: candidato.pacienteNome,
       mensagemResposta
     };

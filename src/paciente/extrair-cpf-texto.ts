@@ -11,10 +11,14 @@ export function extrairCpfTexto(texto?: string | null): string | null {
     return null;
   }
 
-  // Procura padrão mascarado (ex.: 123.456.789-00) ou sequência de 11 dígitos
+  // Procura padrão mascarado (ex.: 123.456.789-00), com espaços, traço ou sequência de 11 dígitos
   const padroes = [
     /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g,
-    /\b\d{11}\b/g
+    /\b\d{3}\s+\d{3}\s+\d{3}[-\s]\d{2}\b/g,
+    /\b\d{3}\.\d{3}\.\d{3}\s+\d{2}\b/g,
+    /\b\d{9}-\d{2}\b/g,
+    /\b\d{11}\b/g,
+    /(?:cpf|doc|documento|chave(?:\s+pix)?)\s*:?\s*([0-9.\s\-\/]{11,18})/gi
   ];
 
   for (const regex of padroes) {
@@ -23,7 +27,7 @@ export function extrairCpfTexto(texto?: string | null): string | null {
 
     for (const candidato of matches) {
       const apenasDigitos = candidato.replace(/\D/g, '');
-      if (validarCpf(apenasDigitos)) {
+      if (apenasDigitos.length === 11 && validarCpf(apenasDigitos)) {
         return apenasDigitos;
       }
     }
@@ -31,3 +35,4 @@ export function extrairCpfTexto(texto?: string | null): string | null {
 
   return null;
 }
+

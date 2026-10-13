@@ -25,4 +25,10 @@ describe('extrairCpfTexto', () => {
     const cpf = extrairCpfTexto(texto);
     assert.strictEqual(cpf, '52998224725');
   });
+
+  it('deve extrair CPF com espaços e com prefixo contextual', () => {
+    assert.strictEqual(extrairCpfTexto('meu CPF: 529 982 247 25'), '52998224725');
+    assert.strictEqual(extrairCpfTexto('chave pix cpf 52998224725'), '52998224725');
+    assert.strictEqual(extrairCpfTexto('doc 529.982.247 25'), '52998224725');
+  });
 });

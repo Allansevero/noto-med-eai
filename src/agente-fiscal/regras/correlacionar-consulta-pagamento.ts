@@ -54,6 +54,12 @@ export function correlacionarConsultaPagamento(
     const dadosPagamento = extrairDadosPagamento(msgAtual, mensagensAnteriores, valorPadraoCentavos);
     if (!dadosPagamento) continue;
 
+    // Se o pagamento já foi faturado (nota fiscal enviada em seguida), descarta este candidato
+    const mensagensPosteriores = ordenadas.slice(i + 1);
+    if (foiFaturadoPosteriormente(msgAtual, mensagensPosteriores)) {
+      continue;
+    }
+
     // Buscar no histórico ANTERIOR à mensagem de pagamento a data da consulta e o nome do paciente
     const contextoConsulta = extrairContextoConsultaAnterior(
       mensagensAnteriores,
@@ -327,3 +333,82 @@ function ehTermoInvalidoNome(termo: string): boolean {
   }
   return false;
 }
+
+/**
+ * Verifica se após a mensagem de pagamento há evidência de que a nota fiscal
+ * já foi emitida e enviada ao paciente (ex: envio de documento PDF de NFS-e ou
+ * mensagem dizendo "sua nota fiscal", "segue sua nota", etc.).
+ */
+export function foiFaturadoPosteriormente(
+  msgPagamento: MensagemContextoConversa,
+  mensagensPosteriores: MensagemContextoConversa[]
+): boolean {
+  if (!mensagensPosteriores || mensagensPosteriores.length === 0) return false;
+
+  const dataPagamento = msgPagamento.criadoEm instanceof Date
+    ? msgPagamento.criadoEm.getTime()
+    : new Date(msgPagamento.criadoEm).getTime();
+
+  const LIMITE_DIAS_FATURAMENTO_MS = 45 * 24 * 60 * 60 * 1000;
+
+  for (const msg of mensagensPosteriores) {
+    const dataMsg = msg.criadoEm instanceof Date
+      ? msg.criadoEm.getTime()
+      : new Date(msg.criadoEm).getTime();
+
+    if (dataMsg - dataPagamento > LIMITE_DIAS_FATURAMENTO_MS) break;
+
+    // Interrompe a janela se houver um novo envio de comprovante/pagamento do paciente
+    if (
+      msg.direcao === 'recebida' &&
+      (msg.tipo === 'imagem' || /\b(?:comprovante|pago|pix|transferencia)\b/i.test(msg.conteudo || ''))
+    ) {
+      break;
+    }
+
+    if (msg.direcao === 'enviada') {
+      const texto = (msg.conteudo || '').trim();
+
+      // 1. Texto da clínica menciona explicitamente o envio de nota fiscal
+      if (padraoNotaFiscalTexto(texto)) {
+        return true;
+      }
+
+      // 2. Envio de documento (PDF)
+      if (msg.tipo === 'documento') {
+        const payloadDoc = (msg.payloadBruto as any)?.message?.documentMessage;
+        const nomeArquivo = (payloadDoc?.fileName || payloadDoc?.title || '').trim();
+        const legenda = (payloadDoc?.caption || '').trim();
+
+        if (padraoNotaFiscalDocumento(nomeArquivo, legenda)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function padraoNotaFiscalTexto(texto: string): boolean {
+  if (!texto) return false;
+  return /(?:(?:sua|a|as|esta)\s+nota(?:s)?(?:\s+fiscal|\s+fiscais)?|sua\s+nf|segue\s+(?:sua\s+|a\s+)?(?:nota|nf)|nota\s+fiscal|danfse|nfse)/i.test(
+    texto
+  );
+}
+
+function padraoNotaFiscalDocumento(nomeArquivo: string, legenda: string): boolean {
+  if (padraoNotaFiscalTexto(nomeArquivo) || padraoNotaFiscalTexto(legenda)) {
+    return true;
+  }
+  // Chave de acesso de 40 a 50 dígitos (padrão nacional de NFS-e / NF-e)
+  if (/\b\d{40,50}\b/.test(nomeArquivo)) {
+    return true;
+  }
+  // Se for qualquer arquivo PDF enviado pela clínica após o pagamento
+  if (/\.pdf$/i.test(nomeArquivo)) {
+    return true;
+  }
+  return false;
+}
+

@@ -7,6 +7,7 @@
 import type pg from 'pg';
 import type { CandidatoNotaFiscal, MensagemContextoConversa } from '../regras/correlacionar-consulta-pagamento.js';
 import { gerarHashCpf } from '../../paciente/hash-cpf.js';
+import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
 
 export interface ConversaComHistorico {
   conversaId: string;
@@ -30,10 +31,18 @@ export interface CandidatoMemoriaContextual {
   criadoEm?: Date;
 }
 
+export interface ResultadoEnfileirarEmissao {
+  solicitacaoId: string;
+  aguardandoCpf: boolean;
+  pacienteNome: string;
+  pacienteTelefone: string;
+}
+
 export class PostgresCandidatosNotaRepositorio {
   constructor(
     private readonly pool: pg.Pool,
-    private readonly pepper: string
+    private readonly pepper: string,
+    private readonly chaveCriptografia: string = process.env.DB_ENCRYPTION_KEY || 'noto-dev-secret'
   ) {}
 
   /**
@@ -221,7 +230,7 @@ export class PostgresCandidatosNotaRepositorio {
   async enfileirarEmissaoAprovada(
     medicoId: string,
     candidato: CandidatoMemoriaContextual
-  ): Promise<{ solicitacaoId: string }> {
+  ): Promise<ResultadoEnfileirarEmissao> {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
@@ -239,39 +248,94 @@ export class PostgresCandidatosNotaRepositorio {
 
       // 2. Localizar ou registrar paciente
       let pacienteId: string;
+      let temCpfValido = false;
       const telLimpo = candidato.pacienteTelefone.replace(/\D/g, '');
-      const sqlBuscaPac = `select id from pacientes where medico_id = $1 and telefone like '%' || $2 || '%' limit 1`;
-      const { rows: pacRows } = await client.query(sqlBuscaPac, [medicoId, telLimpo]);
+      const sqlBuscaPac = `
+        select id, nome, cpf_cnpj_hash,
+               pgp_sym_decrypt(cpf_cnpj_encriptado, $3) as cpf_limpo
+        from pacientes
+        where medico_id = $1 and telefone like '%' || $2 || '%'
+        limit 1
+      `;
+      const { rows: pacRows } = await client.query(sqlBuscaPac, [medicoId, telLimpo, this.chaveCriptografia]);
 
       if (pacRows.length > 0) {
         pacienteId = pacRows[0].id;
+        let cpfLimpo = pacRows[0].cpf_limpo;
+
+        // Se o paciente não tiver nome preenchido, atualiza com o nome do candidato
+        if (!pacRows[0].nome && candidato.pacienteNome && candidato.pacienteNome !== 'Paciente') {
+          await client.query(
+            `update pacientes set nome = $1, atualizado_em = now() where id = $2`,
+            [candidato.pacienteNome, pacienteId]
+          );
+        }
+
+        // Se não possui CPF cadastrado, busca a fundo nas mensagens da conversa
+        if (!cpfLimpo) {
+          const sqlMsgs = `
+            select m.conteudo, m.payload_bruto
+            from whatsapp_mensagens m
+            join whatsapp_conversas c on c.id = m.conversa_id
+            where c.medico_id = $1 and c.contato_telefone like '%' || $2 || '%'
+            order by m.criado_em desc
+          `;
+          const { rows: msgRows } = await client.query(sqlMsgs, [medicoId, telLimpo]);
+          for (const row of msgRows) {
+            const cpfCand =
+              extrairCpfTexto(row.conteudo) ||
+              extrairCpfTexto((row.payload_bruto as any)?.message?.conversation) ||
+              extrairCpfTexto((row.payload_bruto as any)?.message?.extendedTextMessage?.text) ||
+              extrairCpfTexto((row.payload_bruto as any)?.message?.imageMessage?.caption);
+            if (cpfCand) {
+              cpfLimpo = cpfCand;
+              const cpfHash = gerarHashCpf(cpfCand, this.pepper);
+              await client.query(
+                `update pacientes
+                 set cpf_cnpj_hash = $1,
+                     cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
+                     atualizado_em = now()
+                 where id = $4`,
+                [cpfHash, cpfCand, this.chaveCriptografia, pacienteId]
+              );
+              break;
+            }
+          }
+        }
+
+        temCpfValido = Boolean(cpfLimpo);
       } else {
         const cpfFake = gerarHashCpf(telLimpo, this.pepper);
-        const sqlInsPac = `
-          insert into pacientes (medico_id, nome, telefone, cpf_cnpj_hash, origem_cadastro)
-          values ($1, $2, $3, $4, 'agente_fiscal')
-          returning id
-        `;
-        const ins = await client.query(sqlInsPac, [medicoId, candidato.pacienteNome, telLimpo, cpfFake]);
+        const ins = await client.query(
+          `insert into pacientes (medico_id, nome, telefone, cpf_cnpj_hash, origem_cadastro)
+           values ($1, $2, $3, $4, 'agente_fiscal')
+           returning id`,
+          [medicoId, candidato.pacienteNome, telLimpo, cpfFake]
+        );
         pacienteId = ins.rows[0].id;
+        temCpfValido = false;
       }
 
       // 3. Montar descrição do serviço
       const xdescServ = `CONSULTA MEDICA REALIZADA EM ${candidato.dataConsulta} COM DR(A) ${perfil.nome_completo || 'MEDICO(A)'}`;
 
-      // 4. Inserir em solicitacoes_nota
+      // 4. Inserir em solicitacoes_nota respeitando a existência do CPF
+      const statusFinal = temCpfValido ? 'pronta' : 'pendente';
+      const filaFinal = temCpfValido ? 'pronta' : 'pendente_cadastro';
+
       const sqlSol = `
         insert into solicitacoes_nota (
           medico_id, paciente_id, valor_servico_centavos, xdesc_serv,
           ctrib_nac, cnbs, cclass_trib, cind_op, origem, status, fila,
           datas_consulta_texto, competencia_emissao, tentativas
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'agente_fiscal', 'pronta', 'pronta', $9, $10, 0)
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'agente_fiscal', $9, $10, $11, $12, 0)
         returning id
       `;
       const solValues = [
         medicoId, pacienteId, candidato.valorCentavos, xdescServ,
         perfil.ctrib_nac || '040101', perfil.cnbs || '122051900',
         perfil.cclass_trib_padrao || '000001', perfil.cind_op_padrao || '100301',
+        statusFinal, filaFinal,
         candidato.dataConsulta, candidato.dataConsultaIso
       ];
       const { rows: solRows } = await client.query(sqlSol, solValues);
@@ -284,7 +348,16 @@ export class PostgresCandidatosNotaRepositorio {
         where s.id = $1 and f.medico_id = $2 and f.padrao = true and f.ativo = true
       `, [solicitacaoId, medicoId]);
 
-      // 6. Atualizar estado na memória contextual
+      // 6. Se faltar CPF, marca a conversa como aguardando CPF
+      if (!temCpfValido) {
+        await client.query(`
+          update whatsapp_conversas
+          set aguardando_cpf_desde = now()
+          where medico_id = $1 and contato_telefone like '%' || $2 || '%'
+        `, [medicoId, telLimpo]);
+      }
+
+      // 7. Atualizar estado na memória contextual
       await client.query(`
         update emissoes_pendentes_confirmacoes
         set estado = 'confirmado', confirmado_em = now(), atualizado_em = now()
@@ -298,7 +371,12 @@ export class PostgresCandidatosNotaRepositorio {
       `, [medicoId, JSON.stringify({ status: 'aprovada', solicitacaoId, aprovadaEm: new Date().toISOString() })]);
 
       await client.query('commit');
-      return { solicitacaoId };
+      return {
+        solicitacaoId,
+        aguardandoCpf: !temCpfValido,
+        pacienteNome: candidato.pacienteNome,
+        pacienteTelefone: telLimpo
+      };
     } catch (err) {
       await client.query('rollback');
       throw err;
