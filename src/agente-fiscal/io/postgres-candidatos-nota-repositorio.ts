@@ -279,9 +279,10 @@ export class PostgresCandidatosNotaRepositorio {
   /**
    * Obtém os dados do médico (nome completo e telefone) para envio da notificação.
    */
-  async obterDadosMedico(medicoId: string): Promise<{ nomeCompleto: string; telefone: string | null } | null> {
+  async obterDadosMedico(medicoId: string): Promise<{ nomeCompleto: string; telefone: string | null; valorPadraoCentavos?: number } | null> {
     const sql = `
-      select m.nome_completo, u.telefone
+      select m.nome_completo, u.telefone,
+             (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos
       from medicos m
       join usuarios u on u.id = m.usuario_id
       where m.id = $1 limit 1
@@ -290,7 +291,8 @@ export class PostgresCandidatosNotaRepositorio {
     if (rows.length === 0) return null;
     return {
       nomeCompleto: rows[0].nome_completo,
-      telefone: rows[0].telefone
+      telefone: rows[0].telefone,
+      valorPadraoCentavos: rows[0].valor_padrao_centavos ? Number(rows[0].valor_padrao_centavos) : undefined
     };
   }
 }

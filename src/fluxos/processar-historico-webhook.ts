@@ -9,6 +9,7 @@ import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
 import { extrairTelefoneJid } from '../whatsapp/extrair-telefone-jid.js';
 import {
   extrairTextoMensagem,
+  extrairTipoMensagem,
   type DadosMensagemEvolution
 } from '../whatsapp/payload-webhook-schema.js';
 import { extrairPayloadHistorico } from '../whatsapp/payload-historico-webhook-schema.js';
@@ -56,6 +57,26 @@ export async function processarHistoricoWebhook(
       historico.nomeContato
     );
     if (resultado.pacienteVinculado) pacientesVinculados += 1;
+
+    // Persistir histórico real de mensagens na tabela whatsapp_mensagens
+    if (deps.repositorio.salvarMensagem) {
+      for (const msg of historico.mensagensCompletas) {
+        const texto = extrairTextoMensagem(msg) || '';
+        const tipo = extrairTipoMensagem(msg);
+        const timestampMs = typeof msg.messageTimestamp === 'number'
+          ? (msg.messageTimestamp > 1e11 ? msg.messageTimestamp : msg.messageTimestamp * 1000)
+          : (typeof msg.messageTimestamp === 'string' ? Number(msg.messageTimestamp) * 1000 : Date.now());
+
+        await deps.repositorio.salvarMensagem({
+          conversaId: conversa.id,
+          direcao: msg.key.fromMe ? 'enviada' : 'recebida',
+          tipoMensagem: tipo,
+          conteudo: texto,
+          payloadBruto: msg,
+          criadoEm: new Date(timestampMs)
+        });
+      }
+    }
   }
 
   return {
@@ -67,10 +88,16 @@ export async function processarHistoricoWebhook(
   };
 }
 
+interface GrupoHistorico {
+  mensagens: string[];
+  mensagensCompletas: DadosMensagemEvolution[];
+  nomeContato: string | null;
+}
+
 function agruparMensagensPorTelefone(
   mensagens: DadosMensagemEvolution[]
-): Map<string, { mensagens: string[]; nomeContato: string | null }> {
-  const agrupadas = new Map<string, { mensagens: string[]; nomeContato: string | null }>();
+): Map<string, GrupoHistorico> {
+  const agrupadas = new Map<string, GrupoHistorico>();
 
   for (const mensagem of mensagens) {
     const telefone =
@@ -78,7 +105,13 @@ function agruparMensagensPorTelefone(
       extrairTelefoneJid(mensagem.key.remoteJid);
     if (!telefone) continue;
 
-    const atual = agrupadas.get(telefone) ?? { mensagens: [], nomeContato: null };
+    const atual = agrupadas.get(telefone) ?? {
+      mensagens: [],
+      mensagensCompletas: [],
+      nomeContato: null
+    };
+
+    atual.mensagensCompletas.push(mensagem);
     const texto = extrairTextoMensagem(mensagem);
     if (texto) atual.mensagens.push(texto);
     if (!mensagem.key.fromMe && mensagem.pushName?.trim()) {

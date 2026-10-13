@@ -96,4 +96,70 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].pacienteNome, 'Mariana Albuquerque');
     assert.equal(candidatos[0].dataConsulta, '14/10/2026');
   });
+
+  test('deve correlacionar imagem de comprovante após confirmação de consulta com valor no chat', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-1',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá Bruno! Sua consulta foi agendada para 13/10/2026 às 14h. Valor: 400,00. Chave Pix: 123456',
+        criadoEm: '2026-10-13T10:00:00.000Z'
+      },
+      {
+        id: 'msg-2',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        criadoEm: '2026-10-13T11:00:00.000Z'
+      }
+    ];
+
+    const candidatos = correlacionarConsultaPagamento(
+      mensagens,
+      '555196854299',
+      'Bruno Z',
+      new Date('2026-10-13T12:00:00.000Z'),
+      70000
+    );
+
+    assert.equal(candidatos.length, 1);
+    assert.equal(candidatos[0].pacienteNome, 'Bruno Z');
+    assert.equal(candidatos[0].valorCentavos, 40000);
+    assert.equal(candidatos[0].valorFormatado, '400,00');
+    assert.equal(candidatos[0].dataConsulta, '13/10/2026');
+  });
+
+  test('deve usar o valor padrão do serviço fiscal quando a imagem é enviada e o chat não cita valor', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-1',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá Eduarda! Consulta confirmada para 13/10/2026. Segue nossa chave Pix.',
+        criadoEm: '2026-10-13T09:00:00.000Z'
+      },
+      {
+        id: 'msg-2',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        criadoEm: '2026-10-13T10:30:00.000Z'
+      }
+    ];
+
+    const candidatos = correlacionarConsultaPagamento(
+      mensagens,
+      '5551988887777',
+      'Eduarda',
+      new Date('2026-10-13T12:00:00.000Z'),
+      70000 // R$ 700,00 padrão do médico
+    );
+
+    assert.equal(candidatos.length, 1);
+    assert.equal(candidatos[0].pacienteNome, 'Eduarda');
+    assert.equal(candidatos[0].valorCentavos, 70000);
+    assert.equal(candidatos[0].valorFormatado, '700,00');
+    assert.equal(candidatos[0].dataConsulta, '13/10/2026');
+  });
 });

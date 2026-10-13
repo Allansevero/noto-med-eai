@@ -126,6 +126,7 @@ export interface AtendimentoRepositorio {
     conteudo: string;
     payloadBruto?: unknown;
     comandoDetectado?: string | null;
+    criadoEm?: Date;
   }): Promise<void>;
   buscarMensagensRecentesConversa?(conversaId: string, limite?: number): Promise<string[]>;
 }

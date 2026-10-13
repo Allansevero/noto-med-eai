@@ -20,10 +20,11 @@ export function redigirSolicitacaoAprovacao(params: ParametrosRedacaoAprovacao):
   const primeiroNomeMedico = extrairPrimeiroNome(nomeMedico);
   const saudacao = primeiroNomeMedico ? `Oi, Dr(a). ${primeiroNomeMedico}!` : 'Oi!';
 
+  const nomePacienteFormatado = capitalizarNome(candidato.pacienteNome);
   const telefoneFormatado = formatarTelefoneVisual(candidato.pacienteTelefone);
   const identificacaoPaciente = telefoneFormatado
-    ? `${candidato.pacienteNome} (${telefoneFormatado})`
-    : candidato.pacienteNome;
+    ? `${nomePacienteFormatado} (${telefoneFormatado})`
+    : nomePacienteFormatado;
 
   const dataTexto = candidato.dataConsulta ? `da consulta de ${candidato.dataConsulta}` : 'da última consulta';
 
@@ -38,7 +39,19 @@ function extrairPrimeiroNome(nomeCompleto?: string | null): string {
     .replace(/^(?:dr[a-z]?\.?|m[ée]dic[oa]\.?)\s+/i, '')
     .trim();
   const partes = limpo.split(/\s+/);
-  return partes[0];
+  const primeiro = partes[0] || '';
+  if (!primeiro) return '';
+  return primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase();
+}
+
+function capitalizarNome(nome: string): string {
+  if (!nome || !nome.trim()) return '';
+  return nome
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(p => p.length > 2 ? p.charAt(0).toUpperCase() + p.slice(1) : p)
+    .join(' ');
 }
 
 function formatarTelefoneVisual(telefone: string): string {

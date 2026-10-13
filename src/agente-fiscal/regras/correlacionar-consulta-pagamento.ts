@@ -35,7 +35,8 @@ export function correlacionarConsultaPagamento(
   mensagens: MensagemContextoConversa[],
   contatoTelefone: string,
   nomeCadastro?: string | null,
-  dataReferencia: Date = new Date()
+  dataReferencia: Date = new Date(),
+  valorPadraoCentavos?: number
 ): CandidatoNotaFiscal[] {
   if (!mensagens || mensagens.length === 0) return [];
 
@@ -49,11 +50,11 @@ export function correlacionarConsultaPagamento(
 
   for (let i = 0; i < ordenadas.length; i++) {
     const msgAtual = ordenadas[i];
-    const dadosPagamento = extrairDadosPagamento(msgAtual);
+    const mensagensAnteriores = ordenadas.slice(0, i);
+    const dadosPagamento = extrairDadosPagamento(msgAtual, mensagensAnteriores, valorPadraoCentavos);
     if (!dadosPagamento) continue;
 
     // Buscar no histórico ANTERIOR à mensagem de pagamento a data da consulta e o nome do paciente
-    const mensagensAnteriores = ordenadas.slice(0, i);
     const contextoConsulta = extrairContextoConsultaAnterior(
       mensagensAnteriores,
       msgAtual,
@@ -86,7 +87,11 @@ interface DadosPagamentoDetectados {
   trecho: string;
 }
 
-function extrairDadosPagamento(msg: MensagemContextoConversa): DadosPagamentoDetectados | null {
+function extrairDadosPagamento(
+  msg: MensagemContextoConversa,
+  mensagensAnteriores: MensagemContextoConversa[] = [],
+  valorPadraoCentavos?: number
+): DadosPagamentoDetectados | null {
   const texto = msg.conteudo || '';
 
   // 1. Link de pagamento com valor explícito (ex: InfinitePay, Mercado Pago)
@@ -104,16 +109,16 @@ function extrairDadosPagamento(msg: MensagemContextoConversa): DadosPagamentoDet
   }
 
   // 2. Comprovante ou texto com Valor: R$ 1350,00 ou R$ 550,00
-  const matchValorPix = texto.match(/(?:valor|total|pago|pix)?\s*:?\s*r\$\s*([\d\.]+),(\d{2})/i);
+  const matchValorPix = texto.match(/(?:valor|total|pago|pix)?\s*:?\s*r\$\s*([\d\.]+),?(\d{2})?/i);
   if (matchValorPix) {
     const reaisStr = matchValorPix[1].replace(/\./g, '');
     const reais = parseInt(reaisStr, 10);
-    const centavos = parseInt(matchValorPix[2], 10);
+    const centavos = matchValorPix[2] ? parseInt(matchValorPix[2], 10) : 0;
     const totalCentavos = reais * 100 + centavos;
     if (totalCentavos > 0) {
       return {
         valorCentavos: totalCentavos,
-        valorFormatado: `${matchValorPix[1]},${matchValorPix[2]}`,
+        valorFormatado: `${reaisStr},${String(centavos).padStart(2, '0')}`,
         trecho: matchValorPix[0]
       };
     }
@@ -128,6 +133,56 @@ function extrairDadosPagamento(msg: MensagemContextoConversa): DadosPagamentoDet
       valorFormatado: valorReais,
       trecho: `Comprovante bancário ${comp.tipo || 'Pix'} de R$ ${valorReais}`
     };
+  }
+
+  // 4. Imagem ou documento enviado pelo paciente em resposta a pedido de PIX ou agendamento
+  const ehEnvioComprovantePaciente =
+    msg.direcao === 'recebida' && (
+      msg.tipo === 'imagem' ||
+      msg.tipo === 'documento' ||
+      /\b(?:segue|comprovante|pago|pix|transferencia|anexo)\b/i.test(texto)
+    );
+
+  if (ehEnvioComprovantePaciente && mensagensAnteriores.length > 0) {
+    const houvePedidoPixOuConsulta = mensagensAnteriores.some(m =>
+      m.direcao === 'enviada' && /\b(?:pix|comprovante|pagamento|consulta|confirmando|hor[aá]rio)\b/i.test(m.conteudo || '')
+    );
+
+    if (houvePedidoPixOuConsulta) {
+      let valorCentavosEncontrado: number | undefined;
+      let trechoEncontrado = 'Comprovante Pix recebido';
+
+      for (let j = mensagensAnteriores.length - 1; j >= 0; j--) {
+        const t = mensagensAnteriores[j].conteudo || '';
+        const mValor = t.match(/(?:r\$\s*|valor(?:\s*da\s*consulta)?\s*(?:é|e|de)?\s*:?\s*)(\d{2,4})(?:[,\.](\d{2}))?/i) ||
+                       t.match(/\b(\d{2,4}),(\d{2})\b/) ||
+                       t.match(/\b(\d{2,4})\s*reais\b/i);
+        if (mValor) {
+          const reais = parseInt(mValor[1].replace(/\./g, ''), 10);
+          const centavos = mValor[2] ? parseInt(mValor[2], 10) : 0;
+          valorCentavosEncontrado = reais * 100 + centavos;
+          trechoEncontrado = `Comprovante Pix de R$ ${reais},${String(centavos).padStart(2, '0')}`;
+          break;
+        }
+      }
+
+      if (!valorCentavosEncontrado && valorPadraoCentavos && valorPadraoCentavos > 0) {
+        valorCentavosEncontrado = valorPadraoCentavos;
+        const reais = Math.floor(valorPadraoCentavos / 100);
+        const centavos = valorPadraoCentavos % 100;
+        trechoEncontrado = `Comprovante Pix de R$ ${reais},${String(centavos).padStart(2, '0')} (valor padrão)`;
+      }
+
+      if (valorCentavosEncontrado && valorCentavosEncontrado > 0) {
+        const reais = Math.floor(valorCentavosEncontrado / 100);
+        const centavos = valorCentavosEncontrado % 100;
+        return {
+          valorCentavos: valorCentavosEncontrado,
+          valorFormatado: `${reais},${String(centavos).padStart(2, '0')}`,
+          trecho: trechoEncontrado
+        };
+      }
+    }
   }
 
   return null;

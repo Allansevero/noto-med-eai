@@ -76,7 +76,9 @@ export async function varrerESolicitarAprovacao(
     const candidatos = correlacionarConsultaPagamento(
       conv.mensagens,
       conv.contatoTelefone,
-      conv.pacienteNomeCadastrado || conv.contatoNome
+      conv.pacienteNomeCadastrado || conv.contatoNome,
+      new Date(),
+      dadosMedico.valorPadraoCentavos
     );
 
     for (const cand of candidatos) {

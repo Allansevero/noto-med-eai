@@ -536,10 +536,34 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     conteudo: string;
     payloadBruto?: unknown;
     comandoDetectado?: string | null;
+    criadoEm?: Date;
   }): Promise<void> {
+    const keyId = (params.payloadBruto as any)?.key?.id;
+    if (keyId) {
+      const sqlComChave = `
+        insert into whatsapp_mensagens (conversa_id, direcao, tipo_mensagem, conteudo, payload_bruto, comando_detectado, criado_em)
+        select $1, $2, coalesce($3, 'texto'), $4, $5, $6, coalesce($7, now())
+        where not exists (
+          select 1 from whatsapp_mensagens
+          where conversa_id = $1 and payload_bruto->'key'->>'id' = $8
+        )
+      `;
+      await this.pool.query(sqlComChave, [
+        params.conversaId,
+        params.direcao,
+        params.tipoMensagem || 'texto',
+        params.conteudo,
+        params.payloadBruto ? JSON.stringify(params.payloadBruto) : null,
+        params.comandoDetectado || null,
+        params.criadoEm || null,
+        keyId
+      ]);
+      return;
+    }
+
     const sql = `
       insert into whatsapp_mensagens (conversa_id, direcao, tipo_mensagem, conteudo, payload_bruto, comando_detectado, criado_em)
-      values ($1, $2, coalesce($3, 'texto'), $4, $5, $6, now())
+      values ($1, $2, coalesce($3, 'texto'), $4, $5, $6, coalesce($7, now()))
     `;
     await this.pool.query(sql, [
       params.conversaId,
@@ -547,7 +571,8 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       params.tipoMensagem || 'texto',
       params.conteudo,
       params.payloadBruto ? JSON.stringify(params.payloadBruto) : null,
-      params.comandoDetectado || null
+      params.comandoDetectado || null,
+      params.criadoEm || null
     ]);
   }
 

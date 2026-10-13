@@ -20,16 +20,36 @@ export const conteudoMensagemSchema = z
       .object({
         text: z.string().optional()
       })
+      .passthrough()
+      .optional(),
+    imageMessage: z
+      .object({
+        caption: z.string().optional(),
+        url: z.string().optional(),
+        mimetype: z.string().optional()
+      })
+      .passthrough()
+      .optional(),
+    documentMessage: z
+      .object({
+        caption: z.string().optional(),
+        fileName: z.string().optional(),
+        url: z.string().optional(),
+        mimetype: z.string().optional()
+      })
+      .passthrough()
       .optional()
   })
+  .passthrough()
   .optional();
 
 export const dadosMensagemSchema = z.object({
   key: mensagemKeySchema,
   pushName: z.string().optional().nullable(),
   message: conteudoMensagemSchema,
+  messageType: z.string().optional(),
   messageTimestamp: z.union([z.number(), z.string()]).optional()
-});
+}).passthrough();
 
 export const webhookEvolutionSchema = z.object({
   event: z.string().min(1),
@@ -53,5 +73,21 @@ export function extrairTextoMensagem(dados?: DadosMensagemEvolution): string | n
     return dados.message.extendedTextMessage.text.trim();
   }
 
+  if (dados.message.imageMessage?.caption) {
+    return dados.message.imageMessage.caption.trim();
+  }
+
+  if (dados.message.documentMessage?.caption) {
+    return dados.message.documentMessage.caption.trim();
+  }
+
   return null;
 }
+
+export function extrairTipoMensagem(dados?: DadosMensagemEvolution): 'imagem' | 'documento' | 'texto' {
+  if (!dados || !dados.message) return 'texto';
+  if (dados.message.imageMessage || dados.messageType === 'imageMessage') return 'imagem';
+  if (dados.message.documentMessage || dados.messageType === 'documentMessage') return 'documento';
+  return 'texto';
+}
+
