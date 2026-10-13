@@ -310,12 +310,22 @@ export class PostgresCandidatosNotaRepositorio {
   /**
    * Obtém os dados do médico (nome completo e telefone) para envio da notificação.
    */
-  async obterDadosMedico(medicoId: string): Promise<{ nomeCompleto: string; telefone: string | null; valorPadraoCentavos?: number } | null> {
+  async obterDadosMedico(medicoId: string): Promise<{
+    nomeCompleto: string;
+    telefone: string | null;
+    valorPadraoCentavos?: number;
+    fiscalConfirmado?: boolean;
+    parametrosProntos?: boolean;
+  } | null> {
     const sql = `
       select m.nome_completo, u.telefone,
+             coalesce(pf.confirmado_pelo_medico, false) as fiscal_confirmado,
+             (msf.parametros_emissao is not null) as parametros_prontos,
              (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos
       from medicos m
       join usuarios u on u.id = m.usuario_id
+      left join medico_perfil_fiscal pf on pf.medico_id = m.id
+      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true and msf.ativo = true
       where m.id = $1 limit 1
     `;
     const { rows } = await this.pool.query(sql, [medicoId]);
@@ -323,7 +333,9 @@ export class PostgresCandidatosNotaRepositorio {
     return {
       nomeCompleto: rows[0].nome_completo,
       telefone: rows[0].telefone,
-      valorPadraoCentavos: rows[0].valor_padrao_centavos ? Number(rows[0].valor_padrao_centavos) : undefined
+      valorPadraoCentavos: rows[0].valor_padrao_centavos ? Number(rows[0].valor_padrao_centavos) : undefined,
+      fiscalConfirmado: Boolean(rows[0].fiscal_confirmado),
+      parametrosProntos: Boolean(rows[0].parametros_prontos)
     };
   }
 }

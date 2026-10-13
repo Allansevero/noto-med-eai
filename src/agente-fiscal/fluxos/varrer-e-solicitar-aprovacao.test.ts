@@ -110,5 +110,27 @@ describe('varrerESolicitarAprovacao', () => {
       assert.fail('Deveria ter status candidato_encontrado_pendente_conexao_whatsapp');
     }
   });
+
+  test('deve suspender a varredura se os parâmetros fiscais do médico não estiverem confirmados', async () => {
+    const repositorioFalso = {
+      obterDadosMedico: async () => ({
+        nomeCompleto: 'Dr. Teste',
+        telefone: '51999998888',
+        fiscalConfirmado: false,
+        parametrosProntos: false
+      }),
+      buscarConversasComHistorico: async () => []
+    } as any;
+
+    const res = await varrerESolicitarAprovacao('med-pendente', {
+      repositorio: repositorioFalso,
+      enviarMensagem: { enviarTexto: async () => ({ sucesso: true }) } as any,
+      instanciaNome: 'oficial'
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal((res as any).motivo, 'parametros_fiscais_pendentes');
+  });
 });
+
 

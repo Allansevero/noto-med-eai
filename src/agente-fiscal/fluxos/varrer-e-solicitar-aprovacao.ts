@@ -60,6 +60,11 @@ export async function varrerESolicitarAprovacao(
     return { ok: false, motivo: 'telefone_medico_ausente' };
   }
 
+  // Não solicita aprovação de notas se o médico ainda tiver pendências fiscais na conta
+  if (dadosMedico.fiscalConfirmado === false || dadosMedico.parametrosProntos === false) {
+    return { ok: false, motivo: 'parametros_fiscais_pendentes' };
+  }
+
   // 1. Buscar histórico de conversas com pacientes
   const conversas = await deps.repositorio.buscarConversasComHistorico(medicoId, deps.dataCorte);
   if (conversas.length === 0) {
