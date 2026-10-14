@@ -36,6 +36,7 @@ export interface ResultadoEnfileirarEmissao {
   aguardandoCpf: boolean;
   pacienteNome: string;
   pacienteTelefone: string;
+  pacienteId: string;
 }
 
 export class PostgresCandidatosNotaRepositorio {
@@ -375,7 +376,8 @@ export class PostgresCandidatosNotaRepositorio {
         solicitacaoId,
         aguardandoCpf: !temCpfValido,
         pacienteNome: candidato.pacienteNome,
-        pacienteTelefone: telLimpo
+        pacienteTelefone: telLimpo,
+        pacienteId
       };
     } catch (err) {
       await client.query('rollback');
@@ -394,9 +396,11 @@ export class PostgresCandidatosNotaRepositorio {
     valorPadraoCentavos?: number;
     fiscalConfirmado?: boolean;
     parametrosProntos?: boolean;
+    solicitarCpfDiretoPaciente?: boolean;
   } | null> {
     const sql = `
       select m.nome_completo, u.telefone,
+             coalesce(m.solicitar_cpf_direto_paciente, false) as solicitar_cpf_direto_paciente,
              coalesce(pf.confirmado_pelo_medico, false) as fiscal_confirmado,
              (msf.parametros_emissao is not null) as parametros_prontos,
              (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos
@@ -413,7 +417,118 @@ export class PostgresCandidatosNotaRepositorio {
       telefone: rows[0].telefone,
       valorPadraoCentavos: rows[0].valor_padrao_centavos ? Number(rows[0].valor_padrao_centavos) : undefined,
       fiscalConfirmado: Boolean(rows[0].fiscal_confirmado),
-      parametrosProntos: Boolean(rows[0].parametros_prontos)
+      parametrosProntos: Boolean(rows[0].parametros_prontos),
+      solicitarCpfDiretoPaciente: Boolean(rows[0].solicitar_cpf_direto_paciente)
     };
+  }
+
+  /**
+   * Registra na memória contextual que o Noto está aguardando o médico informar o CPF do paciente.
+   */
+  async salvarAguardandoCpfMedico(
+    medicoId: string,
+    dados: { solicitacaoId: string; pacienteId: string; pacienteNome: string; pacienteTelefone: string }
+  ): Promise<void> {
+    const estado = {
+      status: 'aguardando_cpf_medico',
+      ...dados,
+      solicitadoEm: new Date().toISOString()
+    };
+    await this.pool.query(
+      `update noto_assistente_sessoes
+       set estado = $2::jsonb, atualizado_em = now()
+       where medico_id = $1`,
+      [medicoId, JSON.stringify(estado)]
+    );
+  }
+
+  /**
+   * Recupera os dados da solicitação que está aguardando o CPF do médico.
+   */
+  async obterAguardandoCpfMedico(
+    medicoId: string
+  ): Promise<{ solicitacaoId: string; pacienteId: string; pacienteNome: string; pacienteTelefone: string } | null> {
+    const { rows } = await this.pool.query(
+      `select estado from noto_assistente_sessoes where medico_id = $1 limit 1`,
+      [medicoId]
+    );
+    if (rows.length === 0 || !rows[0].estado) return null;
+    const est = rows[0].estado;
+    if (est.status !== 'aguardando_cpf_medico' || !est.pacienteId) return null;
+    return {
+      solicitacaoId: est.solicitacaoId,
+      pacienteId: est.pacienteId,
+      pacienteNome: est.pacienteNome,
+      pacienteTelefone: est.pacienteTelefone
+    };
+  }
+
+  /**
+   * Limpa o estado de espera de CPF do médico.
+   */
+  async limparAguardandoCpfMedico(medicoId: string): Promise<void> {
+    await this.pool.query(
+      `update noto_assistente_sessoes
+       set estado = $2::jsonb, atualizado_em = now()
+       where medico_id = $1`,
+      [medicoId, JSON.stringify({ status: 'cpf_medico_cancelado', canceladoEm: new Date().toISOString() })]
+    );
+  }
+
+  /**
+   * Salva o CPF informado pelo médico para o paciente e libera a emissão da nota fiscal.
+   */
+  async salvarCpfPacienteELiberarSolicitacao(
+    medicoId: string,
+    pacienteId: string,
+    cpfLimpo: string,
+    solicitacaoId: string
+  ): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+
+      const cpfHash = gerarHashCpf(cpfLimpo, this.pepper);
+      await client.query(
+        `update pacientes
+         set cpf_cnpj_hash = $1,
+             cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
+             atualizado_em = now()
+         where id = $4`,
+        [cpfHash, cpfLimpo, this.chaveCriptografia, pacienteId]
+      );
+
+      // Desmarca espera de CPF na conversa
+      await client.query(
+        `update whatsapp_conversas
+         set aguardando_cpf_desde = null, atualizado_em = now()
+         where paciente_id = $1 and medico_id = $2`,
+        [pacienteId, medicoId]
+      );
+
+      // Libera as notas pendentes deste paciente
+      const { rowCount } = await client.query(
+        `update solicitacoes_nota
+         set status = 'pronta', fila = 'pronta', erro = null, atualizado_em = now()
+         where paciente_id = $1 and medico_id = $2 and status in ('pendente', 'falhou')`,
+        [pacienteId, medicoId]
+      );
+
+      // Atualiza memória
+      await client.query(
+        `update noto_assistente_sessoes
+         set estado = $2::jsonb, atualizado_em = now()
+         where medico_id = $1`,
+        [medicoId, JSON.stringify({ status: 'aprovada', solicitacaoId, aprovadaEm: new Date().toISOString() })]
+      );
+
+      await client.query('commit');
+      return rowCount ?? 0;
+    } catch (err) {
+      await client.query('rollback');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }

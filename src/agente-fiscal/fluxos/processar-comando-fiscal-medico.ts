@@ -7,6 +7,7 @@
 
 import { varrerESolicitarAprovacao, type ResultadoVarreduraAprovacao } from './varrer-e-solicitar-aprovacao.js';
 import { processarRespostaAprovacaoMedico, ehRespostaAfirmativa, ehRespostaNegativa, type ResultadoProcessarRespostaAprovacao } from './processar-resposta-aprovacao-medico.js';
+import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
 import type { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidatos-nota-repositorio.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
 
@@ -29,6 +30,17 @@ export type ResultadoComandoFiscal =
       proximaVarredura?: ResultadoVarreduraAprovacao;
     }
   | {
+      tratado: true;
+      tipo: 'resposta_cpf_medico';
+      cpf: string;
+      solicitacaoId: string;
+      proximaVarredura?: ResultadoVarreduraAprovacao;
+    }
+  | {
+      tratado: true;
+      tipo: 'resposta_cpf_medico_cancelada';
+    }
+  | {
       tratado: false;
     };
 
@@ -40,7 +52,72 @@ export async function processarComandoFiscalMedico(
 ): Promise<ResultadoComandoFiscal> {
   const texto = textoRecebido.trim();
 
-  // 1. Verificar se é consulta sob demanda sobre notas ou comprovantes
+  // 1. Verificar se o médico está respondendo a um pedido de CPF pendente
+  const pendenciaCpf = deps.repositorio.obterAguardandoCpfMedico
+    ? await deps.repositorio.obterAguardandoCpfMedico(medicoId)
+    : null;
+
+  if (pendenciaCpf) {
+    const cpfInformado = extrairCpfTexto(texto);
+    if (cpfInformado) {
+      if (deps.repositorio.salvarCpfPacienteELiberarSolicitacao) {
+        await deps.repositorio.salvarCpfPacienteELiberarSolicitacao(
+          medicoId,
+          pendenciaCpf.pacienteId,
+          cpfInformado,
+          pendenciaCpf.solicitacaoId
+        );
+      }
+
+      await deps.enviarMensagem.enviarTexto({
+        instanciaNome: deps.instanciaNome,
+        contatoTelefone: telefoneMedico,
+        texto: `Obrigado! CPF de ${pendenciaCpf.pacienteNome} registrado com sucesso. A nota fiscal já foi colocada na fila e está sendo emitida. Te aviso assim que for autorizada!`
+      });
+
+      // Loop contínuo: buscar e notificar o próximo candidato pendente até zerar
+      const proximaVarredura = await varrerESolicitarAprovacao(medicoId, {
+        repositorio: deps.repositorio,
+        enviarMensagem: deps.enviarMensagem,
+        instanciaNome: deps.instanciaNome,
+        telefoneDestinoSobrescrito: telefoneMedico,
+        ehContinuacao: true
+      });
+
+      if (proximaVarredura.ok && proximaVarredura.status === 'nenhum_candidato_pendente') {
+        await deps.enviarMensagem.enviarTexto({
+          instanciaNome: deps.instanciaNome,
+          contatoTelefone: telefoneMedico,
+          texto: 'Pronto! Todas as notas pendentes foram processadas por hoje.'
+        });
+      }
+
+      return {
+        tratado: true,
+        tipo: 'resposta_cpf_medico',
+        cpf: cpfInformado,
+        solicitacaoId: pendenciaCpf.solicitacaoId,
+        proximaVarredura
+      };
+    }
+
+    if (ehRespostaNegativa(texto)) {
+      if (deps.repositorio.limparAguardandoCpfMedico) {
+        await deps.repositorio.limparAguardandoCpfMedico(medicoId);
+      }
+      await deps.enviarMensagem.enviarTexto({
+        instanciaNome: deps.instanciaNome,
+        contatoTelefone: telefoneMedico,
+        texto: `Tudo bem! Deixei a nota de ${pendenciaCpf.pacienteNome} pendente. Quando você tiver o CPF, é só me enviar aqui que eu realizo a emissão.`
+      });
+      return {
+        tratado: true,
+        tipo: 'resposta_cpf_medico_cancelada'
+      };
+    }
+  }
+
+  // 2. Verificar se é consulta sob demanda sobre notas ou comprovantes
   if (ehConsultaNotasSobDemanda(texto)) {
     const resVarredura = await varrerESolicitarAprovacao(medicoId, {
       repositorio: deps.repositorio,

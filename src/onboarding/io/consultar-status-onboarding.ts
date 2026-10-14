@@ -18,6 +18,7 @@ export type StatusOnboardingMedico = {
   telefone?: string | null;
   email?: string | null;
   numeroWhatsapp?: string | null;
+  solicitarCpfDiretoPaciente?: boolean;
   passos: {
     passo1Nome: boolean;
     passo2XmlEnviado: boolean;
@@ -59,6 +60,7 @@ export async function consultarStatusOnboarding(
       m.especialidade,
       m.crm,
       m.rqe,
+      m.solicitar_cpf_direto_paciente,
       u.nome as usuario_nome,
       u.telefone,
       u.email,
@@ -118,6 +120,7 @@ export async function consultarStatusOnboarding(
     telefone: r.telefone || null,
     numeroWhatsapp: r.numero_whatsapp || null,
     email: r.email?.endsWith("@auth.notomed.local") ? null : r.email || null,
+    solicitarCpfDiretoPaciente: Boolean(r.solicitar_cpf_direto_paciente),
     passos: {
       passo1Nome,
       passo2XmlEnviado,

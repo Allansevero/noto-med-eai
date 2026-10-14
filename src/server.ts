@@ -50,6 +50,7 @@ import { consultarStatusInstanciaWhatsapp } from './onboarding/io/consultar-stat
 import { consultarStatusOnboarding } from './onboarding/io/consultar-status-onboarding.js';
 import { resolverMedicoId } from './onboarding/io/resolver-medico-id.js';
 import { salvarPerfilProfissional, ErroPerfilProfissional } from './io/postgres/salvar-perfil-profissional.js';
+import { salvarPreferenciasMedico } from './conta/salvar-preferencias-medico.js';
 import { ZodError } from 'zod';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
@@ -435,6 +436,21 @@ export function criarAppExpress() {
       if (err?.code === '23505') return res.status(409).json({ ok: false, detalhe: 'Este e-mail já está associado a outra conta.' });
       if (err instanceof ErroPerfilProfissional) return res.status(400).json({ ok: false, detalhe: err.message });
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao atualizar perfil' });
+    }
+  });
+
+  // Atualizar Preferências do Médico (ex: solicitar CPF direto para o paciente ou médico)
+  app.post('/api/conta/preferencias', async (req: Request, res: Response) => {
+    try {
+      const { usuarioId, medicoId: medicoIdRaw, solicitarCpfDiretoPaciente } = req.body || {};
+      const medicoIdFinal = await resolverMedicoId(pool, medicoIdRaw || usuarioId);
+      const resultado = await salvarPreferenciasMedico(pool, {
+        medicoId: medicoIdFinal,
+        solicitarCpfDiretoPaciente: Boolean(solicitarCpfDiretoPaciente)
+      });
+      return res.json({ ok: true, ...resultado });
+    } catch (err: any) {
+      return res.status(400).json({ ok: false, detalhe: err?.message || 'Erro ao salvar preferências' });
     }
   });
 

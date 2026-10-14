@@ -161,4 +161,83 @@ describe('processarComandoFiscalMedico', () => {
     assert.match(mensagensEnviadas[0], /Perfeito! Já coloquei a nota da paciente Vanessa Lodi/);
     assert.match(mensagensEnviadas[1], /Pronto! Todas as notas pendentes foram processadas por hoje/);
   });
+
+  test('deve processar CPF enviado pelo médico para paciente com nota pendente', async () => {
+    let salvouCpf = false;
+    let pacienteIdSalvo = '';
+    let cpfSalvo = '';
+    const mensagensEnviadas: string[] = [];
+
+    const repositorioFalso = {
+      obterAguardandoCpfMedico: async () => ({
+        solicitacaoId: 'sol-marcelo-1',
+        pacienteId: 'pac-marcelo-1',
+        pacienteNome: 'Marcelo Simões',
+        pacienteTelefone: '555181005225'
+      }),
+      salvarCpfPacienteELiberarSolicitacao: async (_mId: string, pacId: string, cpf: string) => {
+        salvouCpf = true;
+        pacienteIdSalvo = pacId;
+        cpfSalvo = cpf;
+        return 1;
+      },
+      buscarConversasComHistorico: async () => [],
+      obterDadosMedico: async () => ({ nomeCompleto: 'Dra. Bruna', telefone: '51981680978' })
+    } as unknown as PostgresCandidatosNotaRepositorio;
+
+    const enviadorFalso = {
+      enviarTexto: async ({ texto }: { texto: string }) => {
+        mensagensEnviadas.push(texto);
+        return { sucesso: true };
+      }
+    } as any;
+
+    const res = await processarComandoFiscalMedico('med-1', 'O CPF dele é 529.982.247-25', '51981680978', {
+      repositorio: repositorioFalso,
+      enviarMensagem: enviadorFalso,
+      instanciaNome: 'notomed_assistente'
+    });
+
+    assert.equal(res.tratado, true);
+    assert.equal(res.tipo, 'resposta_cpf_medico');
+    assert.equal(salvouCpf, true);
+    assert.equal(pacienteIdSalvo, 'pac-marcelo-1');
+    assert.equal(cpfSalvo, '52998224725');
+    assert.match(mensagensEnviadas[0], /CPF de Marcelo Simões registrado com sucesso/);
+  });
+
+  test('deve cancelar espera de CPF quando médico responder que não tem no momento', async () => {
+    let limpou = false;
+    const mensagensEnviadas: string[] = [];
+
+    const repositorioFalso = {
+      obterAguardandoCpfMedico: async () => ({
+        solicitacaoId: 'sol-marcelo-1',
+        pacienteId: 'pac-marcelo-1',
+        pacienteNome: 'Marcelo Simões',
+        pacienteTelefone: '555181005225'
+      }),
+      limparAguardandoCpfMedico: async () => {
+        limpou = true;
+      }
+    } as unknown as PostgresCandidatosNotaRepositorio;
+
+    const enviadorFalso = {
+      enviarTexto: async ({ texto }: { texto: string }) => {
+        mensagensEnviadas.push(texto);
+        return { sucesso: true };
+      }
+    } as any;
+
+    const res = await processarComandoFiscalMedico('med-1', 'Não tenho agora, depois eu vejo', '51981680978', {
+      repositorio: repositorioFalso,
+      enviarMensagem: enviadorFalso,
+      instanciaNome: 'notomed_assistente'
+    });
+
+    assert.equal(res.tratado, true);
+    assert.equal(res.tipo, 'resposta_cpf_medico_cancelada');
+    assert.equal(limpou, true);
+    assert.match(mensagensEnviadas[0], /Deixei a nota de Marcelo Simões pendente/);
+  });
 });

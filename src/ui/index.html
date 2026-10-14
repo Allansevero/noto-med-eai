@@ -757,6 +757,75 @@
     body:not(.onboarding-active) .step-view { align-items: center; width: 100%; }
     #tabsNavigation { display: none !important; }
 
+    /* Switch / Toggle Component Radium */
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 1.5rem;
+    }
+    .switch-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      text-align: left;
+    }
+    .switch-label-title {
+      font-weight: 500;
+      color: var(--text);
+      font-size: var(--body-lg-size);
+    }
+    .switch-label-desc {
+      color: var(--text-secondary);
+      font-size: var(--body-md-size);
+      line-height: var(--body-md-line);
+      margin: 0;
+    }
+    .switch-toggle {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 28px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .switch-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .switch-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #B0B0B5;
+      transition: background-color 0.25s ease;
+      border-radius: 9999px;
+    }
+    .switch-slider::before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: transform 0.25s ease;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    .switch-toggle input:checked + .switch-slider {
+      background-color: #000000;
+    }
+    .switch-toggle input:checked + .switch-slider::before {
+      transform: translateX(22px);
+    }
+    .switch-toggle input:focus-visible + .switch-slider {
+      outline: 2px solid var(--text);
+      outline-offset: 2px;
+    }
+
     /* LAYOUT DO PAINEL (CONTEÚDO CENTRALIZADO NO MEIO DA PÁGINA + LATERAL À ESQUERDA) */
     .painel-layout {
       display: grid;
@@ -1401,7 +1470,23 @@
           <!-- SEÇÃO: PREFERÊNCIAS -->
           <section id="contaSecaoPreferencias" class="conta-secao hidden" aria-labelledby="tituloContaPreferencias">
             <h2 class="access-title" id="tituloContaPreferencias">Preferências</h2>
-            <p>As opções de preferências serão disponibilizadas aqui.</p>
+            <p class="access-subtitle">Configure como o Noto interage com você e seus pacientes no consultório.</p>
+
+            <div class="params-card" style="width: 100%; padding: 1.5rem; border-radius: 16px; display: flex; flex-direction: column; gap: 1rem; box-sizing: border-box;">
+              <div class="switch-row">
+                <div class="switch-info">
+                  <span class="switch-label-title">Solicitar CPF diretamente ao paciente</span>
+                  <p class="switch-label-desc" id="descPreferenciaCpf">
+                    Quando desativado (padrão), se o paciente não tiver CPF cadastrado, o Noto pergunta o CPF diretamente a você no WhatsApp antes de emitir a nota fiscal. Quando ativado, o Noto envia uma mensagem educada diretamente no WhatsApp do paciente solicitando o CPF.
+                  </p>
+                </div>
+                <label class="switch-toggle" for="switchSolicitarCpfPaciente" title="Alternar solicitação de CPF">
+                  <input type="checkbox" id="switchSolicitarCpfPaciente" />
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <p id="statusPreferenciaCpf" class="body-sm" role="status" aria-live="polite" style="margin: 0; min-height: 18px;"></p>
+            </div>
           </section>
 
           <!-- SEÇÃO: FATURAMENTO -->
@@ -2552,6 +2637,7 @@
         if (el) el.classList.toggle('hidden', chave !== secao);
       }
       if (secao === 'dados' || secao === 'fiscal') atualizarVisualizacaoConta();
+      if (secao === 'preferencias') void carregarPreferenciasConta();
       if (secao === 'faturamento') carregarStatusBilling();
       if (secao === 'planilhas') { limparPreviaGoogle(); void carregarGooglePlanilhas(); }
       document.getElementById('btnVoltarConta').focus();
@@ -2714,6 +2800,10 @@
             document.getElementById('statusAdocaoFiscalConta').textContent = data.status.passos?.passo2FiscalConfirmado
               ? 'Configuração fiscal validada e adotada automaticamente.'
               : 'Configuração fiscal pendente. Se você cadastrou o certificado antes deste consentimento, atualize-o para registrar o aceite. Pendências técnicas precisam de análise.';
+            const switchCpfInit = document.getElementById('switchSolicitarCpfPaciente');
+            if (switchCpfInit) {
+              switchCpfInit.checked = Boolean(data.status.solicitarCpfDiretoPaciente);
+            }
             if (data.status.perfilFiscal) {
               exibirPreviewPerfilFiscal(data.status.perfilFiscal);
               exibirParametrosConta(data.status.perfilFiscal.parametrosEmissao?.parametros ||
@@ -3107,6 +3197,75 @@
         alternarAba(btn.dataset.tab);
       });
     });
+
+    // --- PREFERÊNCIAS DA CONTA ---
+    async function carregarPreferenciasConta() {
+      const switchCpf = document.getElementById('switchSolicitarCpfPaciente');
+      const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+      if (!medicoId || !switchCpf) return;
+
+      try {
+        const res = await fetch(`/api/onboarding/status?medicoId=${medicoId}`, {
+          headers: { Authorization: 'Bearer ' + (sessaoAtual?.tokenAcesso || '') }
+        });
+        const data = await res.json();
+        if (data.ok && data.status) {
+          switchCpf.checked = Boolean(data.status.solicitarCpfDiretoPaciente);
+        }
+      } catch (e) {
+        console.warn('Falha ao carregar preferências:', e);
+      }
+    }
+
+    const switchCpfEl = document.getElementById('switchSolicitarCpfPaciente');
+    if (switchCpfEl) {
+      switchCpfEl.addEventListener('change', async () => {
+        const novoValor = switchCpfEl.checked;
+        const statusCpf = document.getElementById('statusPreferenciaCpf');
+        const medicoId = sessaoAtual?.usuario?.medicoId || sessaoAtual?.usuario?.usuarioId;
+        const usuarioId = sessaoAtual?.usuario?.usuarioId;
+        if (!medicoId) return;
+
+        if (statusCpf) {
+          statusCpf.textContent = 'Salvando preferência...';
+          statusCpf.style.color = 'var(--text-secondary)';
+        }
+
+        try {
+          const res = await fetch('/api/conta/preferencias', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (sessaoAtual?.tokenAcesso || '')
+            },
+            body: JSON.stringify({
+              medicoId,
+              usuarioId,
+              solicitarCpfDiretoPaciente: novoValor
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            switchCpfEl.checked = Boolean(data.solicitarCpfDiretoPaciente);
+            if (statusCpf) {
+              statusCpf.textContent = novoValor
+                ? 'Salvo: o Noto solicitará o CPF diretamente ao paciente via WhatsApp.'
+                : 'Salvo: o Noto solicitará o CPF diretamente a você no WhatsApp (padrão).';
+              statusCpf.style.color = '#0b7330';
+              setTimeout(() => { if (statusCpf) statusCpf.textContent = ''; }, 4000);
+            }
+          } else {
+            throw new Error(data.detalhe || 'Erro ao salvar');
+          }
+        } catch (err) {
+          switchCpfEl.checked = !novoValor;
+          if (statusCpf) {
+            statusCpf.textContent = 'Não foi possível salvar a preferência. Tente novamente.';
+            statusCpf.style.color = '#C43232';
+          }
+        }
+      });
+    }
 
     const btnLogoutConta = document.getElementById('btnLogoutConta');
     if (btnLogoutConta) {
