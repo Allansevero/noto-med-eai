@@ -60,22 +60,12 @@ export async function processarHistoricoWebhook(
     if (resultado.pacienteVinculado) pacientesVinculados += 1;
 
     // Persistir histórico real de mensagens na tabela whatsapp_mensagens
-    if (deps.repositorio.salvarMensagem) {
-      for (const msg of historico.mensagensCompletas) {
-        const texto = extrairTextoMensagem(msg) || '';
-        const tipo = extrairTipoMensagem(msg);
-        const timestampMs = typeof msg.messageTimestamp === 'number'
-          ? (msg.messageTimestamp > 1e11 ? msg.messageTimestamp : msg.messageTimestamp * 1000)
-          : (typeof msg.messageTimestamp === 'string' ? Number(msg.messageTimestamp) * 1000 : Date.now());
-
-        await deps.repositorio.salvarMensagem({
-          conversaId: conversa.id,
-          direcao: msg.key.fromMe ? 'enviada' : 'recebida',
-          tipoMensagem: tipo,
-          conteudo: texto,
-          payloadBruto: msg,
-          criadoEm: new Date(timestampMs)
-        });
+    if (deps.repositorio.salvarMensagensEmLote) {
+      const itens = mapearMensagensParaPersistencia(conversa.id, historico.mensagensCompletas);
+      await deps.repositorio.salvarMensagensEmLote(itens);
+    } else if (deps.repositorio.salvarMensagem) {
+      for (const item of mapearMensagensParaPersistencia(conversa.id, historico.mensagensCompletas)) {
+        await deps.repositorio.salvarMensagem(item);
       }
     }
   }
@@ -123,3 +113,33 @@ function agruparMensagensPorTelefone(
 
   return agrupadas;
 }
+
+function mapearMensagensParaPersistencia(
+  conversaId: string,
+  mensagens: DadosMensagemEvolution[]
+): Array<{
+  conversaId: string;
+  direcao: 'enviada' | 'recebida';
+  tipoMensagem?: string;
+  conteudo: string;
+  payloadBruto?: unknown;
+  criadoEm?: Date;
+}> {
+  return mensagens.map((msg) => {
+    const texto = extrairTextoMensagem(msg) || '';
+    const tipo = extrairTipoMensagem(msg);
+    const timestampMs = typeof msg.messageTimestamp === 'number'
+      ? (msg.messageTimestamp > 1e11 ? msg.messageTimestamp : msg.messageTimestamp * 1000)
+      : (typeof msg.messageTimestamp === 'string' ? Number(msg.messageTimestamp) * 1000 : Date.now());
+
+    return {
+      conversaId,
+      direcao: msg.key.fromMe ? 'enviada' : 'recebida',
+      tipoMensagem: tipo,
+      conteudo: texto,
+      payloadBruto: msg,
+      criadoEm: new Date(timestampMs)
+    };
+  });
+}
+

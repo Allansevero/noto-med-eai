@@ -543,6 +543,80 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     ]);
   }
 
+  async salvarMensagensEmLote(mensagens: Array<{
+    conversaId: string;
+    direcao: 'recebida' | 'enviada';
+    tipoMensagem?: string;
+    conteudo: string;
+    payloadBruto?: unknown;
+    comandoDetectado?: string | null;
+    criadoEm?: Date;
+  }>): Promise<void> {
+    if (!mensagens?.length) return;
+
+    const porConversa = agruparPorConversa(mensagens);
+    for (const [conversaId, msgs] of porConversa.entries()) {
+      await this.salvarLoteConversa(conversaId, msgs);
+    }
+  }
+
+  private async salvarLoteConversa(conversaId: string, msgs: any[]): Promise<void> {
+    const unicas = new Map<string, any>();
+    const semKey: any[] = [];
+    for (const m of msgs) {
+      const keyId = (m.payloadBruto as any)?.key?.id;
+      if (keyId) {
+        if (!unicas.has(keyId)) unicas.set(keyId, m);
+      } else {
+        semKey.push(m);
+      }
+    }
+
+    const chaves = Array.from(unicas.keys());
+    const existentes = chaves.length > 0 ? await this.buscarChavesExistentes(conversaId, chaves) : new Set<string>();
+    const paraInserir = [...Array.from(unicas.entries()).filter(([k]) => !existentes.has(k)).map(([, m]) => m), ...semKey];
+    if (!paraInserir.length) return;
+
+    await this.executarBatchInsertMensagens(paraInserir);
+  }
+
+  private async buscarChavesExistentes(conversaId: string, chaves: string[]): Promise<Set<string>> {
+    const sql = `
+      select payload_bruto->'key'->>'id' as key_id
+      from whatsapp_mensagens
+      where conversa_id = $1 and payload_bruto->'key'->>'id' = any($2::text[])
+    `;
+    const { rows } = await this.pool.query(sql, [conversaId, chaves]);
+    return new Set(rows.map((r: { key_id: string }) => r.key_id));
+  }
+
+  private async executarBatchInsertMensagens(mensagens: any[]): Promise<void> {
+    const TAMANHO = 50;
+    for (let i = 0; i < mensagens.length; i += TAMANHO) {
+      const chunk = mensagens.slice(i, i + TAMANHO);
+      const placeholders: string[] = [];
+      const params: any[] = [];
+      let p = 1;
+      for (const m of chunk) {
+        placeholders.push(`($${p++}, $${p++}, coalesce($${p++}, 'texto'), $${p++}, $${p++}, $${p++}, coalesce($${p++}, now()))`);
+        params.push(
+          m.conversaId,
+          m.direcao,
+          m.tipoMensagem || 'texto',
+          m.conteudo,
+          m.payloadBruto ? JSON.stringify(m.payloadBruto) : null,
+          m.comandoDetectado || null,
+          m.criadoEm || null
+        );
+      }
+      const sql = `
+        insert into whatsapp_mensagens (conversa_id, direcao, tipo_mensagem, conteudo, payload_bruto, comando_detectado, criado_em)
+        values ${placeholders.join(', ')}
+      `;
+      await this.pool.query(sql, params);
+    }
+  }
+
   async buscarMensagensRecentesConversa(conversaId: string, limite: number = 20): Promise<string[]> {
     const sql = `
       select conteudo
@@ -555,3 +629,14 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     return rows.map((r: { conteudo: string }) => r.conteudo).reverse();
   }
 }
+
+function agruparPorConversa<T extends { conversaId: string }>(itens: T[]): Map<string, T[]> {
+  const mapa = new Map<string, T[]>();
+  for (const item of itens) {
+    const lista = mapa.get(item.conversaId) || [];
+    lista.push(item);
+    mapa.set(item.conversaId, lista);
+  }
+  return mapa;
+}
+

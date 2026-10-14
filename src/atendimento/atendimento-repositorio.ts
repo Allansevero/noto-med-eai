@@ -126,5 +126,14 @@ export interface AtendimentoRepositorio {
     comandoDetectado?: string | null;
     criadoEm?: Date;
   }): Promise<void>;
+  salvarMensagensEmLote?(mensagens: Array<{
+    conversaId: string;
+    direcao: 'recebida' | 'enviada';
+    tipoMensagem?: string;
+    conteudo: string;
+    payloadBruto?: unknown;
+    comandoDetectado?: string | null;
+    criadoEm?: Date;
+  }>): Promise<void>;
   buscarMensagensRecentesConversa?(conversaId: string, limite?: number): Promise<string[]>;
 }
