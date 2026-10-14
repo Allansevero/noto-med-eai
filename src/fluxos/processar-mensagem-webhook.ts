@@ -18,18 +18,14 @@ import {
   extrairTipoMensagem,
   type WebhookEvolutionPayload
 } from '../whatsapp/payload-webhook-schema.js';
-import { casarRespostaRapida } from '../whatsapp/casar-resposta-rapida.js';
 import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
 import { ehMensagemAutomatica } from '../whatsapp/regras/eh-mensagem-automatica.js';
 import { processarRespostaCpf } from './processar-resposta-cpf.js';
 import { processarRespostaDataConsulta } from './processar-resposta-data-consulta.js';
-import { processarComandoAgendado } from './processar-comando-agendado.js';
-import { processarComandoEmissao } from './processar-comando-emissao.js';
 import type { AtendimentoRepositorio } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
 import type { ExtratorIaService } from '../ia/extrator-ia-service.js';
-import type { BillingRepositorio } from '../billing/billing-repositorio.js';
 import {
   ehEventoHistorico,
   ehEventoSincronizacaoAuxiliar
@@ -45,7 +41,6 @@ export interface ProcessarWebhookDeps {
   comunicadorNoto?: ComunicadorNoto;
   dadosProfissionais?: DadosProfissionaisService;
   enviarMensagemPaciente: EnviarMensagemPaciente;
-  billingRepositorio?: BillingRepositorio;
   consultaCpfProvider?: ConsultaCpfProvider;
   iaService?: ExtratorIaService;
   comprovanteClient?: PaligemmaComprovanteClient;
@@ -63,7 +58,7 @@ export interface ProcessarWebhookDeps {
 export type ResultadoProcessarWebhook =
   | {
       ok: true;
-      acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'comando_agendado' | 'comando_emissao' | 'historico_sincronizado' | 'conexao_atualizada' | 'comando_fiscal' | 'descartada';
+      acao: 'conversa_oficial' | 'conversa_assistente' | 'resposta_perfil_medico' | 'resposta_cpf' | 'resposta_data_consulta' | 'historico_sincronizado' | 'conexao_atualizada' | 'comando_fiscal' | 'descartada';
       detalhe?: any;
       motivoDescarte?: 'sem_tratador_conexao' | 'sincronizacao_auxiliar' | 'contato_nao_identificado' | 'mensagem_sem_texto' | 'mensagem_enviada_pelo_oficial' | 'mensagem_enviada_pelo_assistente' | 'mensagem_recebida_do_paciente' | 'gatilho_nao_reconhecido' | 'canal_oficial_somente_otp' | 'historico_assistente_ignorado' | 'medico_nao_identificado' | 'mensagem_duplicada';
     }
@@ -243,37 +238,7 @@ async function rotearMensagem(
     }
   }
 
-  // Se não for do médico, mensagens comuns do paciente não disparam comandos
   if (!fromMe) return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_recebida_do_paciente' };
 
-  // 3. Comandos rápidos do médico
-  const modelos = await deps.repositorio.buscarRespostasRapidasMedico(conversa.medicoId);
-  const casamento = casarRespostaRapida(texto, true, modelos);
-  if (!casamento.casou) return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
-
-  if (casamento.tipo === 'agendado') {
-    const res = await processarComandoAgendado(conversa, [texto], {
-      repositorio: deps.repositorio,
-      pepper: deps.pepper,
-      iaService: deps.iaService
-    });
-    return { ok: true, acao: 'comando_agendado', detalhe: res };
-  }
-
-  const res = await processarComandoEmissao(conversa, casamento.valorDigitadoCentavos, {
-    repositorio: deps.repositorio,
-    dadosProfissionais: deps.dadosProfissionais,
-    enviarMensagemPaciente: deps.enviarMensagemPaciente,
-    comunicadorNoto: deps.comunicadorNoto,
-    billingRepositorio: deps.billingRepositorio,
-    consultaCpfProvider: deps.consultaCpfProvider,
-    iaService: deps.iaService,
-    pepper: deps.pepper,
-    instanciaNome: payload.instance,
-    instanciaOficialNome: deps.instanciaAssistenteNome || 'notomed_assistente',
-    textoComando: texto,
-    mensagemIdComando: payload.data.key.id,
-    datasComando: casamento.datas
-  });
-  return { ok: true, acao: 'comando_emissao', detalhe: res };
+  return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
 }

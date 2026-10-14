@@ -102,10 +102,9 @@ export class PostgresCadastro {
     and (reserva is null or reservado_em<now()-interval '30 minutes') order by criado_em,id for update skip locked limit 1`)).rows[0] as TrabalhoCadastro|undefined;
    if(!r)return null;const token=randomUUID();
    const m=(await c.query('select nome_completo,crm from medicos where id=$1',[r.medico_id])).rows[0];
-   const legado=(await c.query('select estado from noto_assistente_sessoes where medico_id=$1',[r.medico_id])).rows[0]?.estado;
    const confirmadoAnterior=(await c.query("select id from cadastro_certificado_trabalhos where medico_id=$1 and dados->>'nomeConfirmado'=$2 limit 1",[r.medico_id,m.nome_completo])).rows.length>0;
    r.tentativas++;await c.query("update cadastro_certificado_trabalhos set estado='consultando',reserva=$2,reservado_em=now(),tentativas=$3 where id=$1",[r.id,token,r.tentativas]);
-   return {trabalho:r,token,perfil:{nome:m.nome_completo,crm:m.crm,nomeConfirmado:nomeProfissionalValido(m.nome_completo)&&(confirmadoAnterior||(legado?.nomeConfirmado===m.nome_completo&&legado?.identidadePendente!==true))}};
+   return {trabalho:r,token,perfil:{nome:m.nome_completo,crm:m.crm,nomeConfirmado:nomeProfissionalValido(m.nome_completo)&&confirmadoAnterior}};
   });
  }
  async documento(r:ReservaCadastro,documento:string|undefined):Promise<void>{await this.pool.query('update cadastro_certificado_trabalhos set documento_titular=$3 where id=$1 and reserva=$2',[r.trabalho.id,r.token,documento??null]);r.trabalho.documento_titular=documento??null;}

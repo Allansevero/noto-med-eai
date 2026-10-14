@@ -154,10 +154,6 @@ export class PostgresCandidatosNotaRepositorio {
        values ('agente_fiscal_candidato_dispensado', 'medicos', $1, $2::jsonb)`,
       [medicoId, JSON.stringify(estadoJson)]
     );
-    await this.pool.query(
-      `update noto_assistente_sessoes set estado = $2::jsonb, atualizado_em = now() where medico_id = $1`,
-      [medicoId, JSON.stringify(estadoJson)]
-    );
 
     const telLimpo = (candidato.pacienteTelefone || '').replace(/\D/g, '');
     if (candidato.id) {
@@ -202,18 +198,7 @@ export class PostgresCandidatosNotaRepositorio {
       atualizadoEm: new Date().toISOString()
     };
 
-    // 1. Gravar o payload rico do candidato em noto_assistente_sessoes (coluna estado é jsonb)
-    await this.pool.query(
-      `insert into noto_assistente_sessoes (medico_id, versao, estado, atualizado_em)
-       values ($1, 1, $2::jsonb, now())
-       on conflict (medico_id) do update set
-         versao = noto_assistente_sessoes.versao + 1,
-         estado = excluded.estado,
-         atualizado_em = now()`,
-      [medicoId, JSON.stringify(estadoJson)]
-    );
-
-    // 3. Também preserva na tabela de auditoria para histórico e rastreabilidade
+    // 1. Preserva na tabela de auditoria para histórico e rastreabilidade
     await this.pool.query(
       `insert into auditoria (acao, entidade, entidade_id, dados_novos)
        values ('agente_fiscal_candidato_encontrado', 'medicos', $1, $2::jsonb)`,
@@ -327,25 +312,7 @@ export class PostgresCandidatosNotaRepositorio {
       };
     }
 
-    const sql = `
-      select estado, atualizado_em from noto_assistente_sessoes
-      where medico_id = $1
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId]);
-    if (rows.length === 0 || !rows[0].estado) return null;
-
-    try {
-      const estado = rows[0].estado;
-      if (estado.status !== 'aguardando_aprovacao' || !estado.candidato) return null;
-      return {
-        medicoId,
-        ...estado.candidato,
-        criadoEm: rows[0].atualizado_em
-      };
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   /**
@@ -512,12 +479,7 @@ export class PostgresCandidatosNotaRepositorio {
         `, [medicoId, telLimpo]);
       }
 
-      // 7. Atualizar estado na memória contextual
-      await client.query(`
-        update noto_assistente_sessoes
-        set estado = $2::jsonb, atualizado_em = now()
-        where medico_id = $1
-      `, [medicoId, JSON.stringify({ status: 'aprovada', solicitacaoId, aprovadaEm: new Date().toISOString() })]);
+
 
       await client.query('commit');
       return {
@@ -585,18 +547,6 @@ export class PostgresCandidatosNotaRepositorio {
        where id = $1`,
       [dados.solicitacaoId]
     );
-
-    const estado = {
-      status: 'aguardando_cpf_medico',
-      ...dados,
-      solicitadoEm: new Date().toISOString()
-    };
-    await this.pool.query(
-      `update noto_assistente_sessoes
-       set estado = $2::jsonb, atualizado_em = now()
-       where medico_id = $1`,
-      [medicoId, JSON.stringify(estado)]
-    );
   }
 
   /**
@@ -624,19 +574,7 @@ export class PostgresCandidatosNotaRepositorio {
       };
     }
 
-    const { rows } = await this.pool.query(
-      `select estado from noto_assistente_sessoes where medico_id = $1 limit 1`,
-      [medicoId]
-    );
-    if (rows.length === 0 || !rows[0].estado) return null;
-    const est = rows[0].estado;
-    if (est.status !== 'aguardando_cpf_medico' || !est.pacienteId) return null;
-    return {
-      solicitacaoId: est.solicitacaoId,
-      pacienteId: est.pacienteId,
-      pacienteNome: est.pacienteNome,
-      pacienteTelefone: est.pacienteTelefone
-    };
+    return null;
   }
 
   /**
@@ -649,13 +587,6 @@ export class PostgresCandidatosNotaRepositorio {
            atualizado_em = now()
        where medico_id = $1 and aguardando_cpf_medico = true`,
       [medicoId]
-    );
-
-    await this.pool.query(
-      `update noto_assistente_sessoes
-       set estado = $2::jsonb, atualizado_em = now()
-       where medico_id = $1`,
-      [medicoId, JSON.stringify({ status: 'cpf_medico_cancelado', canceladoEm: new Date().toISOString() })]
     );
   }
 
@@ -698,13 +629,7 @@ export class PostgresCandidatosNotaRepositorio {
         [pacienteId, medicoId, solicitacaoId]
       );
 
-      // Atualiza memória
-      await client.query(
-        `update noto_assistente_sessoes
-         set estado = $2::jsonb, atualizado_em = now()
-         where medico_id = $1`,
-        [medicoId, JSON.stringify({ status: 'aprovada', solicitacaoId, aprovadaEm: new Date().toISOString() })]
-      );
+
 
       await client.query('commit');
       return rowCount ?? 0;

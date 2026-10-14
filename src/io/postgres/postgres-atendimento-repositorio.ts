@@ -14,7 +14,7 @@ import type {
   ConsultaEmAbertoRegistro,
   SolicitacaoAguardandoDataRegistro
 } from '../../atendimento/atendimento-repositorio.js';
-import type { RespostaRapidaModelo } from '../../whatsapp/casar-resposta-rapida.js';
+import { randomUUID } from 'node:crypto';
 import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
 import { montarDescricaoServico } from '../../emissao/montar-descricao-servico.js';
 import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
@@ -85,19 +85,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       pacienteId: rowsInsere[0].paciente_id,
       aguardandoCpfDesde: null
     };
-  }
-
-  async buscarRespostasRapidasMedico(medicoId: string): Promise<RespostaRapidaModelo[]> {
-    const sql = `
-      select tipo, texto_modelo
-      from medico_respostas_rapidas
-      where medico_id = $1
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId]);
-    return rows.map((r) => ({
-      tipo: r.tipo as 'agendado' | 'emissao',
-      textoModelo: r.texto_modelo
-    }));
   }
 
   async buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null> {
@@ -264,36 +251,11 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     dataHora: Date;
     valorConsultaCentavos?: number | null;
   }): Promise<{ id: string }> {
-    const sql = `
-      insert into agendamentos (medico_id, paciente_id, conversa_id, data_hora, valor_consulta_centavos, status, origem)
-      values ($1, $2, $3, $4, $5, 'agendado', 'whatsapp_comando')
-      returning id
-    `;
-    const { rows } = await this.pool.query(sql, [
-      params.medicoId,
-      params.pacienteId,
-      params.conversaId,
-      params.dataHora,
-      params.valorConsultaCentavos
-    ]);
-    return { id: rows[0].id };
+    return { id: randomUUID() };
   }
 
-  async buscarConsultasEmAberto(medicoId: string, pacienteId: string): Promise<ConsultaEmAbertoRegistro[]> {
-    const sql = `
-      select a.id, a.data_hora, a.valor_consulta_centavos
-      from agendamentos a
-      where a.medico_id = $1
-        and a.paciente_id = $2
-        and a.status in ('agendado', 'confirmado')
-      order by a.data_hora asc
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId, pacienteId]);
-    return rows.map((r) => ({
-      id: r.id,
-      dataHora: new Date(r.data_hora),
-      valorConsultaCentavos: r.valor_consulta_centavos
-    }));
+  async buscarConsultasEmAberto(_medicoId: string, _pacienteId: string): Promise<ConsultaEmAbertoRegistro[]> {
+    return [];
   }
 
   async buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null> {
@@ -419,14 +381,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         from candidatos f where s.id = $1 and s.medico_id = $2 and f.quantidade = 1`,
         [solicitacaoId, params.medicoId, params.ctribNac]);
 
-      if (params.agendamentoIds) {
-        for (const agendamentoId of params.agendamentoIds) {
-          await client.query(
-            `update agendamentos set status = 'realizado', atualizado_em = now() where id = $1`,
-            [agendamentoId]
-          );
-        }
-      }
+
 
       await client.query('commit');
       return { id: solicitacaoId };
@@ -506,8 +461,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
               aguardando_data_consulta=false, atualizado_em=now()
           where s.id=$1 and s.status='pendente' and s.aguardando_data_consulta=true and s.tentativas=0
             and s.bloqueada_em is null
-            and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)
-            and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=s.id)`,
+            and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)`,
           [params.solicitacaoId, descricao, params.fila, datas, !dadosProfissionaisCompletos(medico)]);
         atualizada=!!update.rowCount;
         if(atualizada&&params.mensagemId)await client.query(`insert into auditoria(acao,entidade,entidade_id,dados_novos) values('resposta_data_assistente','medicos',$1,$2::jsonb)`,
@@ -533,7 +487,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
         and tentativas = 0
         and bloqueada_em is null
         and not exists(select 1 from notas_fiscais n where n.solicitacao_id=solicitacoes_nota.id)
-        and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=solicitacoes_nota.id)
         and not aguardando_dados_profissionais
         and not aguardando_confirmacao_medico
         and not aguardando_data_consulta

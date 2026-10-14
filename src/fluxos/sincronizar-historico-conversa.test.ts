@@ -10,7 +10,6 @@ import type {
   MedicoDadosRegistro
 } from '../atendimento/atendimento-repositorio.js';
 import type { ConsultaCpfProvider, DadosConsultaCpf } from '../paciente/consulta-cpf-provider.js';
-import type { RespostaRapidaModelo } from '../whatsapp/casar-resposta-rapida.js';
 
 class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   public conversas: ConversaRegistro[] = [];
@@ -18,7 +17,6 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
 
   async buscarInstanciaPorNome(): Promise<InstanciaRegistro | null> { return null; }
   async buscarOuCriarConversa(): Promise<ConversaRegistro> { throw new Error('Not implemented'); }
-  async buscarRespostasRapidasMedico(): Promise<RespostaRapidaModelo[]> { return []; }
   async buscarPacientePorId(id: string): Promise<PacienteRegistro | null> {
     return this.pacientes.find((p) => p.id === id) ?? null;
   }
