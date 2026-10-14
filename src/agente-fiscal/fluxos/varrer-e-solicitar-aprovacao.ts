@@ -9,6 +9,8 @@ import { correlacionarConsultaPagamento, type CandidatoNotaFiscal } from '../reg
 import { redigirSolicitacaoAprovacao } from '../regras/redigir-solicitacao-aprovacao.js';
 import type { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidatos-nota-repositorio.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
+import type { PaligemmaComprovanteClient } from '../../io/nvidia/paligemma-comprovante-client.js';
+import type { EvolutionApiClient } from '../../io/evolution/evolution-api-client.js';
 
 export interface VarrerESolicitarAprovacaoDeps {
   repositorio: PostgresCandidatosNotaRepositorio;
@@ -17,6 +19,8 @@ export interface VarrerESolicitarAprovacaoDeps {
   dataCorte?: Date;
   telefoneDestinoSobrescrito?: string; // Para testes manuais onde o usuário quer receber no número oficial do Noto
   ehContinuacao?: boolean;
+  comprovanteClient?: PaligemmaComprovanteClient;
+  evolutionClient?: EvolutionApiClient;
 }
 
 export type ResultadoVarreduraAprovacao =
@@ -79,10 +83,43 @@ export async function varrerESolicitarAprovacao(
     };
   }
 
-  // 2. Correlacionar consultas e pagamentos de todas as conversas
+  // 2. Analisar comprovantes pendentes via Visão Computacional e correlacionar consultas e pagamentos
   let candidatoEleito: CandidatoNotaFiscal | null = null;
 
   for (const conv of conversas) {
+    if (deps.comprovanteClient && deps.evolutionClient) {
+      for (const m of conv.mensagens) {
+        if (
+          m.direcao === 'recebida' &&
+          (m.tipo === 'imagem' || m.tipo === 'documento') &&
+          !m.payloadBruto?.comprovante
+        ) {
+          let b64 =
+            (m.payloadBruto as any)?.message?.imageMessage?.base64 ||
+            (m.payloadBruto as any)?.base64;
+          if (!b64) {
+            const media = await deps.evolutionClient.obterBase64MensagemMidia(deps.instanciaNome, m.id);
+            b64 = media?.base64;
+          }
+          if (b64) {
+            try {
+              const resComp = await deps.comprovanteClient.analisarImagem(b64);
+              if (m.payloadBruto) {
+                m.payloadBruto.comprovante = resComp;
+              } else {
+                m.payloadBruto = { comprovante: resComp };
+              }
+              if (deps.repositorio.salvarAnaliseComprovante) {
+                await deps.repositorio.salvarAnaliseComprovante(m.id, resComp);
+              }
+            } catch (e) {
+              console.warn('[varrerESolicitarAprovacao] Falha ao analisar comprovante:', e);
+            }
+          }
+        }
+      }
+    }
+
     const candidatos = correlacionarConsultaPagamento(
       conv.mensagens,
       conv.contatoTelefone,

@@ -176,7 +176,9 @@ export function criarAppExpress() {
     enviarMensagem: evolutionAssistantClient,
     instanciaNome: config.evolutionAssistantInstanceName,
     horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',
-    ativo: Boolean(config.agenteFiscalAtivo)
+    ativo: Boolean(config.agenteFiscalAtivo),
+    comprovanteClient: paligemmaClient,
+    evolutionClient
   });
   if (process.env['NODE_ENV'] !== 'test') {
     agendadorFechamentoFiscal.iniciar();
@@ -758,6 +760,8 @@ export function criarAppExpress() {
         billingRepositorio: billingRepo,
         enviarMensagemPaciente: enviarConversas,
         iaService: ia.extrator,
+        comprovanteClient: paligemmaClient,
+        evolutionClient,
         consultaCpfProvider: hubCpfClient,
         segredoConfigurado: segredoEsperado,
         pepper: config.appPepper,
@@ -788,7 +792,9 @@ export function criarAppExpress() {
               void varrerESolicitarAprovacao(medicoId, {
                 repositorio: candidatosNotaRepo,
                 enviarMensagem: evolutionAssistantClient,
-                instanciaNome: config.evolutionAssistantInstanceName
+                instanciaNome: config.evolutionAssistantInstanceName,
+                comprovanteClient: paligemmaClient,
+                evolutionClient
               }).catch(err => console.warn('[Agente Fiscal Pós-Conexão] Falha:', err?.message || err));
             }).catch((erro: any) => {
               console.warn('[Evolution] Histórico ainda indisponível pós-conexão:', erro?.message || erro);

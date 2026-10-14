@@ -5,7 +5,7 @@ import type { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidato
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
 
 describe('varrerESolicitarAprovacao', () => {
-  test('deve encontrar candidato elegível, salvar na memória e enviar mensagem humanizada', async () => {
+  test('deve encontrar candidato elegível por comprovante visual, salvar na memória e enviar mensagem humanizada', async () => {
     let candidatoSalvoNaMemoria: any = null;
     let mensagemEnviadaWhatsApp: any = null;
 
@@ -31,9 +31,16 @@ describe('varrerESolicitarAprovacao', () => {
             },
             {
               id: 'm-2',
-              direcao: 'enviada',
-              tipo: 'texto',
-              conteudo: 'https://link.infinitepay.io/clinica-recanto/VC1D-7FBXC2NecE-1600,00',
+              direcao: 'recebida',
+              tipo: 'imagem',
+              conteudo: '',
+              payloadBruto: {
+                comprovante: {
+                  ehComprovante: true,
+                  valorCentavos: 160000,
+                  tipo: 'pix'
+                }
+              },
               criadoEm: '2026-10-10T15:52:05.000Z'
             }
           ]
@@ -86,7 +93,20 @@ describe('varrerESolicitarAprovacao', () => {
           conversaId: 'c1', contatoTelefone: '4899998888',
           mensagens: [
             { id: '1', direcao: 'enviada', tipo: 'texto', conteudo: 'Olá Janayna! Consulta dia 13/10/2026', criadoEm: '2026-10-09' },
-            { id: '2', direcao: 'enviada', tipo: 'texto', conteudo: 'Valor R$ 350,00', criadoEm: '2026-10-10' }
+            {
+              id: '2',
+              direcao: 'recebida',
+              tipo: 'imagem',
+              conteudo: '',
+              payloadBruto: {
+                comprovante: {
+                  ehComprovante: true,
+                  valorCentavos: 35000,
+                  tipo: 'pix'
+                }
+              },
+              criadoEm: '2026-10-10'
+            }
           ]
         }
       ],
@@ -111,6 +131,42 @@ describe('varrerESolicitarAprovacao', () => {
     }
   });
 
+  test('deve ignorar mensagem de exame médico (ehComprovante: false)', async () => {
+    const repositorioFalso = {
+      obterDadosMedico: async () => ({ nomeCompleto: 'Dra. Bruna', telefone: '51981936133' }),
+      buscarConversasComHistorico: async () => [
+        {
+          conversaId: 'c1', contatoTelefone: '4899998888',
+          mensagens: [
+            { id: '1', direcao: 'enviada', tipo: 'texto', conteudo: 'Olá Janayna! Consulta dia 13/10/2026. Valor R$ 350', criadoEm: '2026-10-09' },
+            {
+              id: '2',
+              direcao: 'recebida',
+              tipo: 'imagem',
+              conteudo: '',
+              payloadBruto: {
+                comprovante: {
+                  ehComprovante: false
+                }
+              },
+              criadoEm: '2026-10-10'
+            }
+          ]
+        }
+      ],
+      verificarSeJaPossuiNota: async () => false
+    } as any;
+
+    const res = await varrerESolicitarAprovacao('med-1', {
+      repositorio: repositorioFalso,
+      enviarMensagem: { enviarTexto: async () => ({ sucesso: true }) } as any,
+      instanciaNome: 'oficial'
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal((res as any).status, 'nenhum_candidato_pendente');
+  });
+
   test('deve suspender a varredura se os parâmetros fiscais do médico não estiverem confirmados', async () => {
     const repositorioFalso = {
       obterDadosMedico: async () => ({
@@ -132,5 +188,3 @@ describe('varrerESolicitarAprovacao', () => {
     assert.equal((res as any).motivo, 'parametros_fiscais_pendentes');
   });
 });
-
-

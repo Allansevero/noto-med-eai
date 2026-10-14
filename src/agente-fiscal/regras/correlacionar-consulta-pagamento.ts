@@ -108,58 +108,74 @@ function extrairDadosPagamento(
   mensagensAnteriores: MensagemContextoConversa[] = [],
   valorPadraoCentavos?: number
 ): DadosPagamentoDetectados | null {
-  const texto = msg.conteudo || '';
-
-  // 1. Link de pagamento com valor explícito (ex: InfinitePay, Mercado Pago)
-  // Exemplo: https://link.infinitepay.io/...-1600,00 ou -470,00
-  const matchLink = texto.match(/link\.[a-z0-9\.\-\/]+-(\d+)[,\.](\d{2})/i);
-  if (matchLink) {
-    const reais = parseInt(matchLink[1], 10);
-    const centavos = parseInt(matchLink[2], 10);
-    const totalCentavos = reais * 100 + centavos;
-    return {
-      valorCentavos: totalCentavos,
-      valorFormatado: `${reais},${matchLink[2]}`,
-      trecho: matchLink[0]
-    };
+  // 1. MENSAGEM DA CLÍNICA/SECRETÁRIA NUNCA É COMPROVANTE DE PAGAMENTO
+  if (msg.direcao === 'enviada') {
+    return null;
   }
 
-  // 2. Comprovante ou texto com Valor: R$ 1350,00 ou R$ 550,00
-  const matchValorPix = texto.match(/(?:valor|total|pago|pix)?\s*:?\s*r\$\s*([\d\.]+),?(\d{2})?/i);
-  if (matchValorPix) {
-    const reaisStr = matchValorPix[1].replace(/\./g, '');
-    const reais = parseInt(reaisStr, 10);
-    const centavos = matchValorPix[2] ? parseInt(matchValorPix[2], 10) : 0;
-    const totalCentavos = reais * 100 + centavos;
-    if (totalCentavos > 0) {
+  // 2. MENSAGENS DE TEXTO PURO NUNCA GERAM CANDIDATOS A EMISSÃO
+  // Apenas comprovantes visuais (imagem ou PDF) atestam que o pagamento de fato ocorreu.
+  if (msg.tipo === 'texto') {
+    return null;
+  }
+
+  // 3. APENAS IMAGENS OU DOCUMENTOS (PDF) RECEBIDOS DO PACIENTE SÃO ELEGÍVEIS
+  if (msg.tipo !== 'imagem' && msg.tipo !== 'documento') {
+    return null;
+  }
+
+  // 4. VERIFICAÇÃO VISUAL PELO MODELO DE VISÃO COMPUTACIONAL (PaliGemma / VLM)
+  const comp = msg.payloadBruto?.comprovante as Record<string, any> | undefined;
+
+  if (comp) {
+    // Se o modelo de visão determinou que NÃO é um comprovante (ex: exame de sangue, receita, raio-X)
+    if (!comp.ehComprovante) {
+      return null;
+    }
+
+    let valorCentavos = typeof comp.valorCentavos === 'number' && comp.valorCentavos > 0
+      ? comp.valorCentavos
+      : undefined;
+
+    // Se o modelo confirmou que é comprovante bancário mas o valor na foto ficou ilegível,
+    // correlaciona com o valor da consulta passado pela clínica nas mensagens anteriores
+    if (!valorCentavos && mensagensAnteriores.length > 0) {
+      for (let j = mensagensAnteriores.length - 1; j >= 0; j--) {
+        const t = mensagensAnteriores[j].conteudo || '';
+        const mValor = t.match(/(?:r\$\s*|valor(?:\s*da\s*consulta)?\s*(?:é|e|de)?\s*:?\s*)(\d{2,4})(?:[,\.](\d{2}))?/i) ||
+                       t.match(/\b(\d{2,4}),(\d{2})\b/) ||
+                       t.match(/\b(\d{2,4})\s*reais\b/i);
+        if (mValor) {
+          const reais = parseInt(mValor[1].replace(/\./g, ''), 10);
+          const centavos = mValor[2] ? parseInt(mValor[2], 10) : 0;
+          valorCentavos = reais * 100 + centavos;
+          break;
+        }
+      }
+    }
+
+    // Fallback para valor padrão cadastrado do serviço fiscal
+    if (!valorCentavos && valorPadraoCentavos && valorPadraoCentavos > 0) {
+      valorCentavos = valorPadraoCentavos;
+    }
+
+    if (valorCentavos && valorCentavos > 0) {
+      const reais = Math.floor(valorCentavos / 100);
+      const centavos = valorCentavos % 100;
+      const valorFormatado = `${reais},${String(centavos).padStart(2, '0')}`;
       return {
-        valorCentavos: totalCentavos,
-        valorFormatado: `${reaisStr},${String(centavos).padStart(2, '0')}`,
-        trecho: matchValorPix[0]
+        valorCentavos,
+        valorFormatado,
+        trecho: `Comprovante bancário ${comp.tipo || 'Pix'} de R$ ${valorFormatado}`
       };
     }
+
+    return null;
   }
 
-  // 3. Imagem com payload de comprovante já analisado (via PaliGemma)
-  const comp = msg.payloadBruto?.comprovante as Record<string, any> | undefined;
-  if (comp && comp.ehComprovante && typeof comp.valorCentavos === 'number' && comp.valorCentavos > 0) {
-    const valorReais = (comp.valorCentavos / 100).toFixed(2).replace('.', ',');
-    return {
-      valorCentavos: comp.valorCentavos,
-      valorFormatado: valorReais,
-      trecho: `Comprovante bancário ${comp.tipo || 'Pix'} de R$ ${valorReais}`
-    };
-  }
-
-  // 4. Imagem ou documento enviado pelo paciente em resposta a pedido de PIX ou agendamento
-  const ehEnvioComprovantePaciente =
-    msg.direcao === 'recebida' && (
-      msg.tipo === 'imagem' ||
-      msg.tipo === 'documento' ||
-      /\b(?:segue|comprovante|pago|pix|transferencia|anexo)\b/i.test(texto)
-    );
-
-  if (ehEnvioComprovantePaciente && mensagensAnteriores.length > 0) {
+  // 5. Fallback para comprovantes recebidos do paciente ainda não processados pelo VLM
+  // Só considera candidato se houve prévio agendamento ou pedido de Pix pela clínica no chat
+  if (mensagensAnteriores.length > 0) {
     const houvePedidoPixOuConsulta = mensagensAnteriores.some(m =>
       m.direcao === 'enviada' && /\b(?:pix|comprovante|pagamento|consulta|confirmando|hor[aá]rio)\b/i.test(m.conteudo || '')
     );

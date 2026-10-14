@@ -9,6 +9,8 @@ import { parsearHorariosConfigurados, calcularProximoDisparoMs, type HorarioDisp
 import { varrerESolicitarAprovacao } from '../fluxos/varrer-e-solicitar-aprovacao.js';
 import { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidatos-nota-repositorio.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
+import type { PaligemmaComprovanteClient } from '../../io/nvidia/paligemma-comprovante-client.js';
+import type { EvolutionApiClient } from '../../io/evolution/evolution-api-client.js';
 
 export interface AgendadorFechamentoFiscalConfig {
   pool: pg.Pool;
@@ -17,6 +19,8 @@ export interface AgendadorFechamentoFiscalConfig {
   instanciaNome: string;
   horariosTexto?: string;
   ativo?: boolean;
+  comprovanteClient?: PaligemmaComprovanteClient;
+  evolutionClient?: EvolutionApiClient;
 }
 
 export class AgendadorFechamentoFiscal {
@@ -68,7 +72,9 @@ export class AgendadorFechamentoFiscal {
           const resultado = await varrerESolicitarAprovacao(med.id, {
             repositorio: this.repositorio,
             enviarMensagem: this.config.enviarMensagem,
-            instanciaNome: this.config.instanciaNome
+            instanciaNome: this.config.instanciaNome,
+            comprovanteClient: this.config.comprovanteClient,
+            evolutionClient: this.config.evolutionClient
           });
 
           if (resultado.ok && (resultado.status === 'candidato_encontrado_e_notificado' || resultado.status === 'candidato_encontrado_pendente_conexao_whatsapp')) {

@@ -48,6 +48,39 @@ export class EvolutionApiClient
     } catch { return { sucesso: false, erro: 'EVOLUTION_LEITURA_INDISPONIVEL' }; }
   }
 
+  async obterBase64MensagemMidia(
+    instancia: string,
+    mensagemId: string
+  ): Promise<{ base64?: string; mimetype?: string } | null> {
+    const url = `${this.baseUrl.replace(/\/$/, '')}/chat/getBase64FromMediaMessage/${encodeURIComponent(instancia)}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: this.apiKey
+        },
+        body: JSON.stringify({
+          message: {
+            key: {
+              id: mensagemId
+            }
+          },
+          convertToMp4: false
+        }),
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (!resp.ok) return null;
+      const dados = (await resp.json()) as any;
+      return {
+        base64: dados.base64,
+        mimetype: dados.mimetype
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async enviar(params: EnviarOtpParams): Promise<ResultadoEnvioOtp> {
     const texto = formatarMensagemOtp(params.codigo);
     const resultadoBotao = await this.enviarOtpComBotao(params.telefone, params.codigo, texto);

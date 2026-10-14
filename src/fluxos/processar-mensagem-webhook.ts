@@ -36,6 +36,9 @@ import {
 import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
 import type { GerenciadorConversaOnboarding } from '../agente-conversa/gerenciador-conversa-onboarding.js';
+import type { PaligemmaComprovanteClient } from '../io/nvidia/paligemma-comprovante-client.js';
+import type { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
+import { tentarAnalisarComprovanteMensagem } from './analisar-comprovante-mensagem.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
@@ -45,6 +48,8 @@ export interface ProcessarWebhookDeps {
   billingRepositorio?: BillingRepositorio;
   consultaCpfProvider?: ConsultaCpfProvider;
   iaService?: ExtratorIaService;
+  comprovanteClient?: PaligemmaComprovanteClient;
+  evolutionClient?: EvolutionApiClient;
   segredoConfigurado: string;
   pepper: string;
   instanciaOficialNome?: string;
@@ -208,6 +213,18 @@ export async function processarMensagemWebhook(
       conversa.pacienteId = paciente.id;
     }
   }
+  const comprovante = await tentarAnalisarComprovanteMensagem(
+    payload.instance,
+    payload.data.key.id,
+    tipo,
+    payload.data.key.fromMe,
+    payload.data,
+    { comprovanteClient: deps.comprovanteClient, evolutionClient: deps.evolutionClient }
+  );
+  if (comprovante) {
+    (payload.data as any).comprovante = comprovante;
+  }
+
   if (deps.repositorio.salvarMensagem) {
     await deps.repositorio.salvarMensagem({
       conversaId: conversa.id,

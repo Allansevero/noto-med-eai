@@ -733,4 +733,16 @@ export class PostgresCandidatosNotaRepositorio {
       client.release();
     }
   }
+
+  /**
+   * Salva o resultado da análise de visão computacional (PaliGemma/VLM) no payload_bruto da mensagem.
+   */
+  async salvarAnaliseComprovante(mensagemId: string, comprovante: Record<string, any>): Promise<void> {
+    await this.pool.query(
+      `update whatsapp_mensagens
+       set payload_bruto = jsonb_set(coalesce(payload_bruto, '{}'::jsonb), '{comprovante}', $1::jsonb)
+       where id = $2`,
+      [JSON.stringify(comprovante), mensagemId]
+    );
+  }
 }

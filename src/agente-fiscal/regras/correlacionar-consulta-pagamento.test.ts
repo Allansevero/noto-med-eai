@@ -6,7 +6,7 @@ import {
 } from './correlacionar-consulta-pagamento.js';
 
 describe('correlacionarConsultaPagamento', () => {
-  test('deve correlacionar agendamento prévio com pagamento por link posterior', () => {
+  test('deve correlacionar agendamento prévio com comprovante visual recebido do paciente', () => {
     const mensagens: MensagemContextoConversa[] = [
       {
         id: 'msg-1',
@@ -19,14 +19,21 @@ describe('correlacionarConsultaPagamento', () => {
         id: 'msg-2',
         direcao: 'recebida',
         tipo: 'texto',
-        conteudo: 'pode ser às 10h? vou pagar no cartão',
+        conteudo: 'pode ser às 10h? vou pagar no pix',
         criadoEm: '2026-10-09T22:07:00.000Z'
       },
       {
         id: 'msg-3',
-        direcao: 'enviada',
-        tipo: 'texto',
-        conteudo: 'https://link.infinitepay.io/clinica-recanto/VC1D-7FBXC2NecE-1600,00',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 160000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-10-10T15:52:05.000Z'
       }
     ];
@@ -42,31 +49,53 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(c.dataConsultaIso, '2026-10-13');
   });
 
-  test('deve correlacionar Pix enviado em texto com consulta do dia anterior', () => {
+  test('NUNCA gera candidato quando clínica ou secretária apenas envia valores em mensagem de texto', () => {
     const mensagens: MensagemContextoConversa[] = [
       {
         id: 'msg-1',
         direcao: 'enviada',
         tipo: 'texto',
-        conteudo: 'Olá, Carlos! Sua consulta está confirmada para o dia 08/10/2026.',
+        conteudo: 'Olá, Carlos! O valor da consulta com a Dra. Bruna é R$ 400,00.',
         criadoEm: '2026-10-07T10:00:00.000Z'
       },
       {
         id: 'msg-2',
         direcao: 'recebida',
         tipo: 'texto',
-        conteudo: 'Segue o comprovante do Pix no valor de R$ 350,00',
-        criadoEm: '2026-10-08T15:30:00.000Z'
+        conteudo: 'Perfeito, vou verificar o melhor horário.',
+        criadoEm: '2026-10-07T10:30:00.000Z'
       }
     ];
 
     const candidatos = correlacionarConsultaPagamento(mensagens, '51981936133');
-    assert.equal(candidatos.length, 1);
-    const c = candidatos[0];
-    assert.equal(c.pacienteNome, 'Carlos');
-    assert.equal(c.valorCentavos, 35000);
-    assert.equal(c.valorFormatado, '350,00');
-    assert.equal(c.dataConsulta, '08/10/2026');
+    assert.equal(candidatos.length, 0, 'Mensagem de texto com valores nunca deve gerar candidato a emissão');
+  });
+
+  test('NUNCA gera candidato quando paciente envia foto de exame ou receita (ehComprovante: false)', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-1',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá Carlos, sua consulta está agendada para 13/10/2026 às 14h. Valor: R$ 400,00.',
+        criadoEm: '2026-10-10T10:00:00.000Z'
+      },
+      {
+        id: 'msg-2',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: false
+          }
+        },
+        criadoEm: '2026-10-10T11:00:00.000Z'
+      }
+    ];
+
+    const candidatos = correlacionarConsultaPagamento(mensagens, '51981936133');
+    assert.equal(candidatos.length, 0, 'Foto de exame ou documento não-comprovante deve ser descartada');
   });
 
   test('deve usar o nome do cadastro do paciente caso não haja saudação no chat', () => {
@@ -81,8 +110,15 @@ describe('correlacionarConsultaPagamento', () => {
       {
         id: 'msg-2',
         direcao: 'recebida',
-        tipo: 'texto',
-        conteudo: 'Pago via Pix R$ 250,00',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 25000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-10-13T09:00:00.000Z'
       }
     ];
@@ -97,7 +133,7 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].dataConsulta, '14/10/2026');
   });
 
-  test('deve correlacionar imagem de comprovante após confirmação de consulta com valor no chat', () => {
+  test('deve correlacionar comprovante bancário legível sem valor mas com valor citado previamente no chat', () => {
     const mensagens: MensagemContextoConversa[] = [
       {
         id: 'msg-1',
@@ -111,6 +147,12 @@ describe('correlacionarConsultaPagamento', () => {
         direcao: 'recebida',
         tipo: 'imagem',
         conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-10-13T11:00:00.000Z'
       }
     ];
@@ -130,7 +172,7 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].dataConsulta, '13/10/2026');
   });
 
-  test('deve usar o valor padrão do serviço fiscal quando a imagem é enviada e o chat não cita valor', () => {
+  test('deve usar o valor padrão do serviço fiscal quando a imagem é comprovante válido e o chat não cita valor', () => {
     const mensagens: MensagemContextoConversa[] = [
       {
         id: 'msg-1',
@@ -144,6 +186,12 @@ describe('correlacionarConsultaPagamento', () => {
         direcao: 'recebida',
         tipo: 'imagem',
         conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-10-13T10:30:00.000Z'
       }
     ];
@@ -189,8 +237,15 @@ describe('correlacionarConsultaPagamento', () => {
       {
         id: 'msg-4',
         direcao: 'recebida',
-        tipo: 'texto',
-        conteudo: 'Comprovante Pix de R$ 400,00',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 40000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-09-16T15:00:00.000Z'
       }
     ];
@@ -220,6 +275,13 @@ describe('correlacionarConsultaPagamento', () => {
         direcao: 'recebida',
         tipo: 'imagem',
         conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 32000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2025-11-11T20:20:00.000Z'
       },
       {
@@ -264,7 +326,14 @@ describe('correlacionarConsultaPagamento', () => {
         id: 'msg-old-2',
         direcao: 'recebida',
         tipo: 'imagem',
-        conteudo: 'Bom dia, segue comprovante',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 32000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-08-20T10:31:00.000Z'
       },
       {
@@ -294,6 +363,13 @@ describe('correlacionarConsultaPagamento', () => {
         direcao: 'recebida',
         tipo: 'imagem',
         conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 32000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-10-13T20:30:59.000Z'
       }
     ];
@@ -324,8 +400,15 @@ describe('correlacionarConsultaPagamento', () => {
       {
         id: 'msg-pagamento-antigo',
         direcao: 'recebida',
-        tipo: 'texto',
-        conteudo: 'Comprovante Pix de R$ 500,00',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 50000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-07-02T10:00:00.000Z' // Pagamento antigo
       },
       {
@@ -338,8 +421,15 @@ describe('correlacionarConsultaPagamento', () => {
       {
         id: 'msg-pagamento-recente',
         direcao: 'recebida',
-        tipo: 'texto',
-        conteudo: 'Comprovante Pix de R$ 500,00',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 50000,
+            tipo: 'pix'
+          }
+        },
         criadoEm: '2026-10-13T10:00:00.000Z'
       }
     ];
@@ -362,4 +452,3 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].dataConsulta, '13/10/2026');
   });
 });
-
