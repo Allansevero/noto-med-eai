@@ -144,6 +144,8 @@ export function criarAppExpress() {
   const agendadorFechamentoFiscal = new AgendadorFechamentoFiscal({
     pool,
     pepper: config.appPepper,
+    chaveCriptografia: config.encryptionKey,
+    repositorio: candidatosNotaRepo,
     enviarMensagem: evolutionAssistantClient,
     instanciaNome: config.evolutionAssistantInstanceName,
     horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',

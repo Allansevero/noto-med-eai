@@ -45,11 +45,12 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
       where medico_id=$1 and estado='reservado'`,[medicoId,envio.sucesso?'enviado':'incerto']);
   }
   async processarResposta(entrada:{medicoId:string;texto:string;mensagemId:string;mensagemEm?:Date}):Promise<{tratada:boolean;completo:boolean}> {
-    if (this.modoCadastro === 'confirmacao') return {tratada:false,completo:false};
-    let resposta: EntradaComunicacaoNoto|undefined;
-    const resultado=await this.transacao(async client=>{
-      const medico=await this.medico(client,entrada.medicoId);
-      if(!medico)return {tratada:false,completo:false};
+    try {
+      if (this.modoCadastro === 'confirmacao') return {tratada:false,completo:false};
+      let resposta: EntradaComunicacaoNoto|undefined;
+      const resultado=await this.transacao(async client=>{
+        const medico=await this.medico(client,entrada.medicoId);
+        if(!medico)return {tratada:false,completo:false};
       const completo=dadosProfissionaisCompletos(medico);
       const pendencia=await client.query('select estado from dados_profissionais_pendencias where medico_id=$1 for update',[medico.id]);
       if(!pendencia.rows.length || pendencia.rows[0].estado==='concluido')return {tratada:false,completo};
@@ -81,6 +82,12 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
     // Geração e envio só depois do commit; a IA não escreve dados nem libera fila.
     if(resposta)await this.comunicar(resposta);
     return resultado;
+    } catch (err: any) {
+      if (err?.code === '42P01' || err?.message?.includes('does not exist')) {
+        return { tratada: false, completo: false };
+      }
+      throw err;
+    }
   }
   async retomar(medicoId:string):Promise<number> {
     const total=await this.transacao(async client=>{const medico=await this.medico(client,medicoId);return medico&&dadosProfissionaisCompletos(medico)?this.liberar(client,medico):0;});
@@ -108,9 +115,7 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
   }
   private async liberar(client:pg.PoolClient,medico:Medico):Promise<number> {
     const resultado=await client.query(`select s.id, s.xdesc_serv, s.datas_consulta_texto,
-      (select string_agg(to_char(a.data_hora,'DD/MM/YYYY'), ', ' order by a.data_hora)
-       from solicitacao_nota_agendamentos sa join agendamentos a on a.id=sa.agendamento_id
-       where sa.solicitacao_id=s.id and a.medico_id=s.medico_id and a.paciente_id=s.paciente_id) as datas_agendamentos
+      to_char(s.competencia_emissao, 'DD/MM/YYYY') as datas_agendamentos
       from solicitacoes_nota s where s.medico_id=$1 and (s.aguardando_dados_profissionais or s.aguardando_confirmacao_medico) and s.status='pendente' and s.tentativas=0
       and s.bloqueada_em is null and s.bloqueada_por_worker is null
       and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)
@@ -131,7 +136,6 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
     // esse impedimento: tentativas prévias e investigações não são reenfileiradas.
     await client.query(`update solicitacoes_nota set aguardando_confirmacao_medico=false, atualizado_em=now()
       where medico_id=$1 and aguardando_confirmacao_medico and status='pendente'`,[medico.id]);
-    await client.query(`update dados_profissionais_pendencias set estado=$2, atualizado_em=now() where medico_id=$1`,[medico.id,'concluido']);
     return liberadas;
   }
 }

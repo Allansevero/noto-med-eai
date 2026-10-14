@@ -285,14 +285,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       from agendamentos a
       where a.medico_id = $1
         and a.paciente_id = $2
-        and a.status in ('agendado', 'confirmado', 'realizado')
-        and not exists (
-          select 1
-          from solicitacao_nota_agendamentos sna
-          join solicitacoes_nota sn on sn.id = sna.solicitacao_id
-          where sna.agendamento_id = a.id
-            and sn.status not in ('erro', 'excecao')
-        )
+        and a.status in ('agendado', 'confirmado')
       order by a.data_hora asc
     `;
     const { rows } = await this.pool.query(sql, [medicoId, pacienteId]);
@@ -353,19 +346,34 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     };
   }
 
-  /** Em telefones compartilhados, só a conversa previamente confirmada pode resolver o vínculo. */
-  async buscarMedicoAssistentePorTelefone(telefone:string,instancia:string):Promise<MedicoDadosRegistro|null>{
-    const variantes=gerarVariantesTelefoneBrasileiro(telefone);if(!variantes.length)return null;
-    const {rows}=await this.pool.query(`select m.id,m.nome_completo,m.especialidade,m.crm,m.rqe,u.telefone,
-      coalesce(msf.ctrib_nac,'') as ctrib_nac_padrao,
-      exists(select 1 from noto_assistente_turnos t where t.medico_id=m.id and t.instancia=$2 and t.confirmadas>0) as conversa_vinculada
-      from medicos m join usuarios u on u.id=m.usuario_id
-      left join lateral(select ctrib_nac from medico_servicos_fiscais where medico_id=m.id and padrao=true and ativo=true order by id limit 1) msf on true
-      where u.ativo=true and regexp_replace(u.telefone,'\\D','','g')=any($1::text[])`,[variantes,instancia]);
-    const vinculados=rows.filter(r=>r.conversa_vinculada);
-    const medico=rows.length===1?rows[0]:vinculados.length===1?vinculados[0]:null;
-    if(!medico)return null;
-    return {id:medico.id,nomeCompleto:medico.nome_completo,especialidade:medico.especialidade,crm:medico.crm,rqe:medico.rqe,telefone:medico.telefone,ctribNacPadrao:medico.ctrib_nac_padrao};
+  /** Busca médico vinculado ao telefone do usuário na instância assistente */
+  async buscarMedicoAssistentePorTelefone(telefone: string, _instancia: string): Promise<MedicoDadosRegistro | null> {
+    const variantes = gerarVariantesTelefoneBrasileiro(telefone);
+    if (!variantes.length) return null;
+    const { rows } = await this.pool.query(`
+      select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe, u.telefone,
+             coalesce(msf.ctrib_nac, '') as ctrib_nac_padrao
+      from medicos m
+      join usuarios u on u.id = m.usuario_id
+      left join lateral (
+        select ctrib_nac from medico_servicos_fiscais
+        where medico_id = m.id and padrao = true and ativo = true
+        order by id limit 1
+      ) msf on true
+      where u.ativo = true and regexp_replace(u.telefone, '\\D', '', 'g') = any($1::text[])
+      limit 2
+    `, [variantes]);
+    if (rows.length !== 1) return null;
+    const medico = rows[0];
+    return {
+      id: medico.id,
+      nomeCompleto: medico.nome_completo,
+      especialidade: medico.especialidade,
+      crm: medico.crm,
+      rqe: medico.rqe,
+      telefone: medico.telefone,
+      ctribNacPadrao: medico.ctrib_nac_padrao
+    };
   }
 
   async criarSolicitacaoNota(params: {
@@ -414,8 +422,8 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       if (params.agendamentoIds) {
         for (const agendamentoId of params.agendamentoIds) {
           await client.query(
-            `insert into solicitacao_nota_agendamentos (solicitacao_id, agendamento_id) values ($1, $2)`,
-            [solicitacaoId, agendamentoId]
+            `update agendamentos set status = 'realizado', atualizado_em = now() where id = $1`,
+            [agendamentoId]
           );
         }
       }

@@ -9,9 +9,10 @@ export async function carregarEvidenciasEmissao(pool: pg.Pool, item: Solicitacao
     p.cod_municipio_ibge as municipio, p.serie_dps as serie, p.xml_nota_referencia_url as referencia,
     p.dados_reforma_tributaria as referencia_fiscal,
     s.competencia_emissao::text as competencia,
-    (select coalesce(jsonb_agg(distinct to_char(a.data_hora at time zone 'America/Sao_Paulo', 'YYYY-MM-DD')), '[]'::jsonb)
-      from solicitacao_nota_agendamentos sa join agendamentos a on a.id = sa.agendamento_id
-      where sa.solicitacao_id = s.id and a.medico_id = s.medico_id and a.paciente_id = s.paciente_id) as datas,
+    case
+      when s.competencia_emissao is not null then jsonb_build_array(to_char(s.competencia_emissao, 'YYYY-MM-DD'))
+      else '[]'::jsonb
+    end as datas,
     (select coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'ctribNac', f.ctrib_nac,
       'cnbs', f.cnbs, 'ctribMun', f.ctrib_mun, 'politica', f.parametros_emissao)), '[]'::jsonb)
       from medico_servicos_fiscais f where f.medico_id = s.medico_id and f.ativo

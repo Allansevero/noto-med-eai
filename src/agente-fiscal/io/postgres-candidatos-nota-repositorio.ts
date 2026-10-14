@@ -202,19 +202,7 @@ export class PostgresCandidatosNotaRepositorio {
       atualizadoEm: new Date().toISOString()
     };
 
-    // 1. Gravar em emissoes_pendentes_confirmacoes com estado aceito pelo CHECK constraint
-    await this.pool.query(
-      `insert into emissoes_pendentes_confirmacoes (
-        medico_id, estado, capturada_em, atualizado_em, mensagem_confirmacao_id
-      ) values ($1, 'enviado', now(), now(), $2)
-      on conflict (medico_id) do update set
-        estado = 'enviado',
-        atualizado_em = now(),
-        mensagem_confirmacao_id = excluded.mensagem_confirmacao_id`,
-      [medicoId, candidato.origemEvidencia.mensagemPagamentoId]
-    );
-
-    // 2. Gravar o payload rico do candidato em noto_assistente_sessoes (coluna estado é jsonb)
+    // 1. Gravar o payload rico do candidato em noto_assistente_sessoes (coluna estado é jsonb)
     await this.pool.query(
       `insert into noto_assistente_sessoes (medico_id, versao, estado, atualizado_em)
        values ($1, 1, $2::jsonb, now())
@@ -525,12 +513,6 @@ export class PostgresCandidatosNotaRepositorio {
       }
 
       // 7. Atualizar estado na memória contextual
-      await client.query(`
-        update emissoes_pendentes_confirmacoes
-        set estado = 'confirmado', confirmado_em = now(), atualizado_em = now()
-        where medico_id = $1
-      `, [medicoId]);
-
       await client.query(`
         update noto_assistente_sessoes
         set estado = $2::jsonb, atualizado_em = now()

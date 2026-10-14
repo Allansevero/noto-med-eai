@@ -15,6 +15,8 @@ import type { EvolutionApiClient } from '../../io/evolution/evolution-api-client
 export interface AgendadorFechamentoFiscalConfig {
   pool: pg.Pool;
   pepper: string;
+  chaveCriptografia?: string;
+  repositorio?: PostgresCandidatosNotaRepositorio;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaNome: string;
   horariosTexto?: string;
@@ -31,7 +33,7 @@ export class AgendadorFechamentoFiscal {
 
   constructor(private readonly config: AgendadorFechamentoFiscalConfig) {
     this.horarios = parsearHorariosConfigurados(config.horariosTexto || '12:00,18:00');
-    this.repositorio = new PostgresCandidatosNotaRepositorio(config.pool, config.pepper);
+    this.repositorio = config.repositorio || new PostgresCandidatosNotaRepositorio(config.pool, config.pepper, config.chaveCriptografia);
   }
 
   iniciar(): void {
