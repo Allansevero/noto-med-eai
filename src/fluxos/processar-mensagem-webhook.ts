@@ -36,7 +36,6 @@ import {
 } from '../whatsapp/payload-historico-webhook-schema.js';
 import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
-import type { GerenciadorConversaOnboarding } from '../agente-conversa/gerenciador-conversa-onboarding.js';
 import type { PaligemmaComprovanteClient } from '../io/nvidia/paligemma-comprovante-client.js';
 import type { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
 import { tentarAnalisarComprovanteMensagem } from './analisar-comprovante-mensagem.js';
@@ -58,9 +57,6 @@ export interface ProcessarWebhookDeps {
   enviarMensagemAssistente?: EnviarMensagemPaciente;
   modoCadastro?: 'conversacional' | 'confirmacao';
   processarComandoFiscal?: (medicoId: string, texto: string, telefone: string) => Promise<{ tratado: boolean; detalhe?: any }>;
-  processarConfirmacaoCadastro?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<{processado: boolean}>;
-  processarConversaAssistente?: (entrada: import('../agente-conversa/postgres-assistente.js').EntradaTurno) => Promise<unknown>;
-  gerenciadorAssistente?: GerenciadorConversaOnboarding;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
 }
 
@@ -129,72 +125,38 @@ export async function processarMensagemWebhook(
     if (ehMensagemAutomatica(texto)) {
       return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
     }
-    if(deps.processarConversaAssistente || deps.modoCadastro === 'confirmacao'){
-      if(!deps.segredoConfigurado)return {ok:false,motivo:'autenticacao_invalida'};
-      const timestamp = payload.data.messageTimestamp === undefined ? null : Number(payload.data.messageTimestamp);
-      if (texto.length > 2000 || (timestamp !== null && (!Number.isFinite(timestamp) || timestamp < Date.now()/1000-86400 || timestamp > Date.now()/1000+60))) {
-        return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
-      }
+    const medico = deps.repositorio.buscarMedicoAssistentePorTelefone
+      ? await deps.repositorio.buscarMedicoAssistentePorTelefone(telefone, payload.instance)
+      : await deps.repositorio.buscarMedicoPorTelefone(telefone);
+    if (!medico) {
+      return { ok: true, acao: 'descartada', motivoDescarte: 'medico_nao_identificado' };
     }
-    const medico=(deps.processarConversaAssistente || deps.processarConfirmacaoCadastro)&&deps.repositorio.buscarMedicoAssistentePorTelefone
-      ?await deps.repositorio.buscarMedicoAssistentePorTelefone(telefone,payload.instance)
-      :await deps.repositorio.buscarMedicoPorTelefone(telefone);
-    if(medico&&deps.segredoConfigurado){
-      if(deps.processarComandoFiscal){
+    if (deps.segredoConfigurado) {
+      if (deps.processarComandoFiscal) {
         const cmdFiscal = await deps.processarComandoFiscal(medico.id, texto, telefone);
-        if(cmdFiscal.tratado) return { ok: true, acao: 'comando_fiscal', detalhe: cmdFiscal.detalhe };
+        if (cmdFiscal.tratado) return { ok: true, acao: 'comando_fiscal', detalhe: cmdFiscal.detalhe };
       }
-      if(deps.modoCadastro !== 'confirmacao' && !deps.processarConversaAssistente&&deps.dadosProfissionais){
-        const resposta=await deps.dadosProfissionais.processarResposta({medicoId:medico.id,texto,mensagemId:payload.data.key.id});
-        if(resposta.tratada)return {ok:true,acao:'resposta_perfil_medico',detalhe:resposta};
+      if (deps.dadosProfissionais) {
+        const resposta = await deps.dadosProfissionais.processarResposta({ medicoId: medico.id, texto, mensagemId: payload.data.key.id });
+        if (resposta.tratada) return { ok: true, acao: 'resposta_perfil_medico', detalhe: resposta };
       }
       // Resposta explícita à data de uma nota, sem confundir perguntas ou período de onboarding.
-      if(/^(?:consulta (?:de|em) )?\d{1,2}\/\d{1,2}\/\d{4}/i.test(texto.trim())&&!texto.includes('?')&&
-        await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id)){
-        const resposta=await processarRespostaDataConsulta(telefone,texto,{repositorio:deps.repositorio,dadosProfissionais:deps.dadosProfissionais,
-          enviarMensagem:deps.enviarMensagemPaciente,comunicadorNoto:deps.comunicadorNoto,instanciaOficialNome:deps.instanciaAssistenteNome,medicoIdentificado:medico,mensagemId:payload.data.key.id});
-        if(resposta.ok)return {ok:true,acao:'resposta_data_consulta',detalhe:resposta};
-        if(resposta.motivo==='resposta_ja_processada')return {ok:true,acao:'descartada',motivoDescarte:'mensagem_duplicada'};
+      if (/^(?:consulta (?:de|em) )?\d{1,2}\/\d{1,2}\/\d{4}/i.test(texto.trim()) && !texto.includes('?') &&
+        await deps.repositorio.buscarSolicitacaoAguardandoData(medico.id)) {
+        const resposta = await processarRespostaDataConsulta(telefone, texto, {
+          repositorio: deps.repositorio,
+          dadosProfissionais: deps.dadosProfissionais,
+          enviarMensagem: deps.enviarMensagemPaciente,
+          comunicadorNoto: deps.comunicadorNoto,
+          instanciaOficialNome: deps.instanciaAssistenteNome,
+          medicoIdentificado: medico,
+          mensagemId: payload.data.key.id
+        });
+        if (resposta.ok) return { ok: true, acao: 'resposta_data_consulta', detalhe: resposta };
+        if (resposta.motivo === 'resposta_ja_processada') return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_duplicada' };
       }
     }
-    if (medico && deps.modoCadastro === 'confirmacao') {
-      const detalhe = await deps.processarConfirmacaoCadastro?.({medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto, contatoTelefone: telefone, chaveMensagem: {id: payload.data.key.id, remoteJid: jidPrincipal, fromMe: false, ...(jidAlternativo ? {remoteJidAlt: jidAlternativo} : {})}});
-      return detalhe?.processado ? {ok:true,acao:'conversa_assistente',detalhe} : {ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido'};
-    }
-    if (medico && deps.processarConversaAssistente) {
-      if (!deps.segredoConfigurado) return { ok: false, motivo: 'autenticacao_invalida' };
-      return { ok: true, acao: 'conversa_assistente', detalhe: await deps.processarConversaAssistente({
-        medicoId: medico.id, instancia: payload.instance, mensagemId: payload.data.key.id, texto,
-        contatoTelefone: telefone, chaveMensagem: { id: payload.data.key.id, remoteJid: jidPrincipal, fromMe: false, ...(jidAlternativo ? { remoteJidAlt: jidAlternativo } : {}) }
-      }) };
-    }
-    if (medico && deps.gerenciadorAssistente) {
-      const resp = await deps.gerenciadorAssistente.processarMensagemMedico({
-        medicoId: medico.id,
-        textoRecebido: texto
-      });
-      let mensagensConfirmadas = 0;
-      if (deps.enviarMensagemAssistente) {
-        for (const msg of resp.mensagensEnviar) {
-          const envio = await deps.enviarMensagemAssistente.enviarTexto({
-            instanciaNome: deps.instanciaAssistenteNome,
-            contatoTelefone: telefone,
-            texto: msg
-          });
-          if (!envio.sucesso) {
-            const statusHttp = /^HTTP (\d{3})\b/.exec(envio.erro || '')?.[1];
-            console.warn('[Onboarding Assistente]', { etapa: 'resposta', estado: 'envio_nao_confirmado',
-              mensagensConfirmadas, ...(statusHttp ? { statusHttp: Number(statusHttp) } : {}) });
-            return { ok: true, acao: 'conversa_assistente', detalhe: { ...resp,
-              envio: { sucesso: false, mensagensConfirmadas } } };
-          }
-          mensagensConfirmadas++;
-        }
-      }
-      return { ok: true, acao: 'conversa_assistente', detalhe: { ...resp,
-        envio: { sucesso: mensagensConfirmadas === resp.mensagensEnviar.length, mensagensConfirmadas } } };
-    }
-    return { ok: true, acao: 'descartada', motivoDescarte:'medico_nao_identificado' };
+    return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
   }
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);

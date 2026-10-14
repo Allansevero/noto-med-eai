@@ -9,7 +9,7 @@ test('composição de IA usa NVIDIA em todos os fluxos mesmo quando há chave Gr
   const servicos = modulo.criarServicosIa(cfg);
   const respostas = [{ mensagens: ['Como posso ajudar?'] }, { valor_reais: 20 },
     { acao: 'escalar', causa: 'x', justificativa: 'x', acaoNecessaria: 'x' },
-    { ferramentaId: null }, { nome: 0, cpf: null, email: null, telefone: 1 }];
+    { nome: 0, cpf: null, email: null, telefone: 1 }];
   let chamadas = 0;
   t.mock.method(globalThis, 'fetch', async (url: unknown, init?: RequestInit) => {
     assert.equal(url, 'https://integrate.api.nvidia.com/v1/chat/completions');
@@ -21,9 +21,8 @@ test('composição de IA usa NVIDIA em todos os fluxos mesmo quando há chave Gr
     quantidadeNotasParadas: 0, mensagemRecebida: 'Oi', dados: {}, historico: [] }), ['Como posso ajudar?']);
   assert.equal((await servicos.extrator.extrairDados('texto')).valorConsultaCentavos, 2000);
   assert.equal((await servicos.decisorFiscal.decidir({})).acao, 'escalar');
-  assert.equal(await servicos.decisorTribemd.decidir({ ferramentas: [], passo: 1, pacientes: 0, agendamentos: 0 }), null);
   assert.deepEqual(await servicos.mapeadorPlanilhas!.mapear(['Nome', 'Telefone']), { nome: 0, cpf: null, email: null, telefone: 1 });
-  assert.equal(chamadas, 5);
+  assert.equal(chamadas, 4);
 });
 
 test('composição não usa Groq quando NVIDIA está ausente', async t => {

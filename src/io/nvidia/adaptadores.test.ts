@@ -108,52 +108,11 @@ test('NVIDIA preserva ferramentas fiscais restritas e não transforma erros em a
   });
 });
 
-test('NVIDIA recebe apenas imagens dos controles permitidos no TribemD', async t => {
-  const { NvidiaDecisorTribemd } = await adaptadores();
-  let body: any;
-  t.mock.method(globalThis, 'fetch', async (url: unknown, init?: RequestInit) => {
-    assert.equal(url, 'https://integrate.api.nvidia.com/v1/chat/completions');
-    body = JSON.parse(String(init?.body)); return resposta({ ferramentaId: 'agenda' });
-  });
-  const decisor = new NvidiaDecisorTribemd('chave', 'moonshotai/kimi-k3');
-  assert.equal(await decisor.decidir({ ferramentas: [{ id: 'agenda', acao: 'abrir_agenda' }],
-    passo: 1, pacientes: 0, agendamentos: 0,
-    visao: [{ ferramentaId: 'agenda', imagemBase64: 'controle' }, { ferramentaId: 'proibida', imagemBase64: 'NAO-ENVIAR' }]
-  }), 'agenda');
-  assert.equal(body.model, 'moonshotai/kimi-k3');
-  assert.equal(body.messages[1].content[2].image_url.url, 'data:image/png;base64,controle');
-  assert.ok(!JSON.stringify(body).includes('NAO-ENVIAR'));
-});
-
 test('chave NVIDIA ausente impede chamadas externas', async t => {
-  const { NvidiaGeradorMensagemNoto, NvidiaApiClient, NvidiaDecisorFiscal, NvidiaDecisorTribemd } = await adaptadores();
+  const { NvidiaGeradorMensagemNoto, NvidiaApiClient, NvidiaDecisorFiscal } = await adaptadores();
   let chamadas = 0; t.mock.method(globalThis, 'fetch', async () => { chamadas++; return resposta({}); });
   await assert.rejects(new NvidiaGeradorMensagemNoto(' ', 'modelo').gerar(contexto));
   assert.deepEqual(await new NvidiaApiClient({ apiKey: '' }).extrairDados('texto'), {});
   await assert.rejects(new NvidiaDecisorFiscal('', 'modelo').decidir({}));
-  await assert.rejects(new NvidiaDecisorTribemd('', 'modelo').decidir({ ferramentas: [], passo: 1, pacientes: 0, agendamentos: 0 }));
   assert.equal(chamadas, 0);
-});
-
-test('Assistente gera apresentação com o guia sem enviar nome provisório à NVIDIA', async t => {
-  const { NvidiaGeradorMensagemNoto } = await adaptadores();
-  const { GerenciadorConversaOnboarding } = await import('../../agente-conversa/gerenciador-conversa-onboarding.js');
-  let body: any;
-  t.mock.method(globalThis, 'fetch', async (_url: unknown, init?: RequestInit) => {
-    body = JSON.parse(String(init?.body));
-    return resposta({ mensagens: ['Oi! Sou o Noto. Como é seu nome completo?'] });
-  });
-  const gerenciador = new GerenciadorConversaOnboarding({
-    async buscarDadosMedicoOnline() { assert.fail('cadastro provisório não autoriza busca'); },
-    async salvarEstadoOnboarding() {}
-  } as any, new NvidiaGeradorMensagemNoto('chave-teste', 'modelo'));
-  const resultado = await gerenciador.iniciarAoConectar('med-1', 'médico x');
-  assert.deepEqual(resultado.mensagensEnviar, ['Oi! Sou o Noto. Como é seu nome completo?']);
-  const guia = await readFile(new URL('../../../docs/prompts/noto-conversa.md', import.meta.url), 'utf8');
-  assert.ok(body.messages[0].content.includes(guia));
-  assert.match(body.messages[0].content, /ONBOARDING DO NOTO ASSISTENTE/);
-  const contexto = JSON.parse(body.messages[1].content);
-  assert.equal(contexto.medico.nome, null);
-  assert.equal(contexto.dados.objetivo, 'apresentar_e_pedir_nome');
-  assert.equal(body.messages[1].content.includes('médico x'), false);
 });

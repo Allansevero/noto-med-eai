@@ -1,6 +1,3 @@
-import { assistenteConectado } from './cadastro/prontidao-evolution.js';
-import { ConfirmadorCadastro } from './cadastro/confirmador-cadastro.js';
-import { NvidiaDecisorCadastro } from './cadastro/nvidia-decisor-cadastro.js';
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
@@ -67,17 +64,9 @@ import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-what
 import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
 import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
 import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
-import { criarRouterTribemdDesenvolvedor } from './desenvolvedor/tribemd-router.js';
-import { NavegadorTribemd } from './desenvolvedor/tribemd-navegador.js';
 import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
-import { CfmBuscarMedicoOnlineProvider } from './medico/io/buscar-medico-online.js';
-import { FerramentasAssistenteNoto } from './agente-conversa/ferramentas-assistente-noto.js';
-import { PostgresAssistente } from './agente-conversa/postgres-assistente.js';
-import { AgenteAssistente } from './agente-conversa/agente-assistente.js';
-import { criarDisparadorAssistente } from './agente-conversa/iniciar-assistente-conectado.js';
-import { GerenciadorConversaOnboarding } from './agente-conversa/gerenciador-conversa-onboarding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -111,22 +100,7 @@ export function criarAppExpress() {
     config.nvidiaApiKey || '',
     'https://ai.api.nvidia.com/v1/vlm/google/paligemma'
   );
-  const buscarMedicoOnline = new CfmBuscarMedicoOnlineProvider();
-  const ferramentasAssistente = new FerramentasAssistenteNoto(
-    pool,
-    buscarMedicoOnline,
-    paligemmaClient,
-    evolutionAssistantClient
-  );
   const ia = criarServicosIa(config);
-  const gerenciadorOnboarding = new GerenciadorConversaOnboarding(ferramentasAssistente, ia.geradorMensagem);
-  const memoriaAssistente = new PostgresAssistente(pool);
-  const agenteAssistente = new AgenteAssistente(memoriaAssistente, ia.decisorAssistente, ia.geradorMensagem,
-    evolutionAssistantClient, config.evolutionAssistantInstanceName, evolutionAssistantClient, config.notoCadastroModo);
-  // Apresentação e questionários conversacionais foram substituídos pela revisão visual no painel web.
-  const dispararAssistente = (_medicoId: string) => {
-    // Desativado: o agente fiscal agora cuida da comunicação com o médico de forma autônoma.
-  };
   const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
   const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
   const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo, config.notoCadastroModo);
@@ -148,10 +122,6 @@ export function criarAppExpress() {
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
     }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada);
-  const confirmadorCadastro = new ConfirmadorCadastro(cadastroCertificado.repo,
-    new NvidiaDecisorCadastro(config.nvidiaApiKey || '', config.nvidiaModel), ia.geradorMensagem,
-    evolutionAssistantClient, config.evolutionAssistantInstanceName, () => cadastroCertificado.recuperar(), evolutionAssistantClient,
-    () => assistenteConectado({url:config.evolutionAssistantUrl,chave:config.evolutionAssistantApiKey,instancia:config.evolutionAssistantInstanceName,instanciaOficial:config.evolutionOfficialInstanceName}));
   if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
       // Enriquecimento automático de dados (Google/CFM) sem envio de perguntas no WhatsApp.
@@ -195,6 +165,26 @@ export function criarAppExpress() {
       pepper: config.appPepper
     });
 
+  const dispararOnboardingFiscal = (medicoId: string) => {
+    void (async () => {
+      const res = await pool.query(
+        "SELECT nome_personalizado FROM whatsapp_instancias WHERE medico_id = $1 AND oficial = false AND status = 'conectado' LIMIT 1",
+        [medicoId]
+      );
+      const nomeInstancia = res.rows[0]?.nome_personalizado || '';
+      await iniciarOnboardingPosConexao({
+        medicoId,
+        nomeInstancia,
+        repositorio: candidatosNotaRepo,
+        enviarMensagemAssistente: evolutionAssistantClient,
+        instanciaAssistenteNome: config.evolutionAssistantInstanceName,
+        sincronizarHistorico: sincronizarHistoricoInstancia,
+        comprovanteClient: paligemmaClient,
+        evolutionClient
+      });
+    })().catch(err => console.error('[Onboarding Fiscal]', err));
+  };
+
   // Healthcheck para o Easypanel
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -208,18 +198,7 @@ export function criarAppExpress() {
     ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
     evolution: new EvolutionColetorClient(config.evolutionApiUrl, config.evolutionGlobalApiKey)
   }));
-  app.use('/api/desenvolvedor/tribemd', criarRouterTribemdDesenvolvedor({
-    ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
-    configurado: Boolean(config.nvidiaApiKey), decisor: ia.decisorTribemd,
-    criarNavegador: signal => NavegadorTribemd.criar(config.chromiumExecutablePath || '/usr/bin/chromium-browser', signal)
-  }));
   if (config.desenvolvedorFiscalAtivo) {
-    app.get('/desenvolvedor/tribemd', (_req, res) => {
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('Referrer-Policy', 'no-referrer');
-      res.sendFile(join(__dirname, 'ui', 'desenvolvedor-tribemd.html'));
-    });
     app.get('/desenvolvedor/whatsapp', (_req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Frame-Options', 'DENY');
@@ -243,7 +222,7 @@ export function criarAppExpress() {
     autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
     consultar: medicoId => consultarStatusInstanciaWhatsapp(pool, {
       medicoId, evolutionUrl: config.evolutionApiUrl, evolutionApiKey: config.evolutionGlobalApiKey,
-      aoConectar: dispararAssistente
+      aoConectar: dispararOnboardingFiscal
     })
   }));
 
@@ -373,7 +352,7 @@ export function criarAppExpress() {
           medicoId,
           evolutionUrl: config.evolutionApiUrl,
           evolutionApiKey: config.evolutionGlobalApiKey,
-          aoConectar: dispararAssistente
+          aoConectar: dispararOnboardingFiscal
         });
         if (conexao.ok && conexao.conectado) {
           status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
@@ -680,7 +659,7 @@ export function criarAppExpress() {
         evolutionApiKey: config.evolutionGlobalApiKey,
         appWebhookUrl: appUrl,
         webhookSecret: config.evolutionWebhookSecret,
-        aoConectar: dispararAssistente
+        aoConectar: dispararOnboardingFiscal
       });
 
       if (resultado.diagnostico) {
@@ -707,7 +686,7 @@ export function criarAppExpress() {
         medicoId,
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey,
-        aoConectar: dispararAssistente
+        aoConectar: dispararOnboardingFiscal
       });
 
       return res.json({ ...resultado, medicoId });
@@ -764,9 +743,6 @@ export function criarAppExpress() {
             instanciaNome: config.evolutionAssistantInstanceName
           });
         },
-        processarConfirmacaoCadastro: undefined,
-        gerenciadorAssistente: undefined,
-        processarConversaAssistente: undefined,
         async aoAtualizarConexao(evento) {
           if (
             evento.instancia === config.evolutionOfficialInstanceName ||

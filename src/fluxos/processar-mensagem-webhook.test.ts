@@ -539,21 +539,19 @@ describe('processarMensagemWebhook', () => {
       ctribNacPadrao: '041601'
     };
 
-    const mensagensEnviadas: string[] = [];
-    const enviadorAssistente = {
-      enviarTexto: async (p: any) => {
-        mensagensEnviadas.push(p.texto);
-        return { sucesso: true };
-      }
+  it('deve repassar comando do médico para processarComandoFiscal', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.medico = {
+      id: 'medico-fiscal-1',
+      telefone: '5551993527271',
+      nomeCompleto: 'Dr. Allan',
+      especialidade: 'Cardiologia',
+      crm: '12345/SP',
+      rqe: null,
+      ctribNacPadrao: '041601'
     };
 
-    const gerenciadorMock = {
-      processarMensagemMedico: async () => ({
-        novoEstado: { etapa: 'confirmacao_crm_rqe' as const },
-        mensagensEnviar: ['Localizei seus dados: CRM 12345/SP. Está correto?']
-      })
-    };
-
+    let comandoRecebido: { medicoId: string; texto: string; telefone: string } | null = null;
     const payload = {
       event: 'messages.upsert',
       instance: 'notomed_assistente',
@@ -563,24 +561,29 @@ describe('processarMensagemWebhook', () => {
           fromMe: false,
           id: 'MSG-ASSIST-1'
         },
-        message: { conversation: 'Allan Severo' }
+        message: { conversation: 'SIM' }
       }
     };
 
     const deps = {
       ...criarDeps(repo),
       instanciaAssistenteNome: 'notomed_assistente',
-      gerenciadorAssistente: gerenciadorMock as any,
-      enviarMensagemAssistente: enviadorAssistente as any
+      processarComandoFiscal: async (medicoId: string, texto: string, telefone: string) => {
+        comandoRecebido = { medicoId, texto, telefone };
+        return { tratado: true, detalhe: { acao: 'aprovado' } };
+      }
     };
 
     const res = await processarMensagemWebhook(payload, segredo, deps);
     assert.strictEqual(res.ok, true);
     if (res.ok) {
-      assert.strictEqual(res.acao, 'conversa_assistente');
+      assert.strictEqual(res.acao, 'comando_fiscal');
     }
-    assert.strictEqual(mensagensEnviadas.length, 1);
-    assert.ok(mensagensEnviadas[0].includes('Localizei seus dados: CRM 12345/SP'));
+    assert.deepStrictEqual(comandoRecebido, {
+      medicoId: 'medico-fiscal-1',
+      texto: 'SIM',
+      telefone: '5551993527271'
+    });
   });
 
   it('deve descartar mensagens enviadas pelo próprio container do Noto Assistente (fromMe: true)', async () => {
@@ -611,66 +614,34 @@ describe('processarMensagemWebhook', () => {
     }
   });
 
-  it('registra falha de resposta do assistente e interrompe a sequência de mensagens', async () => {
-  const repo = new AtendimentoRepositorioMemoria();
-  repo.medico = { id: 'med-assist-1', telefone: '5551993527271', nomeCompleto: 'Roberto Santos',
-    especialidade: null, crm: null, rqe: null, ctribNacPadrao: '041601' };
-  let envios = 0;
-  const resultado = await processarMensagemWebhook({
-    event: 'messages.upsert', instance: 'notomed_assistente', data: {
-      key: { remoteJid: '5551993527271@s.whatsapp.net', fromMe: false, id: 'assist-falha' },
-      message: { conversation: 'Roberto Santos' }
+  it('descarta mensagem desconhecida no Noto Assistente sem travar', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    repo.medico = {
+      id: 'med-assist-1',
+      telefone: '5551993527271',
+      nomeCompleto: 'Roberto Santos',
+      especialidade: null,
+      crm: null,
+      rqe: null,
+      ctribNacPadrao: '041601'
+    };
+    const payload = {
+      event: 'messages.upsert',
+      instance: 'notomed_assistente',
+      data: {
+        key: { remoteJid: '5551993527271@s.whatsapp.net', fromMe: false, id: 'assist-falha' },
+        message: { conversation: 'Conversa genérica' }
+      }
+    };
+    const res = await processarMensagemWebhook(payload, segredo, {
+      ...criarDeps(repo),
+      instanciaAssistenteNome: 'notomed_assistente'
+    });
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.acao, 'descartada');
+      assert.strictEqual(res.motivoDescarte, 'gatilho_nao_reconhecido');
     }
-  }, segredo, { ...criarDeps(repo), instanciaAssistenteNome: 'notomed_assistente',
-    gerenciadorAssistente: { processarMensagemMedico: async () => ({
-      novoEstado: { etapa: 'confirmacao_crm_rqe' }, mensagensEnviar: ['Primeira resposta', 'Segunda resposta']
-    }) } as any,
-    enviarMensagemAssistente: { enviarTexto: async () => {
-      envios++; return { sucesso: false, erro: 'HTTP 401: chave de teste rejeitada' };
-    }}
   });
-  assert.equal(resultado.ok, true);
-  if (resultado.ok) assert.deepEqual(resultado.detalhe.envio, { sucesso: false, mensagensConfirmadas: 0 });
-  assert.equal(envios, 1);
 });
-
-  it('encaminha turno contextual uma vez; descarta grupos, replay antigo e falta de segredo',async()=>{
-    const repo=new AtendimentoRepositorioMemoria();
-    repo.medico={id:'med-assist-1',telefone:'5551993527271',nomeCompleto:'Médico X',especialidade:null,crm:null,rqe:null,ctribNacPadrao:'041601'};
-    const entradas:unknown[]=[];
-    const deps={...criarDeps(repo),instanciaAssistenteNome:'notomed_assistente',processarConversaAssistente:async(e:unknown)=>{entradas.push(e);return {estado:'registrado'};},
-      gerenciadorAssistente:{processarMensagemMedico:async()=>{throw Error('não usar legado');}} as any,
-      enviarMensagemAssistente:{enviarTexto:async()=>{throw Error('agente é dono do envio');}}};
-    const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'contexto-1'},message:{conversation:'Por que CRM?'}}};
-    assert.equal((await processarMensagemWebhook(payload,segredo,deps)).ok,true);
-    assert.deepEqual(entradas,[{medicoId:'med-assist-1',instancia:'notomed_assistente',mensagemId:'contexto-1',texto:'Por que CRM?',contatoTelefone:'5551993527271',chaveMensagem:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'contexto-1'}}]);
-    await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,remoteJid:'123@g.us',remoteJidAlt:'5551993527271@s.whatsapp.net'}}},segredo,deps);
-    await processarMensagemWebhook({...payload,data:{...payload.data,messageTimestamp:1}},segredo,deps);
-    await processarMensagemWebhook({...payload,data:{...payload.data,key:{...payload.data.key,fromMe:true}}},segredo,deps);
-    assert.deepEqual(await processarMensagemWebhook(payload,null,{...deps,segredoConfigurado:''}),{ok:false,motivo:'autenticacao_invalida'});
-    assert.equal(entradas.length,1);
-  });
-
-  it('telefone duplicado chega ao agente pelo vínculo confirmado; ausência de vínculo é descarte explícito',async()=>{
-    const repo=new AtendimentoRepositorioMemoria();repo.medico={id:'med-vinculado',telefone:'5551981680978',nomeCompleto:'Médico X',crm:null,rqe:null,especialidade:null,ctribNacPadrao:''};
-    let vinculado=true;const entradas:unknown[]=[];
-    const repositorio=Object.assign(repo,{buscarMedicoPorTelefone:async()=>null,buscarMedicoAssistentePorTelefone:async(telefone:string,instancia:string)=>{
-      assert.equal(telefone,'5551981680978');assert.equal(instancia,'notomed_assistente');return vinculado?repo.medico:null;
-    }});
-    const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551981680978@s.whatsapp.net',fromMe:false,id:'resposta-nome'},message:{conversation:'Roberto Santos'}}};
-    const deps={...criarDeps(repo),repositorio,instanciaAssistenteNome:'notomed_assistente',processarConversaAssistente:async(e:unknown)=>{entradas.push(e);return {estado:'concluido',mensagensConfirmadas:1};}};
-    assert.equal((await processarMensagemWebhook(payload,segredo,deps)).ok,true);assert.equal(entradas.length,1);
-    vinculado=false;assert.deepEqual(await processarMensagemWebhook(payload,segredo,deps),{ok:true,acao:'descartada',motivoDescarte:'medico_nao_identificado'});
-    assert.equal(entradas.length,1);
-  });
-
-  it('modo confirmação não captura onboarding, mesmo com tratadores antigos configurados',async()=>{
-    const repo=new AtendimentoRepositorioMemoria();repo.medico={id:'m',telefone:'5551993527271',nomeCompleto:'Médico X',crm:null,rqe:null,especialidade:null,ctribNacPadrao:''};
-    const payload={event:'messages.upsert',instance:'notomed_assistente',data:{key:{remoteJid:'5551993527271@s.whatsapp.net',fromMe:false,id:'nova'},message:{conversation:'Oi'}}};
-    const deps={...criarDeps(repo),instanciaAssistenteNome:'notomed_assistente',modoCadastro:'confirmacao' as const,
-      processarConversaAssistente:async()=>{throw Error('onboarding contextual proibido');},
-      gerenciadorAssistente:{processarMensagemMedico:async()=>{throw Error('onboarding legado proibido');}} as any};
-    assert.deepEqual(await processarMensagemWebhook(payload,segredo,deps),{ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido'});
-  });
-
 });

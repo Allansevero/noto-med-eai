@@ -1,4 +1,4 @@
-import { normalizarTelefoneTribemd } from '../../desenvolvedor/tribemd-dados.js';
+import { normalizarTelefone } from '../../paciente/normalizar-telefone.js';
 import { validarCpf } from '../../paciente/validar-cpf.js';
 import type { MapeadorColunasPlanilha, MapaColunasPlanilha, PacientePlanilha, ResultadoExtracaoPlanilha } from './types.js';
 
@@ -80,7 +80,7 @@ export async function extrairPacientesPlanilha(valores: string[][], mapeador: Ma
     }
     if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) { email = null; pendencias.push('email_invalido'); }
     if (telefone) {
-      const normalizado = telefone.length <= 32 && /^[+\d\s().-]+$/.test(telefone) ? normalizarTelefoneTribemd(telefone) : null;
+      const normalizado = telefone.length <= 32 && /^[+\d\s().-]+$/.test(telefone) ? normalizarTelefone(telefone) : null;
       if (!normalizado || !/^55[1-9]\d(?:[2-5]\d{7}|9\d{8})$/.test(normalizado)) { telefone = null; pendencias.push('telefone_invalido'); }
       else telefone = normalizado;
     } else pendencias.push('telefone_ausente');

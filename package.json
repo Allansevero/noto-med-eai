@@ -19,9 +19,7 @@
     "check:treino": "node scripts/verificar-treino-onboarding.mjs",
     "migrate:perfil": "node scripts/migrar-dados-profissionais.mjs",
     "migrate:planilhas": "node scripts/migrar-google-planilhas.mjs",
-    "migrate:assistente": "node scripts/migrar-assistente-contextual.mjs",
     "consultar:registro": "node --import tsx scripts/consultar-registro-profissional.mjs",
-    "test:assistente-db": "node --import tsx --test src/agente-conversa/postgres-assistente.integration.ts",
     "migrate:cadastro": "node scripts/migrar-cadastro-certificado.mjs",
     "test:cadastro-db": "node --import tsx --test src/cadastro/postgres-cadastro.integration.ts",
     "retry:nota": "node scripts/reprocessar-nota.mjs"
