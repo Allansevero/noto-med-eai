@@ -43,7 +43,7 @@ export class PostgresCandidatosNotaRepositorio {
   constructor(
     private readonly pool: pg.Pool,
     private readonly pepper: string,
-    private readonly chaveCriptografia: string = process.env.DB_ENCRYPTION_KEY || 'noto-dev-secret'
+    private readonly chaveCriptografia: string = process.env.ENCRYPTION_KEY || process.env.DB_ENCRYPTION_KEY || 'dev_secret_key_default_32_chars_ok'
   ) {}
 
   /**
@@ -744,5 +744,51 @@ export class PostgresCandidatosNotaRepositorio {
        where id = $2`,
       [JSON.stringify(comprovante), mensagemId]
     );
+  }
+
+  /**
+   * Varre o histórico profundo das conversas para minerar CPFs e atualizar o cadastro dos pacientes.
+   */
+  async enriquecerCpfsPacientesHistorico(medicoId: string): Promise<number> {
+    const sqlPacientes = `
+      select p.id, p.nome, c.id as conversa_id
+      from pacientes p
+      join whatsapp_conversas c on c.paciente_id = p.id
+      where p.medico_id = $1 and p.cpf_cnpj_encriptado is null
+    `;
+    const { rows: pacs } = await this.pool.query(sqlPacientes, [medicoId]);
+    let atualizados = 0;
+
+    for (const pac of pacs) {
+      const sqlMsgs = `
+        select conteudo, payload_bruto
+        from whatsapp_mensagens
+        where conversa_id = $1
+        order by criado_em desc
+      `;
+      const { rows: msgs } = await this.pool.query(sqlMsgs, [pac.conversa_id]);
+      for (const m of msgs) {
+        const cpfCand = extrairCpfTexto(m.conteudo) ||
+          extrairCpfTexto((m.payload_bruto as any)?.message?.conversation) ||
+          extrairCpfTexto((m.payload_bruto as any)?.message?.extendedTextMessage?.text) ||
+          extrairCpfTexto((m.payload_bruto as any)?.message?.imageMessage?.caption);
+
+        if (cpfCand) {
+          const cpfHash = gerarHashCpf(cpfCand, this.pepper);
+          await this.pool.query(
+            `update pacientes
+             set cpf_cnpj_hash = $1,
+                 cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
+                 atualizado_em = now()
+             where id = $4`,
+            [cpfHash, cpfCand, this.chaveCriptografia, pac.id]
+          );
+          atualizados += 1;
+          break;
+        }
+      }
+    }
+
+    return atualizados;
   }
 }

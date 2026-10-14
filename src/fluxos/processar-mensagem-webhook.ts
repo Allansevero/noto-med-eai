@@ -20,6 +20,7 @@ import {
 } from '../whatsapp/payload-webhook-schema.js';
 import { casarRespostaRapida } from '../whatsapp/casar-resposta-rapida.js';
 import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
+import { ehMensagemAutomatica } from '../whatsapp/regras/eh-mensagem-automatica.js';
 import { processarRespostaCpf } from './processar-resposta-cpf.js';
 import { processarRespostaDataConsulta } from './processar-resposta-data-consulta.js';
 import { processarComandoAgendado } from './processar-comando-agendado.js';
@@ -124,6 +125,9 @@ export async function processarMensagemWebhook(
     }
     if (payload.data.key.fromMe) {
       return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_assistente' };
+    }
+    if (ehMensagemAutomatica(texto)) {
+      return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
     }
     if(deps.processarConversaAssistente || deps.modoCadastro === 'confirmacao'){
       if(!deps.segredoConfigurado)return {ok:false,motivo:'autenticacao_invalida'};

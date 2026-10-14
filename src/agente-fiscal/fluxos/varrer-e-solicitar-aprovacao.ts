@@ -69,6 +69,31 @@ export async function varrerESolicitarAprovacao(
     return { ok: false, motivo: 'parametros_fiscais_pendentes' };
   }
 
+  // Se já existir uma solicitação ativa aguardando aprovação ou CPF pelo médico, não atropela
+  if (!deps.ehContinuacao) {
+    const aguardandoCpf = deps.repositorio.obterAguardandoCpfMedico
+      ? await deps.repositorio.obterAguardandoCpfMedico(medicoId)
+      : null;
+    if (aguardandoCpf) {
+      return {
+        ok: true,
+        status: 'nenhum_candidato_pendente',
+        mensagem: `Já existe solicitação aguardando CPF do paciente ${aguardandoCpf.pacienteNome}`
+      };
+    }
+
+    if (deps.repositorio.obterCandidatoAguardandoAprovacao) {
+      const aguardandoAprovacao = await deps.repositorio.obterCandidatoAguardandoAprovacao(medicoId);
+      if (aguardandoAprovacao) {
+        return {
+          ok: true,
+          status: 'nenhum_candidato_pendente',
+          mensagem: `Já existe nota aguardando aprovação do médico para ${aguardandoAprovacao.pacienteNome}`
+        };
+      }
+    }
+  }
+
   // Janela padrão de faturamento de 15 dias para o gatilho de emissão
   const DIAS_JANELA_FATURAMENTO = 15;
   const dataCortePagamento = deps.dataCorte || new Date(Date.now() - DIAS_JANELA_FATURAMENTO * 24 * 60 * 60 * 1000);

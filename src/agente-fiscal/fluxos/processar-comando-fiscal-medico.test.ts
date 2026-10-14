@@ -240,4 +240,80 @@ describe('processarComandoFiscalMedico', () => {
     assert.equal(limpou, true);
     assert.match(mensagensEnviadas[0], /Deixei a nota de Marcelo Simões pendente/);
   });
+
+  test('deve ignorar mensagem automática de ausência do médico sem tratar como comando fiscal', async () => {
+    let consultouRepo = false;
+    const repositorioFalso = {
+      obterAguardandoCpfMedico: async () => {
+        consultouRepo = true;
+        return null;
+      }
+    } as any;
+
+    const enviadorFalso = { enviarTexto: async () => ({ sucesso: true }) } as any;
+
+    const res = await processarComandoFiscalMedico(
+      'med-1',
+      'Olá! Agradecemos o contato. No momento estamos ausentes. Nosso horário de atendimento é de 8h às 18h.',
+      '51981680978',
+      {
+        repositorio: repositorioFalso,
+        enviarMensagem: enviadorFalso,
+        instanciaNome: 'notomed_assistente'
+      }
+    );
+
+    assert.equal(res.tratado, false);
+    assert.equal(consultouRepo, false);
+  });
+
+  test('NÃO deve solicitar próxima nota quando a nota aprovada está aguardando CPF do médico', async () => {
+    let varreuProximo = false;
+    const candidatoAtual = {
+      medicoId: 'med-1',
+      pacienteNome: 'Carlos Silva',
+      pacienteTelefone: '5199998888',
+      valorCentavos: 40000,
+      valorFormatado: '400,00',
+      dataConsulta: '13/10/2026',
+      dataConsultaIso: '2026-10-13'
+    };
+
+    const repositorioFalso = {
+      obterCandidatoAguardandoAprovacao: async () => candidatoAtual,
+      enfileirarEmissaoAprovada: async () => ({
+        solicitacaoId: 'sol-carlos-1',
+        aguardandoCpf: true,
+        pacienteId: 'pac-carlos-1',
+        pacienteNome: 'Carlos Silva',
+        pacienteTelefone: '5199998888'
+      }),
+      obterDadosMedico: async () => ({
+        nomeCompleto: 'Dra. Bruna',
+        telefone: '51981680978',
+        solicitarCpfDiretoPaciente: false // Padrão: direto ao médico
+      }),
+      salvarAguardandoCpfMedico: async () => {},
+      buscarConversasComHistorico: async () => {
+        varreuProximo = true;
+        return [];
+      }
+    } as any;
+
+    const enviadorFalso = { enviarTexto: async () => ({ sucesso: true }) } as any;
+
+    const res = await processarComandoFiscalMedico('med-1', 'Sim, pode emitir', '51981680978', {
+      repositorio: repositorioFalso,
+      enviarMensagem: enviadorFalso,
+      instanciaNome: 'notomed_assistente'
+    });
+
+    assert.equal(res.tratado, true);
+    assert.equal(res.tipo, 'resposta_aprovacao');
+    assert.equal(res.resultadoAprovacao.processado, true);
+    if (res.resultadoAprovacao.processado) {
+      assert.equal(res.resultadoAprovacao.acao, 'emissao_aguardando_cpf_medico');
+    }
+    assert.equal(varreuProximo, false, 'Não deve varrer a próxima nota enquanto aguarda CPF do médico');
+  });
 });

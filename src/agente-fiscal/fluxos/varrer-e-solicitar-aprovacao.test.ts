@@ -187,4 +187,77 @@ describe('varrerESolicitarAprovacao', () => {
     assert.equal(res.ok, false);
     assert.equal((res as any).motivo, 'parametros_fiscais_pendentes');
   });
+
+  test('NÃO deve enviar nova solicitação se já houver nota aguardando aprovação do médico', async () => {
+    let buscouConversas = false;
+    let enviouWhatsApp = false;
+
+    const repositorioFalso = {
+      obterDadosMedico: async () => ({
+        nomeCompleto: 'Dra. Bruna',
+        telefone: '51981936133',
+        fiscalConfirmado: true,
+        parametrosProntos: true
+      }),
+      obterAguardandoCpfMedico: async () => null,
+      obterCandidatoAguardandoAprovacao: async () => ({
+        pacienteNome: 'Paciente A'
+      }),
+      buscarConversasComHistorico: async () => {
+        buscouConversas = true;
+        return [];
+      }
+    } as any;
+
+    const res = await varrerESolicitarAprovacao('med-1', {
+      repositorio: repositorioFalso,
+      enviarMensagem: {
+        enviarTexto: async () => {
+          enviouWhatsApp = true;
+          return { sucesso: true };
+        }
+      } as any,
+      instanciaNome: 'oficial'
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(res.status, 'nenhum_candidato_pendente');
+    assert.match((res as any).mensagem, /Já existe nota aguardando aprovação/);
+    assert.equal(buscouConversas, false);
+    assert.equal(enviouWhatsApp, false);
+  });
+
+  test('NÃO deve enviar nova solicitação se já houver nota aguardando CPF do médico', async () => {
+    let enviouWhatsApp = false;
+
+    const repositorioFalso = {
+      obterDadosMedico: async () => ({
+        nomeCompleto: 'Dra. Bruna',
+        telefone: '51981936133',
+        fiscalConfirmado: true,
+        parametrosProntos: true
+      }),
+      obterAguardandoCpfMedico: async () => ({
+        pacienteNome: 'Carlos'
+      }),
+      obterCandidatoAguardandoAprovacao: async () => null,
+      buscarConversasComHistorico: async () => []
+    } as any;
+
+    const res = await varrerESolicitarAprovacao('med-1', {
+      repositorio: repositorioFalso,
+      enviarMensagem: {
+        enviarTexto: async () => {
+          enviouWhatsApp = true;
+          return { sucesso: true };
+        }
+      } as any,
+      instanciaNome: 'oficial'
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(res.status, 'nenhum_candidato_pendente');
+    assert.match((res as any).mensagem, /Já existe solicitação aguardando CPF/);
+    assert.equal(enviouWhatsApp, false);
+  });
 });

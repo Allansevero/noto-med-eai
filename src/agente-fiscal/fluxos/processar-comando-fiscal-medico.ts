@@ -8,6 +8,7 @@
 import { varrerESolicitarAprovacao, type ResultadoVarreduraAprovacao } from './varrer-e-solicitar-aprovacao.js';
 import { processarRespostaAprovacaoMedico, ehRespostaAfirmativa, ehRespostaNegativa, type ResultadoProcessarRespostaAprovacao } from './processar-resposta-aprovacao-medico.js';
 import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
+import { ehMensagemAutomatica } from '../../whatsapp/regras/eh-mensagem-automatica.js';
 import type { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidatos-nota-repositorio.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
 
@@ -51,6 +52,9 @@ export async function processarComandoFiscalMedico(
   deps: ProcessarComandoFiscalDeps
 ): Promise<ResultadoComandoFiscal> {
   const texto = textoRecebido.trim();
+  if (ehMensagemAutomatica(texto)) {
+    return { tratado: false };
+  }
 
   // 1. Verificar se o médico está respondendo a um pedido de CPF pendente
   const pendenciaCpf = deps.repositorio.obterAguardandoCpfMedico
@@ -155,6 +159,16 @@ export async function processarComandoFiscalMedico(
     });
 
     if (resAprovacao.processado) {
+      // Se a nota precisa de CPF fornecido pelo médico, NUNCA dispara varredura do próximo candidato agora!
+      // Aguarda o médico responder com o CPF primeiro para não encavalar duas solicitações de uma vez.
+      if (resAprovacao.acao === 'emissao_aguardando_cpf_medico') {
+        return {
+          tratado: true,
+          tipo: 'resposta_aprovacao',
+          resultadoAprovacao: resAprovacao
+        };
+      }
+
       // Loop contínuo: buscar e notificar o próximo candidato pendente até zerar
       const proximaVarredura = await varrerESolicitarAprovacao(medicoId, {
         repositorio: deps.repositorio,
