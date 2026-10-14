@@ -518,7 +518,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   async liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number> {
     const sql = `
       update solicitacoes_nota
-      set fila = 'pronta'
+      set fila = 'pronta', status = 'pronta', aguardando_cpf_medico = false
       where medico_id = $1
         and paciente_id = $2
         and status = 'pendente'

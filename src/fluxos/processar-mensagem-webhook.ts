@@ -15,6 +15,7 @@ import { extrairTelefoneJid } from '../whatsapp/extrair-telefone-jid.js';
 import {
   webhookEvolutionSchema,
   extrairTextoMensagem,
+  extrairTipoMensagem,
   type WebhookEvolutionPayload
 } from '../whatsapp/payload-webhook-schema.js';
 import { casarRespostaRapida } from '../whatsapp/casar-resposta-rapida.js';
@@ -106,12 +107,16 @@ export async function processarMensagemWebhook(
   const telefone =
     extrairTelefoneJid(jidAlternativo) ||
     extrairTelefoneJid(jidPrincipal);
-  const texto = extrairTextoMensagem(payload.data);
+  const tipo = extrairTipoMensagem(payload.data);
+  const texto = extrairTextoMensagem(payload.data) || '';
   if (!telefone) return { ok: true, acao: 'descartada', motivoDescarte: 'contato_nao_identificado' };
-  if (!texto) return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_sem_texto' };
+  if (!texto && tipo === 'texto') return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_sem_texto' };
 
   // Mensagem na instância do Noto Assistente (container dedicado da IA conversacional)
   if (deps.instanciaAssistenteNome && payload.instance === deps.instanciaAssistenteNome) {
+    if (!texto) {
+      return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_sem_texto' };
+    }
     if (payload.data.key.fromMe) {
       return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_enviada_pelo_assistente' };
     }
@@ -207,7 +212,7 @@ export async function processarMensagemWebhook(
     await deps.repositorio.salvarMensagem({
       conversaId: conversa.id,
       direcao: payload.data.key.fromMe ? 'enviada' : 'recebida',
-      tipoMensagem: 'texto',
+      tipoMensagem: tipo,
       conteudo: texto,
       payloadBruto: payload.data
     });

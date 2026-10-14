@@ -36,7 +36,8 @@ export function correlacionarConsultaPagamento(
   contatoTelefone: string,
   nomeCadastro?: string | null,
   dataReferencia: Date = new Date(),
-  valorPadraoCentavos?: number
+  valorPadraoCentavos?: number,
+  dataCortePagamento?: Date
 ): CandidatoNotaFiscal[] {
   if (!mensagens || mensagens.length === 0) return [];
 
@@ -50,6 +51,15 @@ export function correlacionarConsultaPagamento(
 
   for (let i = 0; i < ordenadas.length; i++) {
     const msgAtual = ordenadas[i];
+    const dataMsgAtual = msgAtual.criadoEm instanceof Date
+      ? msgAtual.criadoEm
+      : new Date(msgAtual.criadoEm);
+
+    // Se o pagamento for anterior à data de corte da janela de faturamento, descarta como candidato a nota
+    if (dataCortePagamento && dataMsgAtual.getTime() < dataCortePagamento.getTime()) {
+      continue;
+    }
+
     const mensagensAnteriores = ordenadas.slice(0, i);
     const dadosPagamento = extrairDadosPagamento(msgAtual, mensagensAnteriores, valorPadraoCentavos);
     if (!dadosPagamento) continue;
@@ -232,8 +242,8 @@ function extrairContextoConsultaAnterior(
 
     // Extrair data da consulta / agendamento
     if (!dataConsultaFormatada) {
-      // Padrões comuns: "agendado para, *13/10/2026*", "consulta de 09/10/26", "atendimento dia 08/10"
-      const matchAgendamento = texto.match(/(?:agendad[oa]|procedimento|consulta|atendimento|sess[aã]o)\s*(?:para|de|em|dia)?,?\s*\*?(\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)\*?/i);
+      // Padrões comuns: "agendado para, *13/10/2026*", "consulta de 09/10/26", "retorno dia 08/10"
+      const matchAgendamento = texto.match(/(?:agendad[oa]|procedimento|consulta|atendimento|sess[aã]o|retorno)\s*(?:para|de|em|dia)?,?\s*\*?(\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)\*?/i);
       if (matchAgendamento) {
         const extraido = extrairDatasConsulta(matchAgendamento[1], agora);
         if (extraido.encontrou && extraido.datas.length > 0) {
@@ -245,7 +255,7 @@ function extrairContextoConsultaAnterior(
         }
       } else {
         // Tentar qualquer data explícita ou relativa na mensagem se contiver termos clínicos
-        if (/(?:agendad|hor[áa]rio|consulta|procedimento|m[ée]dic|dr)/i.test(texto)) {
+        if (/(?:agendad|hor[áa]rio|consulta|procedimento|retorno|m[ée]dic|dr)/i.test(texto)) {
           const extraido = extrairDatasConsulta(texto, agora);
           if (extraido.encontrou && extraido.datas.length > 0) {
             const d = extraido.datas[0];

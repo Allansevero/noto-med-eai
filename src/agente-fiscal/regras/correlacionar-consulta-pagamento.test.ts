@@ -311,5 +311,55 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].dataConsulta, '13/10/2026');
     assert.equal(candidatos[0].origemEvidencia.mensagemPagamentoId, 'msg-new-2');
   });
+
+  test('deve respeitar dataCortePagamento para descartar pagamentos antigos mas manter contexto conversacional profundo', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-antiga-nome',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá Luciana, tudo bem? Marcamos sua consulta para 10/10.',
+        criadoEm: '2026-07-01T10:00:00.000Z' // 3 meses atrás
+      },
+      {
+        id: 'msg-pagamento-antigo',
+        direcao: 'recebida',
+        tipo: 'texto',
+        conteudo: 'Comprovante Pix de R$ 500,00',
+        criadoEm: '2026-07-02T10:00:00.000Z' // Pagamento antigo
+      },
+      {
+        id: 'msg-consulta-recente',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Confirmando seu retorno hoje dia 13/10.',
+        criadoEm: '2026-10-13T09:00:00.000Z'
+      },
+      {
+        id: 'msg-pagamento-recente',
+        direcao: 'recebida',
+        tipo: 'texto',
+        conteudo: 'Comprovante Pix de R$ 500,00',
+        criadoEm: '2026-10-13T10:00:00.000Z'
+      }
+    ];
+
+    // Corte em 01/10/2026 (últimos 15 dias)
+    const dataCorte = new Date('2026-10-01T00:00:00.000Z');
+    const candidatos = correlacionarConsultaPagamento(
+      mensagens,
+      '5551999998888',
+      undefined,
+      new Date('2026-10-13T12:00:00.000Z'),
+      undefined,
+      dataCorte
+    );
+
+    // Deve eleger APENAS o pagamento recente (msg-pagamento-recente), mas recuperar o nome "Luciana" do contexto de 3 meses atrás!
+    assert.equal(candidatos.length, 1);
+    assert.equal(candidatos[0].pacienteNome, 'Luciana');
+    assert.equal(candidatos[0].origemEvidencia.mensagemPagamentoId, 'msg-pagamento-recente');
+    assert.equal(candidatos[0].dataConsulta, '13/10/2026');
+  });
 });
 

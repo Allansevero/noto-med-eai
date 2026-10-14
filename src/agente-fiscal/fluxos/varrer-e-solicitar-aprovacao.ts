@@ -65,8 +65,12 @@ export async function varrerESolicitarAprovacao(
     return { ok: false, motivo: 'parametros_fiscais_pendentes' };
   }
 
-  // 1. Buscar histórico de conversas com pacientes
-  const conversas = await deps.repositorio.buscarConversasComHistorico(medicoId, deps.dataCorte);
+  // Janela padrão de faturamento de 15 dias para o gatilho de emissão
+  const DIAS_JANELA_FATURAMENTO = 15;
+  const dataCortePagamento = deps.dataCorte || new Date(Date.now() - DIAS_JANELA_FATURAMENTO * 24 * 60 * 60 * 1000);
+
+  // 1. Buscar histórico de conversas ativas no período
+  const conversas = await deps.repositorio.buscarConversasComHistorico(medicoId, dataCortePagamento);
   if (conversas.length === 0) {
     return {
       ok: true,
@@ -84,7 +88,8 @@ export async function varrerESolicitarAprovacao(
       conv.contatoTelefone,
       conv.pacienteNomeCadastrado || conv.contatoNome,
       new Date(),
-      dadosMedico.valorPadraoCentavos
+      dadosMedico.valorPadraoCentavos,
+      dataCortePagamento
     );
 
     for (const cand of candidatos) {
