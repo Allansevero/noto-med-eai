@@ -69,6 +69,11 @@ export async function varrerESolicitarAprovacao(
     return { ok: false, motivo: 'parametros_fiscais_pendentes' };
   }
 
+  // Não solicita aprovação de notas se o médico ainda não confirmou seus dados profissionais
+  if (dadosMedico.dadosProfissionaisConfirmados === false) {
+    return { ok: false, motivo: 'dados_profissionais_pendentes' };
+  }
+
   // Se já existir uma solicitação ativa aguardando aprovação ou CPF pelo médico, não atropela
   if (!deps.ehContinuacao) {
     const aguardandoCpf = deps.repositorio.obterAguardandoCpfMedico

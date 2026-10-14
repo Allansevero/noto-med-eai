@@ -40,8 +40,8 @@ export async function iniciarOnboardingPosConexao(
 
   let boasVindasEnviada = false;
 
-  // 1. Enviar mensagem de boas-vindas humanizada e tranquila ao médico
-  if (telefoneMedico) {
+  // 1. Enviar mensagem de boas-vindas ao médico SOMENTE após confirmação dos dados profissionais
+  if (telefoneMedico && dadosMedico?.dadosProfissionaisConfirmados && !dadosMedico?.boasVindasJaEnviada) {
     const textoBoasVindas = redigirMensagemBoasVindasConexao(dadosMedico?.nomeCompleto);
     const envio = await deps.enviarMensagemAssistente.enviarTexto({
       instanciaNome: deps.instanciaAssistenteNome,
@@ -49,13 +49,18 @@ export async function iniciarOnboardingPosConexao(
       texto: textoBoasVindas
     });
     boasVindasEnviada = envio.sucesso;
+    if (envio.sucesso && deps.repositorio.marcarBoasVindasEnviada) {
+      await deps.repositorio.marcarBoasVindasEnviada(deps.medicoId);
+    }
   }
 
-  // 2. Sincronizar histórico da instância recém-conectada
-  try {
-    await deps.sincronizarHistorico(deps.nomeInstancia);
-  } catch (err: any) {
-    console.warn('[iniciarOnboardingPosConexao] Sincronização inicial em andamento ou parcial:', err?.message || err);
+  // 2. Sincronizar histórico da instância conectada (se informada)
+  if (deps.nomeInstancia) {
+    try {
+      await deps.sincronizarHistorico(deps.nomeInstancia);
+    } catch (err: any) {
+      console.warn('[iniciarOnboardingPosConexao] Sincronização inicial em andamento ou parcial:', err?.message || err);
+    }
   }
 
   // 3. Mapear e enriquecer CPFs dos pacientes minerando o histórico profundo
@@ -73,18 +78,20 @@ export async function iniciarOnboardingPosConexao(
   const esperar = deps.esperarMs || ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   await esperar(2000);
 
-  // 5. Apresentar a primeira nota com calma (uma por uma)
+  // 5. Apresentar a primeira nota com calma (apenas se dados profissionais estiverem confirmados)
   let resultadoVarredura: ResultadoVarreduraAprovacao | undefined;
-  try {
-    resultadoVarredura = await varrerESolicitarAprovacao(deps.medicoId, {
-      repositorio: deps.repositorio,
-      enviarMensagem: deps.enviarMensagemAssistente,
-      instanciaNome: deps.instanciaAssistenteNome,
-      comprovanteClient: deps.comprovanteClient,
-      evolutionClient: deps.evolutionClient
-    });
-  } catch (err: any) {
-    console.warn('[iniciarOnboardingPosConexao] Falha na primeira varredura pós-conexão:', err?.message || err);
+  if (dadosMedico?.dadosProfissionaisConfirmados) {
+    try {
+      resultadoVarredura = await varrerESolicitarAprovacao(deps.medicoId, {
+        repositorio: deps.repositorio,
+        enviarMensagem: deps.enviarMensagemAssistente,
+        instanciaNome: deps.instanciaAssistenteNome,
+        comprovanteClient: deps.comprovanteClient,
+        evolutionClient: deps.evolutionClient
+      });
+    } catch (err: any) {
+      console.warn('[iniciarOnboardingPosConexao] Falha na primeira varredura pós-conexão:', err?.message || err);
+    }
   }
 
   return {

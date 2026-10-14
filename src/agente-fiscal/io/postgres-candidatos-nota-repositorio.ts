@@ -8,6 +8,7 @@ import type pg from 'pg';
 import type { CandidatoNotaFiscal, MensagemContextoConversa } from '../regras/correlacionar-consulta-pagamento.js';
 import { gerarHashCpf } from '../../paciente/hash-cpf.js';
 import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
+import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 
 export interface ConversaComHistorico {
   conversaId: string;
@@ -507,13 +508,23 @@ export class PostgresCandidatosNotaRepositorio {
     fiscalConfirmado?: boolean;
     parametrosProntos?: boolean;
     solicitarCpfDiretoPaciente?: boolean;
+    dadosProfissionaisConfirmados?: boolean;
+    boasVindasJaEnviada?: boolean;
   } | null> {
     const sql = `
-      select m.nome_completo, u.telefone,
+      select m.nome_completo, m.crm, u.telefone,
              coalesce(m.solicitar_cpf_direto_paciente, false) as solicitar_cpf_direto_paciente,
              coalesce(pf.confirmado_pelo_medico, false) as fiscal_confirmado,
              (msf.parametros_emissao is not null) as parametros_prontos,
-             (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos
+             (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos,
+             exists(
+               select 1 from cadastro_certificado_trabalhos t
+               where t.medico_id = m.id and t.estado = 'concluido' and t.dados->'aprovacaoPainel' is not null
+             ) as aprovado_no_painel,
+             exists(
+               select 1 from auditoria a
+               where a.acao = 'agente_fiscal_boas_vindas_enviada' and a.entidade_id = m.id
+             ) as boas_vindas_ja_enviada
       from medicos m
       join usuarios u on u.id = m.usuario_id
       left join medico_perfil_fiscal pf on pf.medico_id = m.id
@@ -522,14 +533,34 @@ export class PostgresCandidatosNotaRepositorio {
     `;
     const { rows } = await this.pool.query(sql, [medicoId]);
     if (rows.length === 0) return null;
+    const aprovadoNoPainel = Boolean(rows[0].aprovado_no_painel);
+    const dadosCompletos = dadosProfissionaisCompletos({
+      nome_completo: rows[0].nome_completo,
+      crm: rows[0].crm
+    });
+    const dadosProfissionaisConfirmados = aprovadoNoPainel || dadosCompletos;
+
     return {
       nomeCompleto: rows[0].nome_completo,
       telefone: rows[0].telefone,
       valorPadraoCentavos: rows[0].valor_padrao_centavos ? Number(rows[0].valor_padrao_centavos) : undefined,
       fiscalConfirmado: Boolean(rows[0].fiscal_confirmado),
       parametrosProntos: Boolean(rows[0].parametros_prontos),
-      solicitarCpfDiretoPaciente: Boolean(rows[0].solicitar_cpf_direto_paciente)
+      solicitarCpfDiretoPaciente: Boolean(rows[0].solicitar_cpf_direto_paciente),
+      dadosProfissionaisConfirmados,
+      boasVindasJaEnviada: Boolean(rows[0].boas_vindas_ja_enviada)
     };
+  }
+
+  /**
+   * Registra na auditoria que a mensagem de boas-vindas do onboarding foi enviada ao médico.
+   */
+  async marcarBoasVindasEnviada(medicoId: string): Promise<void> {
+    await this.pool.query(
+      `insert into auditoria (acao, entidade, entidade_id, dados_novos)
+       values ('agente_fiscal_boas_vindas_enviada', 'medicos', $1, $2::jsonb)`,
+      [medicoId, JSON.stringify({ enviadoEm: new Date().toISOString() })]
+    );
   }
 
   /**

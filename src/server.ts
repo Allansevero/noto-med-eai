@@ -175,7 +175,8 @@ export function criarAppExpress() {
 
   app.use('/api/conta/cadastro', criarRouterCadastroPainel({
     pool,repo:cadastroCertificado.repo,
-    autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; }
+    autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
+    aoAprovarProfissional: dispararOnboardingFiscal
   }));
   app.use('/api/whatsapp', criarRouterStatusWhatsapp({
     pool,
@@ -348,6 +349,7 @@ export function criarAppExpress() {
 
       const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe, email });
       await dadosProfissionais.retomar(medicoIdFinal);
+      dispararOnboardingFiscal(medicoIdFinal);
       return res.json({ ok: true, ...perfil });
     } catch (err: any) {
       if (err instanceof ZodError) return res.status(400).json({ ok: false, detalhe: err.issues[0]?.message });
