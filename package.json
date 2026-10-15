@@ -21,6 +21,8 @@
     "migrate:planilhas": "node scripts/migrar-google-planilhas.mjs",
     "consultar:registro": "node --import tsx scripts/consultar-registro-profissional.mjs",
     "migrate:cadastro": "node scripts/migrar-cadastro-certificado.mjs",
+    "migrate:candidatos": "node scripts/migrar-candidatos-emissao.mjs",
+    "migrate:pedidos": "node scripts/migrar-pedidos-nota.mjs",
     "test:cadastro-db": "node --import tsx --test src/cadastro/postgres-cadastro.integration.ts",
     "retry:nota": "node scripts/reprocessar-nota.mjs"
   },
@@ -34,6 +36,7 @@
   "license": "UNLICENSED",
   "private": true,
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
     "@types/node": "^22.13.0",
     "@types/node-forge": "^1.3.14",
@@ -43,6 +46,7 @@
   "dependencies": {
     "@nfewizard/types": "^1.0.11",
     "@supabase/supabase-js": "^2.117.2",
+    "compression": "^1.8.2",
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.11.1",

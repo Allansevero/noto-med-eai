@@ -35,6 +35,9 @@ import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 import type { PaligemmaComprovanteClient } from '../io/nvidia/paligemma-comprovante-client.js';
 import type { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
 import { tentarAnalisarComprovanteMensagem } from './analisar-comprovante-mensagem.js';
+import { rotearMidiaWebhook } from '../candidatos/fluxos/rotear-midia-webhook.js';
+import type { GeminiComprovanteClient } from '../candidatos/io/gemini-comprovante-client.js';
+import type { CandidatosRepositorio } from '../candidatos/io/candidatos-repositorio.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
@@ -53,6 +56,11 @@ export interface ProcessarWebhookDeps {
   modoCadastro?: 'conversacional' | 'confirmacao';
   processarComandoFiscal?: (medicoId: string, texto: string, telefone: string) => Promise<{ tratado: boolean; detalhe?: any }>;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
+  candidatosPipeline?: {
+    geminiClient: GeminiComprovanteClient;
+    candidatosRepo: CandidatosRepositorio;
+    enviarMensagemAoMedico?: (telefone: string, texto: string) => Promise<boolean>;
+  };
 }
 
 export type ResultadoProcessarWebhook =
@@ -184,6 +192,27 @@ export async function processarMensagemWebhook(
   );
   if (comprovante) {
     (payload.data as any).comprovante = comprovante;
+  }
+
+  if (deps.candidatosPipeline && conversa.medicoId && !payload.data.key.fromMe && (tipo === 'imagem' || tipo === 'documento')) {
+    void rotearMidiaWebhook(
+      {
+        instanciaNome: payload.instance,
+        medicoId: conversa.medicoId,
+        conversaId: conversa.id,
+        mensagemId: payload.data.key.id,
+        telefonePaciente: telefone,
+        tipo,
+        fromMe: false,
+        payloadData: payload.data
+      },
+      {
+        geminiClient: deps.candidatosPipeline.geminiClient,
+        repositorio: deps.candidatosPipeline.candidatosRepo,
+        evolutionClient: deps.evolutionClient,
+        enviarMensagemAoMedico: deps.candidatosPipeline.enviarMensagemAoMedico
+      }
+    ).catch(err => console.warn('[Webhook] Falha no pipeline Gemini de candidatos:', err?.message || err));
   }
 
   if (deps.repositorio.salvarMensagem) {

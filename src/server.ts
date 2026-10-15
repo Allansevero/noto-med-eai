@@ -12,7 +12,6 @@ import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-ap
 import { PostgresCandidatosNotaRepositorio } from './agente-fiscal/io/postgres-candidatos-nota-repositorio.js';
 import { AgendadorFechamentoFiscal } from './agente-fiscal/agendador/agendador-fechamento-fiscal.js';
 import { processarComandoFiscalMedico } from './agente-fiscal/fluxos/processar-comando-fiscal-medico.js';
-import { varrerESolicitarAprovacao } from './agente-fiscal/fluxos/varrer-e-solicitar-aprovacao.js';
 import { iniciarOnboardingPosConexao } from './agente-fiscal/fluxos/iniciar-onboarding-pos-conexao.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
@@ -58,12 +57,28 @@ import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-what
 import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
+import { configurarDesempenhoHttp, OPCOES_ARQUIVOS_ESTATICOS } from './http/configurar-desempenho-http.js';
+import { tratarErrosHttp } from './http/tratar-erros-http.js';
+import { criarEncerramentoGracioso } from './processo/encerrar-gracioso.js';
+import { registrarSinaisDeProcesso } from './processo/registrar-sinais-de-processo.js';
+import { GeminiComprovanteClient } from './candidatos/io/gemini-comprovante-client.js';
+import { PostgresCandidatosRepositorio } from './candidatos/io/postgres-candidatos-repositorio.js';
+import { processarRespostaMedicoCandidato } from './candidatos/fluxos/processar-resposta-medico-candidato.js';
+import { processarSolicitacaoEmissaoApi } from './api/nfse/processar-solicitacao-emissao-api.js';
+import { PostgresPedidosRepositorio } from './pedido-nota/io/postgres-pedidos-repositorio.js';
+import { SupabaseFontePacientes } from './pedido-nota/io/supabase-fonte-pacientes.js';
+import { SheetsFontePacientes } from './pedido-nota/io/sheets-fonte-pacientes.js';
+import { ConversaFontePacientes } from './pedido-nota/io/conversa-fonte-pacientes.js';
+import { GeminiPedidoClient } from './pedido-nota/io/gemini-pedido-client.js';
+import { iniciarPedidoNota } from './pedido-nota/fluxos/iniciar-pedido-nota.js';
+import { responderPedidoNota } from './pedido-nota/fluxos/responder-pedido-nota.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function criarAppExpress() {
   const app = express();
+  configurarDesempenhoHttp(app);
   app.use(
     express.json({
       limit: '10mb',
@@ -134,9 +149,11 @@ export function criarAppExpress() {
     comprovanteClient: paligemmaClient,
     evolutionClient
   });
-  if (process.env['NODE_ENV'] !== 'test') {
-    agendadorFechamentoFiscal.iniciar();
-  }
+  // O agendamento em lote legado (12h/18h) foi desativado em favor da detecção
+  // em tempo real via Gemini Multimodal no webhook de mídia do paciente.
+  // if (process.env['NODE_ENV'] !== 'test') {
+  //   agendadorFechamentoFiscal.iniciar();
+  // }
 
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
     sincronizarHistoricoEvolutionUmaVez({
@@ -189,6 +206,39 @@ export function criarAppExpress() {
 
   // API de Emissão de NFS-e (compatível com Focus NFe + Zero-Config)
   const emissaoApiRepo = new PostgresEmissaoApiRepositorio(pool, config.encryptionKey, config.appPepper);
+  const geminiComprovanteClient = new GeminiComprovanteClient(
+    config.geminiApiKey || '',
+    config.geminiModel
+  );
+  const candidatosRepo = new PostgresCandidatosRepositorio(
+    pool,
+    config.appPepper,
+    config.encryptionKey
+  );
+  const pedidosRepo = new PostgresPedidosRepositorio(
+    pool,
+    config.appPepper,
+    config.encryptionKey
+  );
+  const supabaseFonte = new SupabaseFontePacientes(
+    pool,
+    config.appPepper,
+    config.encryptionKey
+  );
+  const sheetsFonte = new SheetsFontePacientes(
+    pool,
+    config.encryptionKey,
+    config.googleClientId,
+    config.googleClientSecret
+  );
+  const conversaFonte = new ConversaFontePacientes(
+    pool,
+    config.encryptionKey
+  );
+  const geminiPedidoClient = new GeminiPedidoClient(
+    config.geminiApiKey || '',
+    config.geminiModel
+  );
   const routerNfse = criarRouterNfse({
     repositorio: emissaoApiRepo,
     autenticar: async token => {
@@ -204,7 +254,7 @@ export function criarAppExpress() {
   app.use('/v2/nfsen', routerNfse);
 
   // UI Web de Entrada e Assets Estáticos
-  app.use('/assets', express.static(join(__dirname, 'assets')));
+  app.use('/assets', express.static(join(__dirname, 'assets'), OPCOES_ARQUIVOS_ESTATICOS));
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, 'ui', 'index.html'));
   });
@@ -685,7 +735,81 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         modoCadastro: config.notoCadastroModo,
+        candidatosPipeline: {
+          geminiClient: geminiComprovanteClient,
+          candidatosRepo,
+          enviarMensagemAoMedico: async (tel, texto) => {
+            const res = await evolutionAssistantClient.enviarTexto({
+              instanciaNome: config.evolutionAssistantInstanceName,
+              contatoTelefone: tel,
+              texto
+            });
+            return res.sucesso;
+          }
+        },
         processarComandoFiscal: async (medicoId, texto, telefone) => {
+          const enviarAoMedico = async (tel: string, txt: string) => {
+            const res = await evolutionAssistantClient.enviarTexto({
+              instanciaNome: config.evolutionAssistantInstanceName,
+              contatoTelefone: tel,
+              texto: txt
+            });
+            return res.sucesso;
+          };
+
+          const enviarAoPaciente = async (tel: string, txt: string) => {
+            const res = await enviarConversas.enviarTexto({
+              instanciaNome: config.evolutionOfficialInstanceName,
+              contatoTelefone: tel,
+              texto: txt
+            });
+            return res.sucesso;
+          };
+
+          // 1. Resposta do médico a um pedido de nota ativo
+          const resRespostaPedido = await responderPedidoNota(
+            { medicoId, texto, telefoneMedico: telefone },
+            {
+              repositorio: pedidosRepo,
+              emissaoApiRepo,
+              processarEmissaoApi: processarSolicitacaoEmissaoApi,
+              enviarMensagemAoMedico: enviarAoMedico
+            }
+          );
+          if (resRespostaPedido.tratado) {
+            return { tratado: true, detalhe: resRespostaPedido };
+          }
+
+          // 2. Resposta do médico a um candidato de comprovante pendente
+          const resCandidato = await processarRespostaMedicoCandidato(
+            { medicoId, textoRecebido: texto, telefoneMedico: telefone },
+            {
+              repositorio: candidatosRepo,
+              emissaoApiRepo,
+              processarEmissaoApi: processarSolicitacaoEmissaoApi,
+              enviarMensagemAoMedico: enviarAoMedico,
+              enviarMensagemAoPaciente: enviarAoPaciente
+            }
+          );
+          if (resCandidato.tratado) {
+            return { tratado: true, detalhe: resCandidato };
+          }
+
+          // 3. Novo pedido sob demanda solicitado pelo médico (ex: "emite a nota do Antônio")
+          const resNovoPedido = await iniciarPedidoNota(
+            { medicoId, mensagemId: randomUUID(), texto, telefoneMedico: telefone },
+            {
+              repositorio: pedidosRepo,
+              fontesPacientes: [supabaseFonte, sheetsFonte, conversaFonte],
+              geminiClient: geminiPedidoClient,
+              consultaCpfProvider: hubCpfClient,
+              enviarMensagemAoMedico: enviarAoMedico
+            }
+          );
+          if (resNovoPedido.tratado) {
+            return { tratado: true, detalhe: resNovoPedido };
+          }
+
           return processarComandoFiscalMedico(medicoId, texto, telefone, {
             repositorio: candidatosNotaRepo,
             enviarMensagem: evolutionAssistantClient,
@@ -823,13 +947,6 @@ export function criarAppExpress() {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
             console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
-            if (row.medico_id) {
-              void varrerESolicitarAprovacao(row.medico_id, {
-                repositorio: candidatosNotaRepo,
-                enviarMensagem: evolutionAssistantClient,
-                instanciaNome: config.evolutionAssistantInstanceName
-              }).catch(err => console.warn('[Agente Fiscal Boot] Falha:', err?.message || err));
-            }
           } catch (erro: any) {
             console.warn('[Evolution] Histórico não recuperado ao iniciar:', erro?.message || erro);
           }
@@ -840,6 +957,8 @@ export function criarAppExpress() {
     }, 5_000);
   }
 
+  app.use(tratarErrosHttp);
+
   return app;
 }
 
@@ -848,11 +967,24 @@ import { iniciarWorkerEmbutido } from './worker/iniciar-worker-embutido.js';
 // Inicia servidor quando executado diretamente
 if (process.env['NODE_ENV'] !== 'test') {
   const app = criarAppExpress();
-  app.listen(config.porta, config.host, () => {
+  const servidor = app.listen(config.porta, config.host, () => {
     console.log(`[Notomed Whats] Servidor rodando em http://${config.host}:${config.porta}`);
+  });
+  servidor.on('error', (erro) => {
+    console.error(`[Notomed Whats] Falha ao abrir ${config.host}:${config.porta}:`, erro.message);
+    process.exit(1);
   });
 
   // Inicia worker da fila em segundo plano no mesmo container
-  iniciarWorkerEmbutido(pool, config);
+  const worker = iniciarWorkerEmbutido(pool, config);
   console.log('[Notomed Whats] Worker de fila NFS-e iniciado com sucesso.');
+
+  registrarSinaisDeProcesso(process, criarEncerramentoGracioso({
+    fecharServidor: () => new Promise<void>((resolver) => {
+      servidor.close(() => resolver());
+      servidor.closeIdleConnections();
+    }),
+    pararWorker: () => worker.parar(),
+    fecharPool: () => pool.end()
+  }, { tempoLimiteMs: 8_000, sair: (codigo) => process.exit(codigo) }));
 }

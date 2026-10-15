@@ -42,6 +42,8 @@ export interface AppConfig {
   googleRedirectUri?: string;
   googleApiKey?: string;
   googleAppId?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -98,6 +100,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     googleRedirectUri: env['GOOGLE_REDIRECT_URI'],
     googleApiKey: env['GOOGLE_API_KEY'],
     googleAppId: env['GOOGLE_APP_ID'],
+    geminiApiKey: env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'],
+    geminiModel: env['GEMINI_MODEL'] || 'gemini-2.5-flash',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

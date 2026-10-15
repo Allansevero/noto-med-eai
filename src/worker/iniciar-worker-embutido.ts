@@ -94,7 +94,8 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     enviarConversas,
     config.evolutionAssistantInstanceName,
     undefined,
-    config.assistenteContextualAtivo
+    config.assistenteContextualAtivo,
+    config.notoCadastroModo
   );
   const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
   let ativo = true;
@@ -124,12 +125,13 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     }
   };
 
-  loop();
+  const execucao = loop();
 
   return {
-    parar: () => {
+    parar: async () => {
       ativo = false;
       avisosProfissionais.parar();
+      await execucao;
     }
   };
 }

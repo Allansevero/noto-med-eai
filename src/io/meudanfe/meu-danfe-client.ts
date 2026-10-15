@@ -36,6 +36,7 @@ export class MeuDanfeClient {
     try {
       const resp = await fetch(url, {
         method: 'POST',
+        signal: AbortSignal.timeout(30_000),
         headers: {
           'Content-Type': 'application/xml',
           'Api-Key': this.apiKey.trim()
