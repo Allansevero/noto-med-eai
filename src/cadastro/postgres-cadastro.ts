@@ -16,7 +16,6 @@ export class PostgresCadastro {
    tentativas=0,diagnostico=null,dados=dados-'pesquisaProfissional',atualizado_em=now()
    where estado='aguardando_confirmacao' and (
     dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA'
-    or dados->'pesquisaProfissional'->>'estado'='indisponivel'
     or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_'
     or left(dados->'pesquisaProfissional'->>'codigo',12)='INFOSIMPLES_'
     or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(dados #> '{pesquisaProfissional,registros}')='array'

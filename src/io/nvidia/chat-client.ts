@@ -6,10 +6,19 @@ export class ErroNvidiaChat extends Error {
 }
 export type MensagemNvidia = { role: 'system' | 'user'; content: unknown };
 
+export interface OpcoesCompletarNvidia {
+  timeoutMs?: number;
+  temperature?: number;
+  formatoJson?: boolean;
+}
+
 export async function completarNvidia(
-  apiKey: string, model: string, messages: MensagemNvidia[], timeoutMs = 90_000
+  apiKey: string, model: string, messages: MensagemNvidia[], opcoesOuTimeout: number | OpcoesCompletarNvidia = 90_000
 ): Promise<string> {
   if (!apiKey.trim()) throw new ErroNvidiaChat('IA_NAO_CONFIGURADA');
+  const timeoutMs = typeof opcoesOuTimeout === 'number' ? opcoesOuTimeout : (opcoesOuTimeout.timeoutMs ?? 90_000);
+  const temperature = typeof opcoesOuTimeout === 'object' && typeof opcoesOuTimeout.temperature === 'number' ? opcoesOuTimeout.temperature : 1;
+  const formatoJson = typeof opcoesOuTimeout === 'object' && opcoesOuTimeout.formatoJson === true;
   let response: Response | undefined;
   const tentativasMax = 2;
   for (let tentativa = 1; tentativa <= tentativasMax; tentativa++) {
@@ -17,8 +26,11 @@ export async function completarNvidia(
       response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ model, stream: false, temperature: 1, max_tokens: 4096,
-          chat_template_kwargs: { thinking: false }, messages })
+        body: JSON.stringify({
+          model, stream: false, temperature, max_tokens: 4096,
+          ...(formatoJson ? { response_format: { type: 'json_object' } } : {}),
+          chat_template_kwargs: { thinking: false }, messages
+        })
       });
       break;
     } catch {

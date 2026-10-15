@@ -8,7 +8,7 @@ import { parsearRespostaExtracao } from '../../ia/regras/parsear-resposta-extrac
 import type { DecisaoInvestigacao, DecisorFiscal } from '../../agente-fiscal/investigacao.js';
 import { completarNvidia, ErroNvidiaChat } from './chat-client.js';
 
-const modeloPadrao = 'moonshotai/kimi-k3';
+const modeloPadrao = 'meta/llama-3.2-11b-vision-instruct';
 const mensagensSchema = z.object({ mensagens: z.array(z.string().trim().min(1).max(500)).min(1).max(3) }).strict();
 const decisaoSchema = z.object({
   acao: z.enum(['tentar_novamente', 'corrigir_tributos_federais', 'escalar']),

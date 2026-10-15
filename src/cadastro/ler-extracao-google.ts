@@ -14,10 +14,16 @@ export function lerExtracaoGoogle(resposta: string): ExtracaoGoogle {
   let json: unknown;
   try { json = JSON.parse(bloco ? bloco[1].trim() : texto); }
   catch { return { ok: false, codigo: 'NVIDIA_JSON_INVALIDO' }; }
-  if (!json || typeof json !== 'object' || Array.isArray(json) || !Array.isArray((json as { registros?: unknown }).registros)) {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) {
     return { ok: false, codigo: 'NVIDIA_FORMATO_INESPERADO' };
   }
-  const registros = (json as { registros: unknown[] }).registros;
+  let registros = (json as Record<string, unknown>).registros;
+  if (registros && typeof registros === 'object' && !Array.isArray(registros) && Array.isArray((registros as Record<string, unknown>).registros)) {
+    registros = (registros as Record<string, unknown>).registros;
+  }
+  if (!Array.isArray(registros)) {
+    return { ok: false, codigo: 'NVIDIA_FORMATO_INESPERADO' };
+  }
   if (registros.length > 20) return { ok: false, codigo: 'NVIDIA_LIMITE_EXCEDIDO' };
   return { ok: true, registros };
 }
