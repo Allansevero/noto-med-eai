@@ -21,6 +21,7 @@ export interface IniciarOnboardingPosConexaoDeps {
   sincronizarHistorico: (nomeInstancia: string) => Promise<unknown>;
   comprovanteClient?: PaligemmaComprovanteClient;
   evolutionClient?: EvolutionApiClient;
+  solicitarVarredura?: (medicoId: string) => Promise<void>;
   esperarMs?: (ms: number) => Promise<void>;
 }
 
@@ -82,6 +83,10 @@ export async function iniciarOnboardingPosConexao(
   let resultadoVarredura: ResultadoVarreduraAprovacao | undefined;
   if (dadosMedico?.dadosProfissionaisConfirmados) {
     try {
+      if (deps.solicitarVarredura) {
+        await deps.solicitarVarredura(deps.medicoId);
+        return { ok: true, boasVindasEnviada, pacientesEnriquecidos };
+      }
       resultadoVarredura = await varrerESolicitarAprovacao(deps.medicoId, {
         repositorio: deps.repositorio,
         enviarMensagem: deps.enviarMensagemAssistente,

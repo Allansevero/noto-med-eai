@@ -213,4 +213,3 @@ describe('sincronizarHistoricoConversa', () => {
     assert.strictEqual(repo.pacientes[0].nome, 'CARLOS SILVA OFICIAL');
   });
 });
-

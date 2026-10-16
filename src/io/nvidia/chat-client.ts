@@ -14,6 +14,8 @@ export interface OpcoesCompletarNvidia {
   tentativasMax?: number;
 }
 
+const tempoEsgotado = (erro: unknown): boolean => erro instanceof Error && ['TimeoutError', 'AbortError'].includes(erro.name);
+
 export async function completarNvidia(
   apiKey: string, model: string, messages: MensagemNvidia[], opcoesOuTimeout: number | OpcoesCompletarNvidia = 15_000
 ): Promise<string> {
@@ -37,9 +39,7 @@ export async function completarNvidia(
       });
       break;
     } catch (erro: unknown) {
-      const nomeErro = (erro as { name?: string })?.name;
-      const expirou = nomeErro === 'TimeoutError' || nomeErro === 'AbortError';
-      if (tentativa === tentativasMax) throw new ErroNvidiaChat(expirou ? 'IA_TEMPO_ESGOTADO' : 'IA_CONEXAO_FALHOU');
+      if (tentativa === tentativasMax) throw new ErroNvidiaChat(tempoEsgotado(erro) ? 'IA_TEMPO_ESGOTADO' : 'IA_CONEXAO_FALHOU');
       await new Promise(r => setTimeout(r, 350));
     }
   }
@@ -54,5 +54,5 @@ export async function completarNvidia(
     const content = choice?.message?.content;
     if (typeof content !== 'string' || !content.trim() || content.length > 32_768) throw Error('conteudo');
     return content;
-  } catch { throw new ErroNvidiaChat('IA_RESPOSTA_INVALIDA', response.status); }
+  } catch (erro) { throw new ErroNvidiaChat(tempoEsgotado(erro) ? 'IA_TEMPO_ESGOTADO' : 'IA_RESPOSTA_INVALIDA', response.status); }
 }

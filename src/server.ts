@@ -4,13 +4,19 @@ import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/c
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
-import { GoogleConsultaRegistro } from './cadastro/google-registro.js';
+import { OpenSerpConsultaRegistro } from './cadastro/openserp-registro.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
 import { criarRouterNfse } from './api/nfse/nfse-router.js';
 import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-api-repositorio.js';
 import { PostgresCandidatosNotaRepositorio } from './agente-fiscal/io/postgres-candidatos-nota-repositorio.js';
 import { AgendadorFechamentoFiscal } from './agente-fiscal/agendador/agendador-fechamento-fiscal.js';
+import { PostgresCasosRepositorio } from './agente-fiscal/casos/repositorio.js';
+import { LocalizadorCandidatos } from './agente-fiscal/casos/localizar-candidatos.js';
+import { ServicoEmissaoCasos } from './agente-fiscal/casos/servico-emissao.js';
+import { OrquestradorCasos } from './agente-fiscal/casos/orquestrador.js';
+import { WorkerCasos } from './agente-fiscal/casos/worker.js';
+import { NvidiaInterpretadorCaso } from './io/nvidia/interpretador-caso.js';
 import { processarComandoFiscalMedico } from './agente-fiscal/fluxos/processar-comando-fiscal-medico.js';
 import { iniciarOnboardingPosConexao } from './agente-fiscal/fluxos/iniciar-onboarding-pos-conexao.js';
 /**
@@ -117,19 +123,19 @@ export function criarAppExpress() {
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
-  const pesquisaCrmConfigurada=!!config.serperApiKey&&!!config.nvidiaApiKey;
+  const pesquisaCrmConfigurada=!!config.openserpBaseUrl&&!!config.nvidiaApiKey;
   const consultaRegistro = pesquisaCrmConfigurada
-    ? new GoogleConsultaRegistro({serperApiKey:config.serperApiKey,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaModel,incluirDiagnostico:true})
+    ? new OpenSerpConsultaRegistro({baseUrl:config.openserpBaseUrl,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaRegistroModel,incluirDiagnostico:true})
     : new PesquisaRegistroIndisponivel();
   const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), consultaRegistro,
     async (medicoId, certificadoId) => {
       const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
-    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada);
-  if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
+    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada, 'openserp');
+  if (process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
-      // Enriquecimento automático de dados (Google/CFM) sem envio de perguntas no WhatsApp.
+      // Enriquecimento automático via OpenSerp sem envio de perguntas no WhatsApp.
       void cadastroCertificado.recuperar().catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
     }, 5000);
     timer.unref();
@@ -137,6 +143,21 @@ export function criarAppExpress() {
 
   const adnNfseClient = new AdnNfseClient();
   const candidatosNotaRepo = new PostgresCandidatosNotaRepositorio(pool, config.appPepper, config.encryptionKey);
+  const casosAtivos = process.env['AGENTE_FISCAL_CASOS_ATIVO'] === 'true';
+  const casosRepo = new PostgresCasosRepositorio(pool);
+  const emissaoCasos = new ServicoEmissaoCasos(pool, config.appPepper, config.encryptionKey);
+  const orquestradorCasos = new OrquestradorCasos(casosRepo,
+    new LocalizadorCandidatos(pool, paligemmaClient, evolutionClient, config.encryptionKey), emissaoCasos,
+    new NvidiaInterpretadorCaso(config.nvidiaApiKey || '', config.nvidiaModel));
+  const workerCasos = new WorkerCasos(pool, casosRepo, orquestradorCasos, emissaoCasos,
+    evolutionAssistantClient, config.evolutionAssistantInstanceName);
+  const solicitarVarreduraCasos = async (medicoId: string) => {
+    const medico = await candidatosNotaRepo.obterDadosMedico(medicoId);
+    if (!medico?.telefone || !medico.dadosProfissionaisConfirmados) return;
+    await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
+      mensagemId: `varredura:${medicoId}:${Math.floor(Date.now() / 60000)}`,
+      payload: { tarefa: 'varrer', telefone: medico.telefone } });
+  };
   const agendadorFechamentoFiscal = new AgendadorFechamentoFiscal({
     pool,
     pepper: config.appPepper,
@@ -144,16 +165,16 @@ export function criarAppExpress() {
     repositorio: candidatosNotaRepo,
     enviarMensagem: evolutionAssistantClient,
     instanciaNome: config.evolutionAssistantInstanceName,
+    solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
     horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',
     ativo: Boolean(config.agenteFiscalAtivo),
     comprovanteClient: paligemmaClient,
     evolutionClient
   });
-  // O agendamento em lote legado (12h/18h) foi desativado em favor da detecção
-  // em tempo real via Gemini Multimodal no webhook de mídia do paciente.
-  // if (process.env['NODE_ENV'] !== 'test') {
-  //   agendadorFechamentoFiscal.iniciar();
-  // }
+  if (casosAtivos && process.env['NODE_ENV'] !== 'test') {
+    agendadorFechamentoFiscal.iniciar();
+    workerCasos.iniciar();
+  }
 
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
     sincronizarHistoricoEvolutionUmaVez({
@@ -168,10 +189,11 @@ export function criarAppExpress() {
   const dispararOnboardingFiscal = (medicoId: string) => {
     void (async () => {
       const res = await pool.query(
-        "SELECT nome_personalizado FROM whatsapp_instancias WHERE medico_id = $1 AND oficial = false AND status = 'conectado' LIMIT 1",
+        "SELECT nome_instancia FROM whatsapp_instancias WHERE medico_id = $1 AND oficial = false AND status = 'conectado' LIMIT 1",
         [medicoId]
       );
-      const nomeInstancia = res.rows[0]?.nome_personalizado || '';
+      const nomeInstancia = res.rows[0]?.nome_instancia || '';
+      if (!nomeInstancia) return;
       await iniciarOnboardingPosConexao({
         medicoId,
         nomeInstancia,
@@ -179,6 +201,7 @@ export function criarAppExpress() {
         enviarMensagemAssistente: evolutionAssistantClient,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         sincronizarHistorico: sincronizarHistoricoInstancia,
+        solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
         comprovanteClient: paligemmaClient,
         evolutionClient
       });
@@ -650,6 +673,10 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
+      const revisaoProfissional = await cadastroCertificado.repo.revisaoPainel(medicoId);
+      if (!revisaoProfissional.aprovado) return res.status(409).json({ ok: false,
+        codigo: 'DADOS_PROFISSIONAIS_PENDENTES', detalhe: 'Revise e aprove seus dados profissionais antes de conectar o WhatsApp.' });
+
       const appUrl = config.host === '0.0.0.0'
         ? 'https://notomed-web.6t32my.easypanel.host'
         : `http://${config.host}:${config.porta}`;
@@ -737,7 +764,7 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         modoCadastro: config.notoCadastroModo,
-        candidatosPipeline: {
+        candidatosPipeline: casosAtivos ? undefined : {
           geminiClient: geminiComprovanteClient,
           candidatosRepo,
           enviarMensagemAoMedico: async (tel, texto) => {
@@ -749,7 +776,18 @@ export function criarAppExpress() {
             return res.sucesso;
           }
         },
-        processarComandoFiscal: async (medicoId, texto, telefone) => {
+        processarComandoFiscal: async (medicoId, texto, telefone, mensagem) => {
+          if (casosAtivos) {
+            const perfilProfissional = await candidatosNotaRepo.obterDadosMedico(medicoId);
+            if (!perfilProfissional?.dadosProfissionaisConfirmados) return { tratado: true, detalhe: { estado: 'aguardando_confirmacao_profissional' } };
+            if (!mensagem?.id) throw new Error('MENSAGEM_SEM_IDENTIDADE');
+            const casoRecebido = await casosRepo.obterAtivo(medicoId);
+            await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
+              mensagemId: mensagem.id, payload: { texto, telefone, mensagemCitadaId: mensagem.citadaId, instanteMensagem: mensagem.instante,
+                casoRecebidoId: casoRecebido?.id ?? null,
+                perguntaRecebidaId: casoRecebido?.perguntaPendente?.mensagemId ?? null } });
+            return { tratado: true, detalhe: { estado: 'recebido' } };
+          }
           const enviarAoMedico = async (tel: string, txt: string) => {
             const res = await evolutionAssistantClient.enviarTexto({
               instanciaNome: config.evolutionAssistantInstanceName,
@@ -832,6 +870,7 @@ export function criarAppExpress() {
               enviarMensagemAssistente: evolutionAssistantClient,
               instanciaAssistenteNome: config.evolutionAssistantInstanceName,
               sincronizarHistorico: sincronizarHistoricoInstancia,
+              solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
               comprovanteClient: paligemmaClient,
               evolutionClient
             }).catch(err => console.warn('[Onboarding Pós-Conexão] Falha:', err?.message || err));
@@ -949,6 +988,9 @@ export function criarAppExpress() {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
             console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
+            if (casosAtivos && row.medico_id) {
+              await solicitarVarreduraCasos(row.medico_id);
+            }
           } catch (erro: any) {
             console.warn('[Evolution] Histórico não recuperado ao iniciar:', erro?.message || erro);
           }

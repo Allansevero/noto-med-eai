@@ -1,10 +1,7 @@
-/**
- * Extrai mídia e analisa comprovante bancário recebido via Visão Computacional.
- * Isolado do webhook principal para manter baixo acoplamento e respeitar limites de linhas.
- */
-
+/** Extract financial evidence from actual media bytes, including outgoing NFS-e. */
 import type { PaligemmaComprovanteClient, DadosComprovanteExtraidos } from '../io/nvidia/paligemma-comprovante-client.js';
 import type { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
+import { prepararMidiaFiscal } from '../agente-fiscal/io/preparar-midia-fiscal.js';
 
 export interface AnalisarComprovanteDeps {
   comprovanteClient?: PaligemmaComprovanteClient;
@@ -15,31 +12,27 @@ export async function tentarAnalisarComprovanteMensagem(
   instanciaNome: string,
   mensagemId: string,
   tipo: string,
-  fromMe: boolean,
+  _fromMe: boolean,
   payloadData: any,
   deps: AnalisarComprovanteDeps
 ): Promise<DadosComprovanteExtraidos | null> {
-  if (fromMe || (tipo !== 'imagem' && tipo !== 'documento') || !deps.comprovanteClient) {
-    return null;
-  }
-
-  let b64 = payloadData?.message?.imageMessage?.base64 || payloadData?.base64;
-  if (!b64 && deps.evolutionClient) {
-    try {
-      const midia = await deps.evolutionClient.obterBase64MensagemMidia(instanciaNome, mensagemId);
-      b64 = midia?.base64;
-    } catch (err) {
-      console.warn('[tentarAnalisarComprovanteMensagem] Falha ao obter base64 da mídia:', err);
-    }
-  }
-
-  if (!b64) return null;
-
+  if ((tipo !== 'imagem' && tipo !== 'documento') || !deps.comprovanteClient) return null;
   try {
-    const comp = await deps.comprovanteClient.analisarImagem(b64);
-    return comp;
-  } catch (err) {
-    console.warn('[tentarAnalisarComprovanteMensagem] Falha ao analisar comprovante via VLM:', err);
+    const dados = payloadData?.data ?? payloadData;
+    let base64 = dados?.message?.imageMessage?.base64 ?? dados?.message?.documentMessage?.base64 ?? dados?.base64;
+    // The webhook passes the WhatsApp key, never a database message UUID.
+    const whatsappId = dados?.key?.id ?? mensagemId;
+    if (!base64 && deps.evolutionClient && whatsappId) {
+      base64 = (await deps.evolutionClient.obterBase64MensagemMidia(instanciaNome, whatsappId))?.base64;
+    }
+    if (typeof base64 !== 'string' || !base64) return null;
+    const midia = await prepararMidiaFiscal(base64);
+    return {
+      ...await deps.comprovanteClient.analisarImagem(midia.base64, midia.mimeType),
+      documentoHash: midia.documentoHash
+    };
+  } catch {
+    // No fabricated negative: the durable locator will retry or mark manual review.
     return null;
   }
 }
