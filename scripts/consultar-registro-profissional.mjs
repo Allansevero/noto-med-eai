@@ -16,7 +16,7 @@ if (!nome || args.includes('--help')) {
   const consulta = new OpenSerpConsultaRegistro({
     baseUrl: config.openserpBaseUrl,
     nvidiaApiKey: config.nvidiaApiKey,
-    modelo: config.nvidiaModel,
+    modelo: config.nvidiaRegistroModel,
     ...(exibirDiagnostico ? { diagnosticar: evento => diagnostico.push(evento) } : {})
   });
   const resultado = await consulta.buscar(nome);

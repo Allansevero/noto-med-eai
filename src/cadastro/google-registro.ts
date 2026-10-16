@@ -294,7 +294,10 @@ export class PesquisaRegistroProfissional implements ConsultaRegistro {
   constructor(private readonly opcoes: OpcoesGoogleRegistro) {
     this.requisitar = opcoes.requisitar ?? fetch;
     this.modelo = (opcoes.modelo?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : opcoes.modelo?.trim()) || 'meta/llama-3.2-90b-vision-instruct';
-    this.completar = opcoes.completar ?? (mensagens => completarNvidia(opcoes.nvidiaApiKey || '', this.modelo, mensagens, { temperature: 0.1, formatoJson: true }));
+    // O cadastro agenda as retentativas; não multiplicar o prazo dentro da chamada.
+    this.completar = opcoes.completar ?? (mensagens => completarNvidia(opcoes.nvidiaApiKey || '', this.modelo, mensagens, {
+      temperature: 0.1, formatoJson: true, timeoutMs: 120_000, maxTokens: 2048, tentativasMax: 1
+    }));
   }
 
   async buscar(nome: string, _uf?: string): Promise<ResultadoConsultaRegistro> {
@@ -313,7 +316,10 @@ export class PesquisaRegistroProfissional implements ConsultaRegistro {
     const fontes = pesquisa.dados;
     let extracao: string;
     try { extracao = await this.completar(mensagensExtracao(nome.trim(), fontes)); }
-    catch (erro) { return falha(erro instanceof ErroNvidiaChat ? erro.codigo : 'NVIDIA_CONSULTA_INDISPONIVEL'); }
+    catch (erro) {
+      if (erro instanceof ErroNvidiaChat && erro.statusHttp !== undefined) diagnosticar({ etapa: 'nvidia_http', status: erro.statusHttp });
+      return falha(erro instanceof ErroNvidiaChat ? erro.codigo : 'NVIDIA_CONSULTA_INDISPONIVEL');
+    }
     const resultado = lerExtracaoGoogle(extracao);
     if (!resultado.ok) return falha(resultado.codigo);
     diagnosticar({ etapa: 'nvidia', candidatos: resultado.registros.length });

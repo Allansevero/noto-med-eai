@@ -53,11 +53,25 @@ Nas variáveis do serviço **Notomed**, adicione:
 ```dotenv
 OPENSERP_BASE_URL=http://SEU_HOST_INTERNO_OPENSERP:7000
 NVIDIA_API_KEY=SUA_CHAVE_NVIDIA_EXISTENTE
+# Opcional: esse já é o padrão para CRM/RQE.
+NVIDIA_REGISTRO_MODEL=mistralai/mistral-7b-instruct-v0.3
 ```
 
 Substitua o hostname pelo valor real do painel e preserve a chave NVIDIA já
 configurada. Remova `SERPER_API_KEY` desse serviço se não houver outro uso.
 Reconstrua e implante a aplicação com o código atualizado.
+
+A extração de CRM/RQE usa um modelo de texto independente de `NVIDIA_MODEL`
+e `NVIDIA_VISION_MODEL`. O padrão é o Mistral 7B listado no catálogo NVIDIA;
+isso permite reservar os modelos das demais funções para suas tarefas.
+Cada chamada de extração tem prazo de 120 s, saída de até 2048 tokens e uma
+tentativa HTTP. As novas tentativas ficam sob o orçamento do trabalho de
+cadastro. `IA_TEMPO_ESGOTADO` identifica o prazo expirado; a disponibilidade e a
+latência reais do novo modelo precisam ser conferidas após a implantação.
+Quando houver resposta de erro HTTP, o diagnóstico `nvidia_http` informa apenas
+o status, sem registrar a chave nem o corpo retornado pelo provedor.
+Se um cadastro já esgotou suas tentativas, solicite nova pesquisa no painel
+após implantar a atualização.
 
 Cadastros ainda aguardando confirmação com erro `SERPER_*` recebem uma nova
 rodada limitada de busca no OpenSerp, inclusive se as tentativas do provedor

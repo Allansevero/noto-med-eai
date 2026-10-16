@@ -125,7 +125,7 @@ export function criarAppExpress() {
     : undefined;
   const pesquisaCrmConfigurada=!!config.openserpBaseUrl&&!!config.nvidiaApiKey;
   const consultaRegistro = pesquisaCrmConfigurada
-    ? new OpenSerpConsultaRegistro({baseUrl:config.openserpBaseUrl,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaModel,incluirDiagnostico:true})
+    ? new OpenSerpConsultaRegistro({baseUrl:config.openserpBaseUrl,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaRegistroModel,incluirDiagnostico:true})
     : new PesquisaRegistroIndisponivel();
   const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), consultaRegistro,
     async (medicoId, certificadoId) => {

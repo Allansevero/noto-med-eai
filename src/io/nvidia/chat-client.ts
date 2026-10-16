@@ -10,7 +10,11 @@ export interface OpcoesCompletarNvidia {
   timeoutMs?: number;
   temperature?: number;
   formatoJson?: boolean;
+  maxTokens?: number;
+  tentativasMax?: 1 | 2;
 }
+
+const tempoEsgotado = (erro: unknown): boolean => erro instanceof Error && ['TimeoutError', 'AbortError'].includes(erro.name);
 
 export async function completarNvidia(
   apiKey: string, model: string, messages: MensagemNvidia[], opcoesOuTimeout: number | OpcoesCompletarNvidia = 90_000
@@ -19,22 +23,23 @@ export async function completarNvidia(
   const timeoutMs = typeof opcoesOuTimeout === 'number' ? opcoesOuTimeout : (opcoesOuTimeout.timeoutMs ?? 90_000);
   const temperature = typeof opcoesOuTimeout === 'object' && typeof opcoesOuTimeout.temperature === 'number' ? opcoesOuTimeout.temperature : 1;
   const formatoJson = typeof opcoesOuTimeout === 'object' && opcoesOuTimeout.formatoJson === true;
+  const maxTokens = typeof opcoesOuTimeout === 'object' ? (opcoesOuTimeout.maxTokens ?? 4096) : 4096;
   let response: Response | undefined;
-  const tentativasMax = 2;
+  const tentativasMax = typeof opcoesOuTimeout === 'object' ? (opcoesOuTimeout.tentativasMax ?? 2) : 2;
   for (let tentativa = 1; tentativa <= tentativasMax; tentativa++) {
     try {
       response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
-          model, stream: false, temperature, max_tokens: 4096,
+          model, stream: false, temperature, max_tokens: maxTokens,
           ...(formatoJson ? { response_format: { type: 'json_object' } } : {}),
           chat_template_kwargs: { thinking: false }, messages
         })
       });
       break;
-    } catch {
-      if (tentativa === tentativasMax) throw new ErroNvidiaChat('IA_CONEXAO_FALHOU');
+    } catch (erro) {
+      if (tentativa === tentativasMax) throw new ErroNvidiaChat(tempoEsgotado(erro) ? 'IA_TEMPO_ESGOTADO' : 'IA_CONEXAO_FALHOU');
       await new Promise(r => setTimeout(r, 1000));
     }
   }
@@ -49,5 +54,5 @@ export async function completarNvidia(
     const content = choice?.message?.content;
     if (typeof content !== 'string' || !content.trim() || content.length > 32_768) throw Error('conteudo');
     return content;
-  } catch { throw new ErroNvidiaChat('IA_RESPOSTA_INVALIDA', response.status); }
+  } catch (erro) { throw new ErroNvidiaChat(tempoEsgotado(erro) ? 'IA_TEMPO_ESGOTADO' : 'IA_RESPOSTA_INVALIDA', response.status); }
 }
