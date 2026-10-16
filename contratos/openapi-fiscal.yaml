@@ -1,0 +1,182 @@
+openapi: 3.1.0
+info:
+  title: API do Serviço Fiscal - Noto
+  version: 1.0.0
+  description: >
+    Serviço fiscal isolado responsável pela custódia do certificado digital A1,
+    interpretação tributária (Simples Nacional, IBS/CBS) e emissão de NFS-e Nacional.
+servers:
+  - url: http://fiscal:3001
+    description: Rede interna do Easypanel
+
+paths:
+  /v1/onboarding/certificado:
+    post:
+      summary: Upload e extração segura do certificado digital A1
+      description: >
+        Recebe o certificado A1 em Base64 e sua senha, descriptografa, valida
+        sua vigência, consulta o histórico no ADN e retorna os dados do titular
+        e parâmetros fiscais sugeridos. Nunca devolve o arquivo nem a senha.
+      security:
+        - InternalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [medicoId, arquivoBase64, senha]
+              properties:
+                medicoId:
+                  type: string
+                  format: uuid
+                arquivoBase64:
+                  type: string
+                senha:
+                  type: string
+                nomeArquivo:
+                  type: string
+      responses:
+        '200':
+          description: Certificado processado e parâmetros identificados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sucesso:
+                    type: boolean
+                    example: true
+                  titular:
+                    type: object
+                    properties:
+                      nome:
+                        type: string
+                      tipo:
+                        type: string
+                        enum: [PF, PJ]
+                      cnpj:
+                        type: string
+                      cpf:
+                        type: string
+                      validadeAte:
+                        type: string
+                        format: date-time
+                  parametrosFiscaisSugeridos:
+                    type: object
+                    properties:
+                      regimeTributario:
+                        type: string
+                      optanteSimples:
+                        type: boolean
+                      aliquotaIss:
+                        type: number
+                      codigoTributacaoNacional:
+                        type: string
+                      descricaoServicoPadrao:
+                        type: string
+                  referenciaAdnEncontrada:
+                    type: boolean
+        '400':
+          description: Certificado expirado ou senha inválida
+
+  /v1/notas/emitir:
+    post:
+      summary: Emissão idempotente de NFS-e Nacional
+      description: >
+        Assina a DPS com o certificado A1 do médico e transmite ao Serpro / SEFIN.
+        A emissão é estritamente idempotente pelo pedidoId informado no payload
+        ou no cabeçalho Idempotency-Key.
+      security:
+        - InternalToken: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pedidoId, medicoId, tomador, servico]
+              properties:
+                pedidoId:
+                  type: string
+                  format: uuid
+                medicoId:
+                  type: string
+                  format: uuid
+                tomador:
+                  type: object
+                  required: [cpfCnpj, nome]
+                  properties:
+                    cpfCnpj:
+                      type: string
+                    nome:
+                      type: string
+                    telefone:
+                      type: string
+                    email:
+                      type: string
+                servico:
+                  type: object
+                  required: [valorCentavos, dataCompetencia, discriminacao]
+                  properties:
+                    valorCentavos:
+                      type: integer
+                    dataCompetencia:
+                      type: string
+                      format: date
+                    discriminacao:
+                      type: string
+      responses:
+        '200':
+          description: Nota autorizada ou processando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sucesso:
+                    type: boolean
+                  pedidoId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [autorizada, processando, rejeitada]
+                  chaveAcesso:
+                    type: string
+                  numeroNota:
+                    type: string
+                  linkDanfsePdf:
+                    type: string
+
+  /v1/notas/{pedidoId}/pdf:
+    get:
+      summary: Download do DANFSE em PDF
+      security:
+        - InternalToken: []
+      parameters:
+        - name: pedidoId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Arquivo PDF gerado
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+components:
+  securitySchemes:
+    InternalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token

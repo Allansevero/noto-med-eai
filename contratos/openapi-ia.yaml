@@ -1,0 +1,153 @@
+openapi: 3.1.0
+info:
+  title: API do Serviço de IA - Noto
+  version: 1.0.0
+  description: >
+    Serviço de IA isolado responsável pela detecção autônoma de candidatos a emissão
+    de notas fiscais em históricos de mensagens/comprovantes e pela autocorreção
+    de falhas de emissão (SEFIN / Serpro).
+servers:
+  - url: http://ia:3002
+    description: Rede interna do Easypanel
+
+paths:
+  /v1/analise/detectar-candidatos:
+    post:
+      summary: Detecção de comprovantes e elaboração da pergunta ao médico
+      description: >
+        Analisa as mensagens e mídias de uma conversa do WhatsApp (80% regra, 20% IA).
+        Retorna se há candidato e formula a pergunta pronta para o Noto enviar ao médico.
+      security:
+        - InternalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [medicoId, dadosMedico, conversa]
+              properties:
+                medicoId:
+                  type: string
+                dadosMedico:
+                  type: object
+                  required: [nome, cpfCnpj]
+                  properties:
+                    nome:
+                      type: string
+                    cpfCnpj:
+                      type: string
+                    valorPadraoCentavos:
+                      type: integer
+                conversa:
+                  type: object
+                  required: [conversaId, contatoTelefone, mensagens]
+                  properties:
+                    conversaId:
+                      type: string
+                    contatoTelefone:
+                      type: string
+                    pacienteNomeCadastrado:
+                      type: string
+                    mensagens:
+                      type: array
+                      items:
+                        type: object
+                        required: [id, direcao, tipo, timestamp]
+                        properties:
+                          id:
+                            type: string
+                          direcao:
+                            type: string
+                            enum: [enviada, recebida]
+                          tipo:
+                            type: string
+                          conteudo:
+                            type: string
+                          midiaBase64:
+                            type: string
+                          mimetype:
+                            type: string
+                          timestamp:
+                            type: string
+      responses:
+        '200':
+          description: Decisão e pergunta sugerida formulada pela IA
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sucesso:
+                    type: boolean
+                  candidatoDetectado:
+                    type: boolean
+                  confianca:
+                    type: number
+                  perguntaSugeridaMedico:
+                    type: string
+                  dadosFaltantes:
+                    type: array
+                    items:
+                      type: string
+                  perguntaDadosFaltantes:
+                    type: string
+
+  /v1/analise/autocorrigir-falha:
+    post:
+      summary: Investigação e autocorreção autônoma de rejeições SEFIN
+      description: >
+        Recebe o erro retornado pela emissão (ex: conflito MEI x ME, alíquota incorreta),
+        investiga a causa raiz e retorna a ação de correção autônoma a ser aplicada.
+      security:
+        - InternalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [medicoId, pedidoId, erroSefin]
+              properties:
+                medicoId:
+                  type: string
+                pedidoId:
+                  type: string
+                erroSefin:
+                  type: object
+                  required: [mensagem]
+                  properties:
+                    codigo:
+                      type: string
+                    mensagem:
+                      type: string
+      responses:
+        '200':
+          description: Diagnóstico e ação de autocorreção recomendada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sucesso:
+                    type: boolean
+                  diagnostico:
+                    type: string
+                  podeCorrigirAutonomamente:
+                    type: boolean
+                  acaoRecomendada:
+                    type: object
+                    properties:
+                      tipo:
+                        type: string
+                      alteracoesParametros:
+                        type: object
+                  explicacaoTecnica:
+                    type: string
+
+components:
+  securitySchemes:
+    InternalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token

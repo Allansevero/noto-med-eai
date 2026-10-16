@@ -1,0 +1,29 @@
+/**
+ * Catálogo unificado de códigos de erro entre os serviços /noto, /fiscal e /ia.
+ * Centraliza os identificadores de erro para que consumidores de API possam
+ * tomar decisões determinísticas sem depender de mensagens em texto livre.
+ */
+
+export const CODIGOS_ERRO_FISCAL = {
+  CERTIFICADO_EXPIRADO: 'CERTIFICADO_EXPIRADO',
+  SENHA_INVALIDA: 'SENHA_INVALIDA',
+  ARQUIVO_CORROMPIDO: 'ARQUIVO_CORROMPIDO',
+  CERTIFICADO_NAO_ENCONTRADO: 'CERTIFICADO_NAO_ENCONTRADO',
+  REJEICAO_SEFIN: 'REJEICAO_SEFIN',
+  SERPRO_INDISPONIVEL: 'SERPRO_INDISPONIVEL',
+  DADOS_TOMADOR_INVALIDOS: 'DADOS_TOMADOR_INVALIDOS',
+  PARAMETROS_INCOMPLETOS: 'PARAMETROS_INCOMPLETOS',
+  ERRO_INTERNO_FISCAL: 'ERRO_INTERNO_FISCAL'
+} as const;
+
+export type CodigoErroFiscal = typeof CODIGOS_ERRO_FISCAL[keyof typeof CODIGOS_ERRO_FISCAL];
+
+export const CODIGOS_ERRO_IA = {
+  CONVERSA_SEM_MENSAGENS: 'CONVERSA_SEM_MENSAGENS',
+  MIDIA_ILEGIVEL: 'MIDIA_ILEGIVEL',
+  PROVEDOR_IA_INDISPONIVEL: 'PROVEDOR_IA_INDISPONIVEL',
+  TEMPO_ESGOTADO_IA: 'TEMPO_ESGOTADO_IA',
+  ERRO_INTERNO_IA: 'ERRO_INTERNO_IA'
+} as const;
+
+export type CodigoErroIa = typeof CODIGOS_ERRO_IA[keyof typeof CODIGOS_ERRO_IA];
