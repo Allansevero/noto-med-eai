@@ -4,8 +4,6 @@
  * de nota fiscal das regras de orquestração do webhook.
  */
 
-import type { RespostaRapidaModelo } from '../whatsapp/casar-resposta-rapida.js';
-
 export interface InstanciaRegistro {
   id: string;
   medicoId: string | null;
@@ -64,7 +62,6 @@ export interface SolicitacaoAguardandoDataRegistro {
 export interface AtendimentoRepositorio {
   buscarInstanciaPorNome(nomeInstancia: string): Promise<InstanciaRegistro | null>;
   buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string, contatoNome?: string | null): Promise<ConversaRegistro>;
-  buscarRespostasRapidasMedico(medicoId: string): Promise<RespostaRapidaModelo[]>;
   buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null>;
   buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null>;
   buscarPacientePorCpfHash?(medicoId: string, cpfHash: string): Promise<PacienteRegistro | null>;
@@ -129,5 +126,14 @@ export interface AtendimentoRepositorio {
     comandoDetectado?: string | null;
     criadoEm?: Date;
   }): Promise<void>;
+  salvarMensagensEmLote?(mensagens: Array<{
+    conversaId: string;
+    direcao: 'recebida' | 'enviada';
+    tipoMensagem?: string;
+    conteudo: string;
+    payloadBruto?: unknown;
+    comandoDetectado?: string | null;
+    criadoEm?: Date;
+  }>): Promise<void>;
   buscarMensagensRecentesConversa?(conversaId: string, limite?: number): Promise<string[]>;
 }

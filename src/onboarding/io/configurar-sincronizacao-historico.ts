@@ -12,6 +12,7 @@ export async function configurarSincronizacaoHistorico(params: {
   const atuais = await buscarConfiguracaoAtual(params);
   const resposta = await fetch(`${params.baseUrl}/settings/set/${params.nomeInstancia}`, {
     method: 'POST',
+    signal: AbortSignal.timeout(15_000),
     headers: {
       'Content-Type': 'application/json',
       apikey: params.apiKey
@@ -37,6 +38,7 @@ async function buscarConfiguracaoAtual(params: {
 }): Promise<Record<string, unknown>> {
   try {
     const resposta = await fetch(`${params.baseUrl}/settings/find/${params.nomeInstancia}`, {
+      signal: AbortSignal.timeout(15_000),
       headers: { apikey: params.apiKey }
     });
     if (!resposta.ok) return {};

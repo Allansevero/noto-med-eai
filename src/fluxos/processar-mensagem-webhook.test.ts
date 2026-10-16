@@ -11,7 +11,6 @@ import type {
   MedicoDadosRegistro
 } from '../atendimento/atendimento-repositorio.js';
 import type { EnviarMensagemPaciente, EnviarMensagemPacienteParams, ResultadoEnvioMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
-import type { RespostaRapidaModelo } from '../whatsapp/casar-resposta-rapida.js';
 
 class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   public instancias: InstanciaRegistro[] = [];
@@ -40,7 +39,6 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
     }
     return conv;
   }
-  async buscarRespostasRapidasMedico(): Promise<RespostaRapidaModelo[]> { return []; }
   async buscarPacientePorId(id: string): Promise<PacienteRegistro | null> {
     return this.pacientes.find((p) => p.id === id) ?? null;
   }
@@ -288,7 +286,7 @@ describe('processarMensagemWebhook', () => {
     assert.strictEqual(repo.conversas[0].pacienteId, repo.pacientes[0].id);
   });
 
-  it('deve rotear comando /agendado disparado pelo médico (fromMe: true)', async () => {
+  it('deve descartar mensagens comuns do médico que não correspondam a comandos suportados', async () => {
     const repo = new AtendimentoRepositorioMemoria();
     repo.instancias.push({
       id: 'inst-1',
@@ -313,9 +311,9 @@ describe('processarMensagemWebhook', () => {
     const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
     assert.strictEqual(res.ok, true);
     if (res.ok) {
-      assert.strictEqual(res.acao, 'comando_agendado');
+      assert.strictEqual(res.acao, 'descartada');
+      assert.strictEqual(res.motivoDescarte, 'gatilho_nao_reconhecido');
     }
-    assert.strictEqual(repo.agendamentos.length, 1);
   });
 
   it('deve rotear resposta de CPF quando a conversa estiver aguardando CPF', async () => {
@@ -463,7 +461,7 @@ describe('processarMensagemWebhook', () => {
     }
   });
 
-  it('deve rotear comando de emissão com data da consulta direto no gatilho para fila pronta', async () => {
+  it('deve descartar mensagens de texto sobre valores enviadas pelo médico', async () => {
     const repo = new AtendimentoRepositorioMemoria();
     repo.instancias.push({
       id: 'inst-1',
@@ -515,16 +513,9 @@ describe('processarMensagemWebhook', () => {
     const res = await processarMensagemWebhook(payload, segredo, criarDeps(repo));
     assert.strictEqual(res.ok, true);
     if (res.ok) {
-      assert.strictEqual(res.acao, 'comando_emissao');
-      assert.strictEqual(res.detalhe.solicitacaoId, repo.solicitacoes[0].id);
-      assert.strictEqual(res.detalhe.fila, 'pronta');
-      assert.strictEqual(res.detalhe.aguardandoData, false);
+      assert.strictEqual(res.acao, 'descartada');
+      assert.strictEqual(res.motivoDescarte, 'gatilho_nao_reconhecido');
     }
-    assert.strictEqual(repo.solicitacoes.length, 1);
-    assert.strictEqual(repo.solicitacoes[0].fila, 'pronta');
-    assert.ok(repo.solicitacoes[0].xdescServ.includes('NAS DATAS 25/09/2026'));
-    assert.ok(repo.solicitacoes[0].xdescServ.includes('ROBERTO SANTOS'));
-    assert.ok(repo.solicitacoes[0].xdescServ.includes('CRM 12345/SP / RQE 6789'));
   });
 
   it('deve rotear mensagem recebida pelo container do Noto Assistente para o gerenciador e enviar resposta', async () => {

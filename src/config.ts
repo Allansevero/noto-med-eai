@@ -42,6 +42,8 @@ export interface AppConfig {
   googleRedirectUri?: string;
   googleApiKey?: string;
   googleAppId?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
   stripeSecretKey?: string;
@@ -82,8 +84,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
     serperApiKey: env['SERPER_API_KEY']?.trim() || undefined,
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
-    nvidiaModel: env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
-    nvidiaVisionModel: env['NVIDIA_VISION_MODEL']?.trim() || env['NVIDIA_MODEL']?.trim() || 'moonshotai/kimi-k3',
+    nvidiaModel: (env['NVIDIA_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
+    nvidiaVisionModel: (env['NVIDIA_VISION_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_VISION_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
     notoCadastroModo: env['NOTO_CADASTRO_MODO'] === 'conversacional' ? 'conversacional' : 'confirmacao',
     assistenteContextualAtivo: env['ASSISTENTE_CONTEXTUAL_ATIVO'] === 'true',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
@@ -98,6 +100,8 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     googleRedirectUri: env['GOOGLE_REDIRECT_URI'],
     googleApiKey: env['GOOGLE_API_KEY'],
     googleAppId: env['GOOGLE_APP_ID'],
+    geminiApiKey: env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'],
+    geminiModel: env['GEMINI_MODEL'] || 'gemini-3.5-flash',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
     stripeSecretKey: env['STRIPE_SECRET_KEY'],

@@ -3,7 +3,10 @@ import { decisaoConfirmacaoSchema, validarConfirmacao, type DecisaoConfirmacao }
 import type { PendenciaCadastro } from './enriquecer-cadastro.js';
 export interface DecisorCadastro { decidir(pendencia:PendenciaCadastro,texto:string):Promise<DecisaoConfirmacao> }
 export class NvidiaDecisorCadastro implements DecisorCadastro {
- constructor(private apiKey:string,private modelo='moonshotai/kimi-k3'){}
+ private readonly modelo: string;
+ constructor(private apiKey:string, modelo = 'meta/llama-3.2-11b-vision-instruct') {
+  this.modelo = modelo === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-11b-vision-instruct' : modelo;
+ }
  async decidir(p:PendenciaCadastro,texto:string):Promise<DecisaoConfirmacao>{
   const propostas:DecisaoConfirmacao[]=[
    ...p.candidatos.map(c=>({acao:'confirmar_candidato' as const,candidatoId:c.id,evidencia:texto})),

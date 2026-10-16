@@ -115,6 +115,7 @@ export class EvolutionApiClient
 
       const resp = await fetch(url, {
         method: 'POST',
+        signal: AbortSignal.timeout(60_000),
         headers: {
           'Content-Type': 'application/json',
           apikey: this.apiKey
@@ -151,6 +152,7 @@ export class EvolutionApiClient
     try {
       const resp = await fetch(url, {
         method: 'POST',
+        signal: AbortSignal.timeout(15_000),
         headers: {
           'Content-Type': 'application/json',
           apikey: this.apiKey

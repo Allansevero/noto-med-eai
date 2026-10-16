@@ -8,7 +8,7 @@ import { extrairCpfTexto } from '../paciente/extrair-cpf-texto.js';
 import { gerarHashCpf } from '../paciente/hash-cpf.js';
 import { ehNomeCivilValido } from '../paciente/regras/validar-nome-civil.js';
 import type { AtendimentoRepositorio, ConversaRegistro } from '../atendimento/atendimento-repositorio.js';
-import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
+import type { ConsultaCpfProvider, DadosConsultaCpf } from '../paciente/consulta-cpf-provider.js';
 
 export interface SincronizarHistoricoDeps {
   repositorio: AtendimentoRepositorio;
@@ -36,15 +36,20 @@ export async function sincronizarHistoricoConversa(
   const textoCompleto = mensagensHistorico.join('\n');
   const cpfValido = extrairCpfTexto(textoCompleto);
   const cpfHash = cpfValido ? gerarHashCpf(cpfValido, deps.pepper) : null;
-  const dadosConsulta = cpfValido && deps.consultaCpfProvider
-    ? await deps.consultaCpfProvider.consultar(cpfValido)
-    : null;
-  const nomeValido = dadosConsulta?.nome && ehNomeCivilValido(dadosConsulta.nome) ? dadosConsulta.nome : null;
 
   let paciente = await deps.repositorio.buscarPacientePorTelefone(
     medicoId,
     conversa.contatoTelefone
   );
+
+  let dadosConsulta: DadosConsultaCpf | null = null;
+  const jaTemNomeValidado = paciente?.cpfHash === cpfHash && Boolean(paciente?.nomeValidado) && Boolean(paciente?.nome);
+
+  if (cpfValido && deps.consultaCpfProvider && !jaTemNomeValidado) {
+    dadosConsulta = await deps.consultaCpfProvider.consultar(cpfValido);
+  }
+
+  const nomeValido = dadosConsulta?.nome && ehNomeCivilValido(dadosConsulta.nome) ? dadosConsulta.nome : null;
 
   if (paciente) {
     if (cpfValido && cpfHash) {
@@ -53,8 +58,8 @@ export async function sincronizarHistoricoConversa(
         cpfHash,
         cpf: cpfValido,
         nome: nomeValido || paciente.nome || null,
-        dataNascimento: dadosConsulta?.dataNascimento,
-        nomeValidado: Boolean(paciente.nomeValidado)
+        dataNascimento: dadosConsulta?.dataNascimento || paciente.dataNascimento,
+        nomeValidado: Boolean(nomeValido || paciente.nomeValidado)
       });
     }
   } else {

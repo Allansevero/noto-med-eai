@@ -27,7 +27,7 @@ migrações contra produção, chamadas pagas nem enviar mensagens durante desen
 2. Antes de reiniciar a aplicação, executar `npm run migrate:casos` usando a conexão
    PostgreSQL do ambiente. A migração cria tabelas e importa solicitações legadas
    aguardando aprovação/CPF, sem excluir tabelas existentes.
-3. Iniciar normalmente com `npm start`. O worker dos casos roda no serviço web.
+3. Definir `AGENTE_FISCAL_CASOS_ATIVO=true` e iniciar com `npm start`. Sem essa opção, o fluxo de comprovantes e pedidos de nota já existente continua ativo, evitando motores concorrentes. O worker dos casos roda no serviço web.
    `AGENTE_FISCAL_ATIVO=true` habilita somente os disparos periódicos; mensagens
    recebidas e retomadas pós-conexão usam o mesmo fluxo.
 
@@ -76,9 +76,13 @@ Resultados públicos seguem sugestões para revisão, sem validação oficial pr
 
 ## Verificação da implementação
 
-A suíte automatizada completa passou com 845 testes, sem falhas nem skips, e
+A suíte automatizada completa passou com 738 testes, sem falhas nem skips, e
 `npm run typecheck` passou. Os cenários incluem aprovação/recusa, respostas atrasadas,
 CPF inválido, cadastro alterado após a pergunta, cache documental, favorecido divergente,
 NFS-e ambígua, pesquisa profissional explícita e apresentação do titular PF no painel.
 Os testes usam provedores simulados; não comprovam disponibilidade dos serviços pagos.
 A migração e os locks PostgreSQL ainda precisam de validação no banco de homologação.
+
+Integração com a branch remota 205c37c: preservados o modelo NVIDIA atualizado,
+JSON estruturado, importação de histórico em lote e os módulos de candidatos/pedidos.
+A opção AGENTE_FISCAL_CASOS_ATIVO escolhe um único motor de atendimento e detecção.

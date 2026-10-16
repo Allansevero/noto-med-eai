@@ -1,5 +1,4 @@
 import { criarEnviadorConversasNoto } from '../whatsapp/enviador-conversas-noto.js';
-import { PostgresComunicadorNoto } from '../io/postgres/postgres-comunicador-noto.js';
 import { criarServicosIa } from '../ia/criar-servicos-ia.js';
 import { iniciarAvisosPendenciasProfissionais } from './avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados-profissionais-service.js';
@@ -8,8 +7,6 @@ import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados
  * Permite que a aplicação em container único (Easypanel/VPS) processe
  * a fila 'pronta' sem depender de um processo daemon separado ou cron externo.
  */
-
-import { PostgresInvestigacaoRepositorio } from '../io/postgres/postgres-investigacao-repositorio.js';
 
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
@@ -52,28 +49,37 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     config.evolutionOfficialInstanceName, config.evolutionOfficialInstanceName
   );
 
-  const evolutionAssistantClient=new EvolutionApiClient(config.evolutionAssistantUrl,config.evolutionAssistantApiKey,config.evolutionAssistantInstanceName,config.evolutionOfficialInstanceName);
-  const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
-  const ia = criarServicosIa(config);
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
+  const evolutionAssistantClient = new EvolutionApiClient(
+    config.evolutionAssistantUrl,
+    config.evolutionAssistantApiKey,
+    config.evolutionAssistantInstanceName,
+    config.evolutionOfficialInstanceName
+  );
+  const enviarConversas = criarEnviadorConversasNoto({
+    oficialNome: config.evolutionOfficialInstanceName,
+    assistenteNome: config.evolutionAssistantInstanceName,
+    assistente: evolutionAssistantClient,
+    clinicas: evolutionClient
+  });
   const notificadorAlertas: NotificadorAlertas = {
     async notificarMedicoWhatsApp(params) {
       if (!params.medicoId || !params.solicitacaoId) {
         throw new Error('Identificadores do médico ou da solicitação ausentes para envio de notificação.');
       }
-      const envio = await comunicadorNoto.enviar({
-        medicoId: params.medicoId,
-        solicitacaoId: params.solicitacaoId,
-        chave: `falha:${params.solicitacaoId}`,
-        evento: 'falha_emissao',
-        dados: {
-          diagnostico: params.motivoErro,
-          ...(params.pendenciasFiscais ? { pendencias: params.pendenciasFiscais } : {})
+      try {
+        const { rows } = await pool.query(
+          `select u.telefone from medicos m join usuarios u on u.id = m.usuario_id where m.id = $1`,
+          [params.medicoId]
+        );
+        if (rows[0]?.telefone) {
+          await evolutionAssistantClient.enviarTexto({
+            contatoTelefone: rows[0].telefone,
+            texto: `Olá, Doutor(a). Identificamos uma ocorrência na emissão de NFS-e (solicitação ${params.solicitacaoId.slice(0, 8)}): ${params.motivoErro || 'Falha na comunicação com a prefeitura'}.`,
+            instanciaNome: config.evolutionAssistantInstanceName
+          });
         }
-      });
-      if (!envio.sucesso) {
-        console.warn('[NotoConversa] Falha no envio do aviso de emissão ao médico.', { solicitacaoId: params.solicitacaoId });
-        throw new Error(`Falha ao enviar aviso de emissão pelo WhatsApp ao médico (solicitação ${params.solicitacaoId}).`);
+      } catch (err: any) {
+        console.warn('[WorkerEmbutido] Falha ao enviar aviso de emissão ao médico:', err?.message || err);
       }
     },
     async notificarDesenvolvedorEmail(params) {
@@ -83,7 +89,14 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     }
   };
 
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(
+    pool,
+    enviarConversas,
+    config.evolutionAssistantInstanceName,
+    undefined,
+    config.assistenteContextualAtivo,
+    config.notoCadastroModo
+  );
   const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
   let ativo = true;
 
@@ -102,11 +115,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
           dadosProfissionais,
           emissorDps,
           enviarPdfDanfse: evolutionClient,
-          notificadorAlertas,
-          agenteFiscal: config.agenteFiscalAtivo ? {
-            repositorio: new PostgresInvestigacaoRepositorio(pool),
-            decisor: ia.decisorFiscal
-          } : undefined
+          notificadorAlertas
         });
         console.log(`[WorkerEmbutido] Solicitação ${item.id} finalizada com status: ${res.status}`);
       } catch (err: any) {
@@ -116,12 +125,13 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     }
   };
 
-  loop();
+  const execucao = loop();
 
   return {
-    parar: () => {
+    parar: async () => {
       ativo = false;
       avisosProfissionais.parar();
+      await execucao;
     }
   };
 }

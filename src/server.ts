@@ -7,9 +7,6 @@ import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
 import { GoogleConsultaRegistro } from './cadastro/google-registro.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
-import { criarRouterGooglePlanilhas } from './integracoes/google-planilhas/router.js';
-import { GooglePlanilhasClient } from './integracoes/google-planilhas/google-client.js';
-import { PostgresComunicadorNoto } from './io/postgres/postgres-comunicador-noto.js';
 import { criarRouterNfse } from './api/nfse/nfse-router.js';
 import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-api-repositorio.js';
 import { PostgresCandidatosNotaRepositorio } from './agente-fiscal/io/postgres-candidatos-nota-repositorio.js';
@@ -20,6 +17,7 @@ import { ServicoEmissaoCasos } from './agente-fiscal/casos/servico-emissao.js';
 import { OrquestradorCasos } from './agente-fiscal/casos/orquestrador.js';
 import { WorkerCasos } from './agente-fiscal/casos/worker.js';
 import { NvidiaInterpretadorCaso } from './io/nvidia/interpretador-caso.js';
+import { processarComandoFiscalMedico } from './agente-fiscal/fluxos/processar-comando-fiscal-medico.js';
 import { iniciarOnboardingPosConexao } from './agente-fiscal/fluxos/iniciar-onboarding-pos-conexao.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
@@ -56,27 +54,37 @@ import { salvarPreferenciasMedico } from './conta/salvar-preferencias-medico.js'
 import { ZodError } from 'zod';
 import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
-import { PostgresBillingRepositorio } from './io/postgres/postgres-billing-repositorio.js';
-import { StripeService } from './billing/stripe-service.js';
-import { processarWebhookStripe } from './billing/processar-webhook-stripe.js';
 import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
 import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medico.js';
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
-import { criarRouterWhatsappDesenvolvedor } from './desenvolvedor/whatsapp-router.js';
-import { EvolutionColetorClient } from './desenvolvedor/evolution-coletor.js';
-import { criarRouterFiscalDesenvolvedor } from './desenvolvedor/fiscal-router.js';
 import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
+import { configurarDesempenhoHttp, OPCOES_ARQUIVOS_ESTATICOS } from './http/configurar-desempenho-http.js';
+import { tratarErrosHttp } from './http/tratar-erros-http.js';
+import { criarEncerramentoGracioso } from './processo/encerrar-gracioso.js';
+import { registrarSinaisDeProcesso } from './processo/registrar-sinais-de-processo.js';
+import { GeminiComprovanteClient } from './candidatos/io/gemini-comprovante-client.js';
+import { PostgresCandidatosRepositorio } from './candidatos/io/postgres-candidatos-repositorio.js';
+import { processarRespostaMedicoCandidato } from './candidatos/fluxos/processar-resposta-medico-candidato.js';
+import { processarSolicitacaoEmissaoApi } from './api/nfse/processar-solicitacao-emissao-api.js';
+import { PostgresPedidosRepositorio } from './pedido-nota/io/postgres-pedidos-repositorio.js';
+import { SupabaseFontePacientes } from './pedido-nota/io/supabase-fonte-pacientes.js';
+import { SheetsFontePacientes } from './pedido-nota/io/sheets-fonte-pacientes.js';
+import { ConversaFontePacientes } from './pedido-nota/io/conversa-fonte-pacientes.js';
+import { GeminiPedidoClient } from './pedido-nota/io/gemini-pedido-client.js';
+import { iniciarPedidoNota } from './pedido-nota/fluxos/iniciar-pedido-nota.js';
+import { responderPedidoNota } from './pedido-nota/fluxos/responder-pedido-nota.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export function criarAppExpress() {
   const app = express();
+  configurarDesempenhoHttp(app);
   app.use(
     express.json({
       limit: '10mb',
@@ -106,8 +114,7 @@ export function criarAppExpress() {
   );
   const ia = criarServicosIa(config);
   const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
-  const comunicadorNoto = new PostgresComunicadorNoto(pool, enviarConversas, config.evolutionAssistantInstanceName, ia.geradorMensagem);
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, comunicadorNoto, config.assistenteContextualAtivo, config.notoCadastroModo);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, undefined, config.assistenteContextualAtivo, config.notoCadastroModo);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
@@ -134,17 +141,9 @@ export function criarAppExpress() {
     timer.unref();
   }
 
-  const billingRepo = new PostgresBillingRepositorio(pool);
   const adnNfseClient = new AdnNfseClient();
-  const stripeService = config.stripeSecretKey
-    ? new StripeService({
-      secretKey: config.stripeSecretKey,
-      priceId: config.stripePriceId || 'price_1UFaloBMqkVPUWioDTWXIPv6',
-      webhookSecret: config.stripeWebhookSecret
-    })
-    : undefined;
-
   const candidatosNotaRepo = new PostgresCandidatosNotaRepositorio(pool, config.appPepper, config.encryptionKey);
+  const casosAtivos = process.env['AGENTE_FISCAL_CASOS_ATIVO'] === 'true';
   const casosRepo = new PostgresCasosRepositorio(pool);
   const emissaoCasos = new ServicoEmissaoCasos(pool, config.appPepper, config.encryptionKey);
   const orquestradorCasos = new OrquestradorCasos(casosRepo,
@@ -154,7 +153,7 @@ export function criarAppExpress() {
     evolutionAssistantClient, config.evolutionAssistantInstanceName);
   const solicitarVarreduraCasos = async (medicoId: string) => {
     const medico = await candidatosNotaRepo.obterDadosMedico(medicoId);
-    if (!medico?.telefone) return;
+    if (!medico?.telefone || !medico.dadosProfissionaisConfirmados) return;
     await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
       mensagemId: `varredura:${medicoId}:${Math.floor(Date.now() / 60000)}`,
       payload: { tarefa: 'varrer', telefone: medico.telefone } });
@@ -166,13 +165,13 @@ export function criarAppExpress() {
     repositorio: candidatosNotaRepo,
     enviarMensagem: evolutionAssistantClient,
     instanciaNome: config.evolutionAssistantInstanceName,
-    solicitarVarredura: solicitarVarreduraCasos,
+    solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
     horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',
     ativo: Boolean(config.agenteFiscalAtivo),
     comprovanteClient: paligemmaClient,
     evolutionClient
   });
-  if (process.env['NODE_ENV'] !== 'test') {
+  if (casosAtivos && process.env['NODE_ENV'] !== 'test') {
     agendadorFechamentoFiscal.iniciar();
     workerCasos.iniciar();
   }
@@ -201,7 +200,7 @@ export function criarAppExpress() {
         enviarMensagemAssistente: evolutionAssistantClient,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         sincronizarHistorico: sincronizarHistoricoInstancia,
-        solicitarVarredura: solicitarVarreduraCasos,
+        solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
         comprovanteClient: paligemmaClient,
         evolutionClient
       });
@@ -213,32 +212,10 @@ export function criarAppExpress() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // A área de teste não usa os repositórios, filas ou certificados dos médicos.
-  app.use('/api/desenvolvedor/fiscal', criarRouterFiscalDesenvolvedor({
-    ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken
-  }));
-  app.use('/api/desenvolvedor/whatsapp', criarRouterWhatsappDesenvolvedor({
-    ativo: Boolean(config.desenvolvedorFiscalAtivo), token: config.desenvolvedorFiscalToken,
-    evolution: new EvolutionColetorClient(config.evolutionApiUrl, config.evolutionGlobalApiKey)
-  }));
-  if (config.desenvolvedorFiscalAtivo) {
-    app.get('/desenvolvedor/whatsapp', (_req, res) => {
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('Referrer-Policy', 'no-referrer');
-      res.sendFile(join(__dirname, 'ui', 'desenvolvedor-whatsapp.html'));
-    });
-    app.get('/desenvolvedor', (_req, res) => {
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('Referrer-Policy', 'no-referrer');
-      res.sendFile(join(__dirname, 'ui', 'desenvolvedor-fiscal.html'));
-    });
-  }
-
   app.use('/api/conta/cadastro', criarRouterCadastroPainel({
     pool,repo:cadastroCertificado.repo,
-    autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; }
+    autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
+    aoAprovarProfissional: dispararOnboardingFiscal
   }));
   app.use('/api/whatsapp', criarRouterStatusWhatsapp({
     pool,
@@ -249,19 +226,41 @@ export function criarAppExpress() {
     })
   }));
 
-  app.use('/api/integracoes/google-planilhas', criarRouterGooglePlanilhas({
-    pool, google: config.googleClientId && config.googleClientSecret && config.googleRedirectUri
-      ? new GooglePlanilhasClient({ clientId: config.googleClientId, clientSecret: config.googleClientSecret, redirectUri: config.googleRedirectUri }) : undefined,
-    mapeador: ia.mapeadorPlanilhas,
-    autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
-    encryptionKey: config.encryptionKey, pepper: config.appPepper, redirectUri: config.googleRedirectUri ?? '',
-    googleApiKey: config.googleApiKey,
-    googleAppId: config.googleAppId,
-    comunicador: comunicadorNoto
-  }));
-
   // API de Emissão de NFS-e (compatível com Focus NFe + Zero-Config)
   const emissaoApiRepo = new PostgresEmissaoApiRepositorio(pool, config.encryptionKey, config.appPepper);
+  const geminiComprovanteClient = new GeminiComprovanteClient(
+    config.geminiApiKey || '',
+    config.geminiModel
+  );
+  const candidatosRepo = new PostgresCandidatosRepositorio(
+    pool,
+    config.appPepper,
+    config.encryptionKey
+  );
+  const pedidosRepo = new PostgresPedidosRepositorio(
+    pool,
+    config.appPepper,
+    config.encryptionKey
+  );
+  const supabaseFonte = new SupabaseFontePacientes(
+    pool,
+    config.appPepper,
+    config.encryptionKey
+  );
+  const sheetsFonte = new SheetsFontePacientes(
+    pool,
+    config.encryptionKey,
+    config.googleClientId,
+    config.googleClientSecret
+  );
+  const conversaFonte = new ConversaFontePacientes(
+    pool,
+    config.encryptionKey
+  );
+  const geminiPedidoClient = new GeminiPedidoClient(
+    config.geminiApiKey || '',
+    config.geminiModel
+  );
   const routerNfse = criarRouterNfse({
     repositorio: emissaoApiRepo,
     autenticar: async token => {
@@ -277,7 +276,7 @@ export function criarAppExpress() {
   app.use('/v2/nfsen', routerNfse);
 
   // UI Web de Entrada e Assets Estáticos
-  app.use('/assets', express.static(join(__dirname, 'assets')));
+  app.use('/assets', express.static(join(__dirname, 'assets'), OPCOES_ARQUIVOS_ESTATICOS));
   app.get('/', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, 'ui', 'index.html'));
   });
@@ -422,6 +421,7 @@ export function criarAppExpress() {
 
       const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe, email });
       await dadosProfissionais.retomar(medicoIdFinal);
+      dispararOnboardingFiscal(medicoIdFinal);
       return res.json({ ok: true, ...perfil });
     } catch (err: any) {
       if (err instanceof ZodError) return res.status(400).json({ ok: false, detalhe: err.issues[0]?.message });
@@ -746,8 +746,6 @@ export function criarAppExpress() {
       const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
         repositorio: atendimentoRepo,
         dadosProfissionais,
-        comunicadorNoto,
-        billingRepositorio: billingRepo,
         enviarMensagemPaciente: enviarConversas,
         iaService: ia.extrator,
         comprovanteClient: paligemmaClient,
@@ -759,14 +757,97 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         modoCadastro: config.notoCadastroModo,
+        candidatosPipeline: casosAtivos ? undefined : {
+          geminiClient: geminiComprovanteClient,
+          candidatosRepo,
+          enviarMensagemAoMedico: async (tel, texto) => {
+            const res = await evolutionAssistantClient.enviarTexto({
+              instanciaNome: config.evolutionAssistantInstanceName,
+              contatoTelefone: tel,
+              texto
+            });
+            return res.sucesso;
+          }
+        },
         processarComandoFiscal: async (medicoId, texto, telefone, mensagem) => {
-          if (!mensagem?.id) throw new Error('MENSAGEM_SEM_IDENTIDADE');
-          const casoRecebido = await casosRepo.obterAtivo(medicoId);
-          await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
-            mensagemId: mensagem.id, payload: { texto, telefone, mensagemCitadaId: mensagem.citadaId, instanteMensagem: mensagem.instante,
-              casoRecebidoId: casoRecebido?.id ?? null,
-              perguntaRecebidaId: casoRecebido?.perguntaPendente?.mensagemId ?? null } });
-          return { tratado: true, detalhe: { estado: 'recebido' } };
+          if (casosAtivos) {
+            const perfilProfissional = await candidatosNotaRepo.obterDadosMedico(medicoId);
+            if (!perfilProfissional?.dadosProfissionaisConfirmados) return { tratado: true, detalhe: { estado: 'aguardando_confirmacao_profissional' } };
+            if (!mensagem?.id) throw new Error('MENSAGEM_SEM_IDENTIDADE');
+            const casoRecebido = await casosRepo.obterAtivo(medicoId);
+            await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
+              mensagemId: mensagem.id, payload: { texto, telefone, mensagemCitadaId: mensagem.citadaId, instanteMensagem: mensagem.instante,
+                casoRecebidoId: casoRecebido?.id ?? null,
+                perguntaRecebidaId: casoRecebido?.perguntaPendente?.mensagemId ?? null } });
+            return { tratado: true, detalhe: { estado: 'recebido' } };
+          }
+          const enviarAoMedico = async (tel: string, txt: string) => {
+            const res = await evolutionAssistantClient.enviarTexto({
+              instanciaNome: config.evolutionAssistantInstanceName,
+              contatoTelefone: tel,
+              texto: txt
+            });
+            return res.sucesso;
+          };
+
+          const enviarAoPaciente = async (tel: string, txt: string) => {
+            const res = await enviarConversas.enviarTexto({
+              instanciaNome: config.evolutionOfficialInstanceName,
+              contatoTelefone: tel,
+              texto: txt
+            });
+            return res.sucesso;
+          };
+
+          // 1. Resposta do médico a um pedido de nota ativo
+          const resRespostaPedido = await responderPedidoNota(
+            { medicoId, texto, telefoneMedico: telefone },
+            {
+              repositorio: pedidosRepo,
+              emissaoApiRepo,
+              processarEmissaoApi: processarSolicitacaoEmissaoApi,
+              enviarMensagemAoMedico: enviarAoMedico
+            }
+          );
+          if (resRespostaPedido.tratado) {
+            return { tratado: true, detalhe: resRespostaPedido };
+          }
+
+          // 2. Resposta do médico a um candidato de comprovante pendente
+          const resCandidato = await processarRespostaMedicoCandidato(
+            { medicoId, textoRecebido: texto, telefoneMedico: telefone },
+            {
+              repositorio: candidatosRepo,
+              emissaoApiRepo,
+              processarEmissaoApi: processarSolicitacaoEmissaoApi,
+              enviarMensagemAoMedico: enviarAoMedico,
+              enviarMensagemAoPaciente: enviarAoPaciente
+            }
+          );
+          if (resCandidato.tratado) {
+            return { tratado: true, detalhe: resCandidato };
+          }
+
+          // 3. Novo pedido sob demanda solicitado pelo médico (ex: "emite a nota do Antônio")
+          const resNovoPedido = await iniciarPedidoNota(
+            { medicoId, mensagemId: randomUUID(), texto, telefoneMedico: telefone },
+            {
+              repositorio: pedidosRepo,
+              fontesPacientes: [supabaseFonte, sheetsFonte, conversaFonte],
+              geminiClient: geminiPedidoClient,
+              consultaCpfProvider: hubCpfClient,
+              enviarMensagemAoMedico: enviarAoMedico
+            }
+          );
+          if (resNovoPedido.tratado) {
+            return { tratado: true, detalhe: resNovoPedido };
+          }
+
+          return processarComandoFiscalMedico(medicoId, texto, telefone, {
+            repositorio: candidatosNotaRepo,
+            enviarMensagem: evolutionAssistantClient,
+            instanciaNome: config.evolutionAssistantInstanceName
+          });
         },
         async aoAtualizarConexao(evento) {
           if (
@@ -782,7 +863,7 @@ export function criarAppExpress() {
               enviarMensagemAssistente: evolutionAssistantClient,
               instanciaAssistenteNome: config.evolutionAssistantInstanceName,
               sincronizarHistorico: sincronizarHistoricoInstancia,
-              solicitarVarredura: solicitarVarreduraCasos,
+              solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
               comprovanteClient: paligemmaClient,
               evolutionClient
             }).catch(err => console.warn('[Onboarding Pós-Conexão] Falha:', err?.message || err));
@@ -889,106 +970,6 @@ export function criarAppExpress() {
     }
   });
 
-  // --- ROTAS DO STRIPE BILLING E LIMITES ---
-
-  // Webhook da Stripe (ativa plano Mensal, sincroniza faturas e cancelamentos)
-  app.post('/api/stripe/webhook', async (req: Request, res: Response) => {
-    try {
-      if (!stripeService) {
-        return res.status(503).json({ ok: false, detalhe: 'Stripe não configurado no servidor' });
-      }
-      const sig = (req.headers['stripe-signature'] as string) || '';
-      const rawBody = (req as any).rawBody || req.body;
-      const evento = stripeService.construirEventoWebhook(rawBody, sig);
-      const resultado = await processarWebhookStripe(evento, { repositorio: billingRepo });
-      return res.json(resultado);
-    } catch (err: any) {
-      console.error('Erro no webhook da Stripe:', err?.message);
-      return res.status(400).send(`Webhook Error: ${err?.message}`);
-    }
-  });
-
-  // Criar sessão de Checkout para assinatura do Plano Mensal (R$ 100/mês, 100 notas/mês)
-  app.post('/api/billing/checkout', async (req: Request, res: Response) => {
-    try {
-      const { medicoId: medicoIdRaw } = req.body || {};
-      if (!medicoIdRaw) {
-        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
-      }
-      if (!stripeService) {
-        return res.status(503).json({ ok: false, detalhe: 'Stripe não configurado' });
-      }
-
-      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      const info = await billingRepo.buscarContaPorMedico(medicoId);
-      if (!info) {
-        return res.status(404).json({ ok: false, detalhe: 'Médico não encontrado' });
-      }
-
-      const host = req.get('host') || 'localhost:3000';
-      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-      const baseUrl = `${protocol}://${host}`;
-
-      const checkoutUrl = await stripeService.criarSessaoCheckout({
-        medicoId: info.medicoId,
-        contaId: info.contaId,
-        customerEmail: info.email,
-        telefone: info.telefone,
-        successUrl: `${baseUrl}/?sucesso_assinatura=true`,
-        cancelUrl: `${baseUrl}/?cancelou_assinatura=true`
-      });
-
-      return res.json({ ok: true, checkoutUrl });
-    } catch (err: any) {
-      console.error('Erro ao criar checkout Stripe:', err);
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao gerar checkout' });
-    }
-  });
-
-  // Acesso ao Portal do Cliente Stripe (gerenciamento de cartão, faturas e cancelamento)
-  app.post('/api/billing/portal', async (req: Request, res: Response) => {
-    try {
-      const { medicoId: medicoIdRaw } = req.body || {};
-      if (!medicoIdRaw || !stripeService) {
-        return res.status(400).json({ ok: false, detalhe: 'medicoId inválido ou Stripe indisponível' });
-      }
-      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      const info = await billingRepo.buscarContaPorMedico(medicoId);
-      if (!info?.stripeCustomerId) {
-        return res.status(400).json({ ok: false, detalhe: 'Nenhuma assinatura Stripe vinculada a este médico' });
-      }
-
-      const host = req.get('host') || 'localhost:3000';
-      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-      const returnUrl = `${protocol}://${host}/`;
-
-      const portalUrl = await stripeService.criarSessaoPortal({
-        stripeCustomerId: info.stripeCustomerId,
-        returnUrl
-      });
-
-      return res.json({ ok: true, portalUrl });
-    } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao abrir portal da Stripe' });
-    }
-  });
-
-  // Consulta do status de uso e limites atuais do médico
-  app.get('/api/billing/status', async (req: Request, res: Response) => {
-    try {
-      const medicoIdRaw = (req.query['medicoId'] as string)?.trim();
-      if (!medicoIdRaw) {
-        return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
-      }
-      const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      const uso = await billingRepo.buscarUsoELimiteMedico(medicoId);
-      const info = await billingRepo.buscarContaPorMedico(medicoId);
-      return res.json({ ok: true, uso, info });
-    } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar status de faturamento' });
-    }
-  });
-
   if (process.env['NODE_ENV'] !== 'test') {
     setTimeout(() => {
       void pool.query(
@@ -1000,7 +981,7 @@ export function criarAppExpress() {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
             console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
-            if (row.medico_id) {
+            if (casosAtivos && row.medico_id) {
               await solicitarVarreduraCasos(row.medico_id);
             }
           } catch (erro: any) {
@@ -1013,6 +994,8 @@ export function criarAppExpress() {
     }, 5_000);
   }
 
+  app.use(tratarErrosHttp);
+
   return app;
 }
 
@@ -1021,11 +1004,24 @@ import { iniciarWorkerEmbutido } from './worker/iniciar-worker-embutido.js';
 // Inicia servidor quando executado diretamente
 if (process.env['NODE_ENV'] !== 'test') {
   const app = criarAppExpress();
-  app.listen(config.porta, config.host, () => {
+  const servidor = app.listen(config.porta, config.host, () => {
     console.log(`[Notomed Whats] Servidor rodando em http://${config.host}:${config.porta}`);
+  });
+  servidor.on('error', (erro) => {
+    console.error(`[Notomed Whats] Falha ao abrir ${config.host}:${config.porta}:`, erro.message);
+    process.exit(1);
   });
 
   // Inicia worker da fila em segundo plano no mesmo container
-  iniciarWorkerEmbutido(pool, config);
+  const worker = iniciarWorkerEmbutido(pool, config);
   console.log('[Notomed Whats] Worker de fila NFS-e iniciado com sucesso.');
+
+  registrarSinaisDeProcesso(process, criarEncerramentoGracioso({
+    fecharServidor: () => new Promise<void>((resolver) => {
+      servidor.close(() => resolver());
+      servidor.closeIdleConnections();
+    }),
+    pararWorker: () => worker.parar(),
+    fecharPool: () => pool.end()
+  }, { tempoLimiteMs: 8_000, sair: (codigo) => process.exit(codigo) }));
 }

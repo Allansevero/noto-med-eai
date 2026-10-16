@@ -10,7 +10,6 @@ import type {
   MedicoDadosRegistro
 } from '../atendimento/atendimento-repositorio.js';
 import type { ConsultaCpfProvider, DadosConsultaCpf } from '../paciente/consulta-cpf-provider.js';
-import type { RespostaRapidaModelo } from '../whatsapp/casar-resposta-rapida.js';
 
 class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
   public conversas: ConversaRegistro[] = [];
@@ -18,7 +17,6 @@ class AtendimentoRepositorioMemoria implements AtendimentoRepositorio {
 
   async buscarInstanciaPorNome(): Promise<InstanciaRegistro | null> { return null; }
   async buscarOuCriarConversa(): Promise<ConversaRegistro> { throw new Error('Not implemented'); }
-  async buscarRespostasRapidasMedico(): Promise<RespostaRapidaModelo[]> { return []; }
   async buscarPacientePorId(id: string): Promise<PacienteRegistro | null> {
     return this.pacientes.find((p) => p.id === id) ?? null;
   }
@@ -170,5 +168,48 @@ describe('sincronizarHistoricoConversa', () => {
     );
 
     assert.strictEqual(repo.pacientes[0].nome, 'EMELLYN ANTUNES RODRIGUES SEVERO');
+  });
+
+  it('não deve chamar a API de consulta de CPF se o paciente já estiver com nome validado e mesmo CPF', async () => {
+    const repo = new AtendimentoRepositorioMemoria();
+    const conversa: ConversaRegistro = {
+      id: 'conv-cache',
+      instanciaId: 'inst-1',
+      medicoId: 'med-1',
+      contatoTelefone: '5511988887777',
+      pacienteId: null,
+      aguardandoCpfDesde: null
+    };
+    repo.conversas.push(conversa);
+
+    // Paciente já existe com nome validado
+    const cpfValido = '52998224725';
+    const { gerarHashCpf } = await import('../paciente/hash-cpf.js');
+    repo.pacientes.push({
+      id: 'pac-cache',
+      medicoId: 'med-1',
+      telefone: '5511988887777',
+      nome: 'CARLOS SILVA OFICIAL',
+      nomeValidado: true,
+      cpfHash: gerarHashCpf(cpfValido, pepper)
+    });
+
+    let chamouApi = false;
+    const provedorSpy: ConsultaCpfProvider = {
+      async consultar() {
+        chamouApi = true;
+        return { nome: 'CARLOS SILVA OFICIAL' };
+      }
+    };
+
+    const res = await sincronizarHistoricoConversa(
+      conversa,
+      [`Meu CPF é ${cpfValido}`],
+      { repositorio: repo, consultaCpfProvider: provedorSpy, pepper }
+    );
+
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(chamouApi, false, 'Não deveria chamar API externa quando paciente já tem nome validado');
+    assert.strictEqual(repo.pacientes[0].nome, 'CARLOS SILVA OFICIAL');
   });
 });

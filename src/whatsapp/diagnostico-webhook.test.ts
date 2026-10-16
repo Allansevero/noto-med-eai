@@ -6,19 +6,19 @@ test('diagnóstico registra formato e motivo sem mensagens, credenciais ou telef
  const segredo='segredo-privado';
  const entrada=diagnosticoEntradaWebhook({event:'messages.upsert',instance:segredo,apikey:segredo,data:{key:{fromMe:true,remoteJid:'5511999991234@lid',id:segredo},message:{conversation:segredo}}});
  assert.deepEqual(entrada,{evento:'messages.upsert',fromMe:true,tipoContato:'lid',dadosEmLote:false});
- const resultado=diagnosticoResultadoWebhook({ok:true,acao:'comando_emissao',detalhe:{ok:false,motivo:'limite_atingido',detalhe:segredo}});
- assert.equal(resultado.motivo,'limite_atingido');
+ const resultado=diagnosticoResultadoWebhook({ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido',detalhe:{ok:false,motivo:'gatilho_nao_reconhecido',detalhe:segredo}});
+ assert.equal(resultado.motivo,'gatilho_nao_reconhecido');
  assert.equal(resultado.resultado,'bloqueado');
  const erro=diagnosticoErroWebhook({code:'42703',message:segredo,query:segredo});
  assert.equal(erro.codigoBanco,'42703');
  assert.doesNotMatch(JSON.stringify([entrada,resultado,erro]),/segredo-privado|5511999991234/);
  assert.deepEqual(diagnosticoErroWebhook({code:segredo}),{codigo:'ERRO_PROCESSAMENTO'});
 });
-test('diagnóstico distingue descarte, erro de autenticação e fila aguardando dados',()=>{
+test('diagnóstico distingue descarte, erro de autenticação e histórico',()=>{
  assert.equal(diagnosticoResultadoWebhook({ok:true,acao:'descartada',motivoDescarte:'contato_nao_identificado'}).motivo,'contato_nao_identificado');
  assert.equal(diagnosticoResultadoWebhook({ok:false,motivo:'autenticacao_invalida'}).resultado,'rejeitado');
- const r=diagnosticoResultadoWebhook({ok:true,acao:'comando_emissao',detalhe:{ok:true,fila:null,aguardandoCpf:false,aguardandoData:true,aguardandoDadosProfissionais:false}});
- assert.equal(r.fila,null);assert.equal(r.aguardandoData,true);
+ const r=diagnosticoResultadoWebhook({ok:true,acao:'historico_sincronizado',detalhe:{ok:true}});
+ assert.equal(r.resultado,'processado');
  assert.deepEqual(diagnosticoEntradaWebhook({event:'conteudo privado',data:{key:{remoteJid:'telefone privado'}}}),{evento:'outro',fromMe:undefined,tipoContato:'outro',dadosEmLote:false});
 });
 

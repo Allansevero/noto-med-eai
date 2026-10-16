@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { enviarTreino, type TreinoDeps, type ResultadoEnvioTreino } from './enviar-treino.js';
 import { MENSAGENS_TREINO, MODELO_EMISSAO_TREINO } from './mensagens-treino.js';
-import { casarRespostaRapida } from '../../whatsapp/casar-resposta-rapida.js';
 
 function contexto() {
   const registros = new Map<string, { etapa: number; estado: string }>();
@@ -82,16 +81,6 @@ test('reinício entre mensagens confirmadas retoma a próxima etapa', async () =
   c.registros.set('m', { etapa: 3, estado: 'pendente' });
   await enviarTreino('m', c.deps);
   assert.deepEqual(c.envios.map(e => e.texto), MENSAGENS_TREINO.slice(3).map(m => m.texto));
-});
-
-test('modelo preenchido produz valor e data esperados no reconhecedor existente', () => {
-  const texto = MODELO_EMISSAO_TREINO.replace('[valor]', '350,00').replace('[data]', '01/10/2026');
-  const resultado = casarRespostaRapida(texto, true);
-  assert.ok(resultado.casou && resultado.tipo === 'emissao');
-  assert.equal(resultado.valorDigitadoCentavos, 35000);
-  assert.equal(resultado.datasTexto, '01/10/2026');
-  assert.equal(resultado.datas?.length, 1);
-  assert.equal(casarRespostaRapida(texto, false).casou, false);
 });
 
 

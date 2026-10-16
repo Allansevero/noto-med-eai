@@ -8,6 +8,7 @@ import type pg from 'pg';
 import type { CandidatoNotaFiscal, MensagemContextoConversa } from '../regras/correlacionar-consulta-pagamento.js';
 import { gerarHashCpf } from '../../paciente/hash-cpf.js';
 import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
+import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 
 export interface ConversaComHistorico {
   conversaId: string;
@@ -154,10 +155,6 @@ export class PostgresCandidatosNotaRepositorio {
        values ('agente_fiscal_candidato_dispensado', 'medicos', $1, $2::jsonb)`,
       [medicoId, JSON.stringify(estadoJson)]
     );
-    await this.pool.query(
-      `update noto_assistente_sessoes set estado = $2::jsonb, atualizado_em = now() where medico_id = $1`,
-      [medicoId, JSON.stringify(estadoJson)]
-    );
 
     const telLimpo = (candidato.pacienteTelefone || '').replace(/\D/g, '');
     if (candidato.id) {
@@ -202,18 +199,7 @@ export class PostgresCandidatosNotaRepositorio {
       atualizadoEm: new Date().toISOString()
     };
 
-    // 1. Gravar o payload rico do candidato em noto_assistente_sessoes (coluna estado é jsonb)
-    await this.pool.query(
-      `insert into noto_assistente_sessoes (medico_id, versao, estado, atualizado_em)
-       values ($1, 1, $2::jsonb, now())
-       on conflict (medico_id) do update set
-         versao = noto_assistente_sessoes.versao + 1,
-         estado = excluded.estado,
-         atualizado_em = now()`,
-      [medicoId, JSON.stringify(estadoJson)]
-    );
-
-    // 3. Também preserva na tabela de auditoria para histórico e rastreabilidade
+    // 1. Preserva na tabela de auditoria para histórico e rastreabilidade
     await this.pool.query(
       `insert into auditoria (acao, entidade, entidade_id, dados_novos)
        values ('agente_fiscal_candidato_encontrado', 'medicos', $1, $2::jsonb)`,
@@ -327,25 +313,7 @@ export class PostgresCandidatosNotaRepositorio {
       };
     }
 
-    const sql = `
-      select estado, atualizado_em from noto_assistente_sessoes
-      where medico_id = $1
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId]);
-    if (rows.length === 0 || !rows[0].estado) return null;
-
-    try {
-      const estado = rows[0].estado;
-      if (estado.status !== 'aguardando_aprovacao' || !estado.candidato) return null;
-      return {
-        medicoId,
-        ...estado.candidato,
-        criadoEm: rows[0].atualizado_em
-      };
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   /**
@@ -512,12 +480,7 @@ export class PostgresCandidatosNotaRepositorio {
         `, [medicoId, telLimpo]);
       }
 
-      // 7. Atualizar estado na memória contextual
-      await client.query(`
-        update noto_assistente_sessoes
-        set estado = $2::jsonb, atualizado_em = now()
-        where medico_id = $1
-      `, [medicoId, JSON.stringify({ status: 'aprovada', solicitacaoId, aprovadaEm: new Date().toISOString() })]);
+
 
       await client.query('commit');
       return {
@@ -545,13 +508,23 @@ export class PostgresCandidatosNotaRepositorio {
     fiscalConfirmado?: boolean;
     parametrosProntos?: boolean;
     solicitarCpfDiretoPaciente?: boolean;
+    dadosProfissionaisConfirmados?: boolean;
+    boasVindasJaEnviada?: boolean;
   } | null> {
     const sql = `
-      select m.nome_completo, u.telefone,
+      select m.nome_completo, m.crm, u.telefone,
              coalesce(m.solicitar_cpf_direto_paciente, false) as solicitar_cpf_direto_paciente,
              coalesce(pf.confirmado_pelo_medico, false) as fiscal_confirmado,
              (msf.parametros_emissao is not null) as parametros_prontos,
-             (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos
+             (select f.valor_padrao_centavos from medico_servicos_fiscais f where f.medico_id = m.id and f.padrao = true and f.ativo = true limit 1) as valor_padrao_centavos,
+             exists(
+               select 1 from cadastro_certificado_trabalhos t
+               where t.medico_id = m.id and t.estado = 'concluido' and t.dados->'aprovacaoPainel' is not null
+             ) as aprovado_no_painel,
+             exists(
+               select 1 from auditoria a
+               where a.acao = 'agente_fiscal_boas_vindas_enviada' and a.entidade_id = m.id
+             ) as boas_vindas_ja_enviada
       from medicos m
       join usuarios u on u.id = m.usuario_id
       left join medico_perfil_fiscal pf on pf.medico_id = m.id
@@ -560,14 +533,34 @@ export class PostgresCandidatosNotaRepositorio {
     `;
     const { rows } = await this.pool.query(sql, [medicoId]);
     if (rows.length === 0) return null;
+    const aprovadoNoPainel = Boolean(rows[0].aprovado_no_painel);
+    const dadosCompletos = dadosProfissionaisCompletos({
+      nome_completo: rows[0].nome_completo,
+      crm: rows[0].crm
+    });
+    const dadosProfissionaisConfirmados = aprovadoNoPainel || dadosCompletos;
+
     return {
       nomeCompleto: rows[0].nome_completo,
       telefone: rows[0].telefone,
       valorPadraoCentavos: rows[0].valor_padrao_centavos ? Number(rows[0].valor_padrao_centavos) : undefined,
       fiscalConfirmado: Boolean(rows[0].fiscal_confirmado),
       parametrosProntos: Boolean(rows[0].parametros_prontos),
-      solicitarCpfDiretoPaciente: Boolean(rows[0].solicitar_cpf_direto_paciente)
+      solicitarCpfDiretoPaciente: Boolean(rows[0].solicitar_cpf_direto_paciente),
+      dadosProfissionaisConfirmados,
+      boasVindasJaEnviada: Boolean(rows[0].boas_vindas_ja_enviada)
     };
+  }
+
+  /**
+   * Registra na auditoria que a mensagem de boas-vindas do onboarding foi enviada ao médico.
+   */
+  async marcarBoasVindasEnviada(medicoId: string): Promise<void> {
+    await this.pool.query(
+      `insert into auditoria (acao, entidade, entidade_id, dados_novos)
+       values ('agente_fiscal_boas_vindas_enviada', 'medicos', $1, $2::jsonb)`,
+      [medicoId, JSON.stringify({ enviadoEm: new Date().toISOString() })]
+    );
   }
 
   /**
@@ -584,18 +577,6 @@ export class PostgresCandidatosNotaRepositorio {
            atualizado_em = now()
        where id = $1`,
       [dados.solicitacaoId]
-    );
-
-    const estado = {
-      status: 'aguardando_cpf_medico',
-      ...dados,
-      solicitadoEm: new Date().toISOString()
-    };
-    await this.pool.query(
-      `update noto_assistente_sessoes
-       set estado = $2::jsonb, atualizado_em = now()
-       where medico_id = $1`,
-      [medicoId, JSON.stringify(estado)]
     );
   }
 
@@ -624,19 +605,7 @@ export class PostgresCandidatosNotaRepositorio {
       };
     }
 
-    const { rows } = await this.pool.query(
-      `select estado from noto_assistente_sessoes where medico_id = $1 limit 1`,
-      [medicoId]
-    );
-    if (rows.length === 0 || !rows[0].estado) return null;
-    const est = rows[0].estado;
-    if (est.status !== 'aguardando_cpf_medico' || !est.pacienteId) return null;
-    return {
-      solicitacaoId: est.solicitacaoId,
-      pacienteId: est.pacienteId,
-      pacienteNome: est.pacienteNome,
-      pacienteTelefone: est.pacienteTelefone
-    };
+    return null;
   }
 
   /**
@@ -649,13 +618,6 @@ export class PostgresCandidatosNotaRepositorio {
            atualizado_em = now()
        where medico_id = $1 and aguardando_cpf_medico = true`,
       [medicoId]
-    );
-
-    await this.pool.query(
-      `update noto_assistente_sessoes
-       set estado = $2::jsonb, atualizado_em = now()
-       where medico_id = $1`,
-      [medicoId, JSON.stringify({ status: 'cpf_medico_cancelado', canceladoEm: new Date().toISOString() })]
     );
   }
 
@@ -698,13 +660,7 @@ export class PostgresCandidatosNotaRepositorio {
         [pacienteId, medicoId, solicitacaoId]
       );
 
-      // Atualiza memória
-      await client.query(
-        `update noto_assistente_sessoes
-         set estado = $2::jsonb, atualizado_em = now()
-         where medico_id = $1`,
-        [medicoId, JSON.stringify({ status: 'aprovada', solicitacaoId, aprovadaEm: new Date().toISOString() })]
-      );
+
 
       await client.query('commit');
       return rowCount ?? 0;

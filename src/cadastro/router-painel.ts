@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 import type { PostgresCadastro } from './postgres-cadastro.js';
 import { aprovacaoPainelSchema, pesquisaPainelSchema, ErroRevisaoCadastro } from './revisao-painel.js';
 
-export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadastro;autenticar:(token:string)=>Promise<string|null>}){
+export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadastro;autenticar:(token:string)=>Promise<string|null>;aoAprovarProfissional?:(medicoId:string)=>void}){
  const router=Router();
  router.use(async(req,res,next)=>{
   res.setHeader('Cache-Control','no-store');
@@ -30,7 +30,12 @@ export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadast
   }
  });
  router.post('/aprovar',async(req,res)=>{
-  try{const dados=aprovacaoPainelSchema.parse(req.body);res.json({ok:true,revisao:await deps.repo.aprovarPainel(res.locals.medicoId,dados)});}
+  try{
+   const dados=aprovacaoPainelSchema.parse(req.body);
+   const revisao=await deps.repo.aprovarPainel(res.locals.medicoId,dados);
+   if(deps.aoAprovarProfissional)deps.aoAprovarProfissional(res.locals.medicoId);
+   res.json({ok:true,revisao});
+  }
   catch(e){
    if(e instanceof ZodError){res.status(400).json({ok:false,detalhe:e.issues[0]?.message});return;}
    if(e instanceof ErroRevisaoCadastro){res.status(e.status).json({ok:false,detalhe:e.message});return;}

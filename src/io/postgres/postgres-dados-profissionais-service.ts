@@ -23,13 +23,10 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
     return r.rows[0];
   }
   async solicitar(medicoId:string):Promise<void> {
-    if (this.modoCadastro === 'confirmacao') return;
+    if (this.modoCadastro === 'confirmacao' || this.assistenteContextualAtivo) return;
     const pedido=await this.transacao(async client=>{
       const medico=await this.medico(client,medicoId);
       if(!medico || dadosProfissionaisCompletos(medico) || !medico.telefone || !this.instanciaOficialNome) return null;
-      if (this.assistenteContextualAtivo && (await client.query(
-        'select medico_id from noto_assistente_sessoes where medico_id=$1', [medicoId]
-      )).rowCount) return null;
       const reserva=await client.query(`insert into dados_profissionais_pendencias (medico_id, estado)
         values ($1,'reservado') on conflict (medico_id) do update set estado='reservado', atualizado_em=now()
         where dados_profissionais_pendencias.estado='concluido' returning medico_id`,[medicoId]);
@@ -119,7 +116,6 @@ export class PostgresDadosProfissionaisService implements DadosProfissionaisServ
       from solicitacoes_nota s where s.medico_id=$1 and (s.aguardando_dados_profissionais or s.aguardando_confirmacao_medico) and s.status='pendente' and s.tentativas=0
       and s.bloqueada_em is null and s.bloqueada_por_worker is null
       and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)
-      and not exists(select 1 from investigacoes_emissao i where i.solicitacao_id=s.id)
       for update of s`,[medico.id]);
     let liberadas=0;
     for(const s of resultado.rows){

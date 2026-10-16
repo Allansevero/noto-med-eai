@@ -20,11 +20,6 @@ export function diagnosticoResultadoWebhook(res:ResultadoProcessarWebhook):Recor
   if(typeof d.estado==='string'&&['pendente','analisando','aplicado','preparado','enviando','concluido','incerto','falha','nao_registrado'].includes(d.estado))r.estadoTurno=d.estado;
   if(Number.isInteger(d.mensagensConfirmadas))r.mensagensConfirmadas=d.mensagensConfirmadas;
  }
- if(res.acao==='comando_emissao'){
-  if(typeof d.motivo==='string'&&['paciente_ausente','valor_indisponivel','medico_nao_encontrado','limite_atingido'].includes(d.motivo))r.motivo=d.motivo;
-  if(d.fila===null||d.fila==='pronta'||d.fila==='pendente_cadastro')r.fila=d.fila;
-  for(const campo of ['aguardandoCpf','aguardandoData','aguardandoDadosProfissionais'])if(typeof d[campo]==='boolean')r[campo]=d[campo];
- }
  return r;
 }
 export function diagnosticoErroWebhook(erro:unknown):Record<string,string>{
