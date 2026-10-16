@@ -61,12 +61,12 @@ describe('tentarAnalisarComprovanteMensagem', () => {
             buscouMidia = true;
             assert.equal(inst, 'inst-1');
             assert.equal(id, 'msg-midia-1');
-            return { base64: 'b64-mock' };
+            return { base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/ZxoAAAAASUVORK5CYII=' };
           }
         } as any,
         comprovanteClient: {
           analisarImagem: async (b64: string) => {
-            assert.equal(b64, 'b64-mock');
+            assert.equal(b64, 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/ZxoAAAAASUVORK5CYII=');
             return { ehComprovante: true, valorCentavos: 40000 };
           }
         } as any
@@ -74,7 +74,9 @@ describe('tentarAnalisarComprovanteMensagem', () => {
     );
 
     assert.equal(buscouMidia, true);
-    assert.deepEqual(res, { ehComprovante: true, valorCentavos: 40000 });
+    assert.equal(res?.ehComprovante, true);
+    assert.equal(res?.valorCentavos, 40000);
+    assert.match(res?.documentoHash || '', /^[a-f0-9]{64}$/);
   });
 
   test('deve retornar null se VLM falhar sem lançar exceção não tratada', async () => {

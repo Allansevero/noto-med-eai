@@ -38,7 +38,6 @@ import { processarHistoricoWebhook } from './processar-historico-webhook.js';
 
 import type { PaligemmaComprovanteClient } from '../io/nvidia/paligemma-comprovante-client.js';
 import type { EvolutionApiClient } from '../io/evolution/evolution-api-client.js';
-import { tentarAnalisarComprovanteMensagem } from './analisar-comprovante-mensagem.js';
 
 export interface ProcessarWebhookDeps {
   repositorio: AtendimentoRepositorio;
@@ -56,7 +55,7 @@ export interface ProcessarWebhookDeps {
   instanciaAssistenteNome?: string;
   enviarMensagemAssistente?: EnviarMensagemPaciente;
   modoCadastro?: 'conversacional' | 'confirmacao';
-  processarComandoFiscal?: (medicoId: string, texto: string, telefone: string) => Promise<{ tratado: boolean; detalhe?: any }>;
+  processarComandoFiscal?: (medicoId: string, texto: string, telefone: string, mensagem?: { id: string; citadaId?: string; instante?: number }) => Promise<{ tratado: boolean; detalhe?: any }>;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
 }
 
@@ -133,7 +132,7 @@ export async function processarMensagemWebhook(
     }
     if (deps.segredoConfigurado) {
       if (deps.processarComandoFiscal) {
-        const cmdFiscal = await deps.processarComandoFiscal(medico.id, texto, telefone);
+        const cmdFiscal = await deps.processarComandoFiscal(medico.id, texto, telefone, { id: payload.data.key.id, citadaId: (payload.data.message as any)?.extendedTextMessage?.contextInfo?.stanzaId, instante: payload.data.messageTimestamp === undefined ? undefined : Number(payload.data.messageTimestamp) });
         if (cmdFiscal.tratado) return { ok: true, acao: 'comando_fiscal', detalhe: cmdFiscal.detalhe };
       }
       if (deps.dadosProfissionais) {
@@ -179,17 +178,7 @@ export async function processarMensagemWebhook(
       conversa.pacienteId = paciente.id;
     }
   }
-  const comprovante = await tentarAnalisarComprovanteMensagem(
-    payload.instance,
-    payload.data.key.id,
-    tipo,
-    payload.data.key.fromMe,
-    payload.data,
-    { comprovanteClient: deps.comprovanteClient, evolutionClient: deps.evolutionClient }
-  );
-  if (comprovante) {
-    (payload.data as any).comprovante = comprovante;
-  }
+  // Documentos são analisados uma vez pelo localizador em segundo plano.
 
   if (deps.repositorio.salvarMensagem) {
     await deps.repositorio.salvarMensagem({

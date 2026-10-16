@@ -37,6 +37,7 @@ describe('varrerESolicitarAprovacao', () => {
               payloadBruto: {
                 comprovante: {
                   ehComprovante: true,
+                  statusPagamento: 'realizado', dataPagamento: '2026-10-10',
                   valorCentavos: 160000,
                   tipo: 'pix'
                 }
@@ -101,6 +102,7 @@ describe('varrerESolicitarAprovacao', () => {
               payloadBruto: {
                 comprovante: {
                   ehComprovante: true,
+                  statusPagamento: 'realizado', dataPagamento: '2026-10-10',
                   valorCentavos: 35000,
                   tipo: 'pix'
                 }

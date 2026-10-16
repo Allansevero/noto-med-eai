@@ -22,7 +22,8 @@
     "consultar:registro": "node --import tsx scripts/consultar-registro-profissional.mjs",
     "migrate:cadastro": "node scripts/migrar-cadastro-certificado.mjs",
     "test:cadastro-db": "node --import tsx --test src/cadastro/postgres-cadastro.integration.ts",
-    "retry:nota": "node scripts/reprocessar-nota.mjs"
+    "retry:nota": "node scripts/reprocessar-nota.mjs",
+    "migrate:casos": "node scripts/migrar-casos-agente.mjs"
   },
   "keywords": [
     "nfse",

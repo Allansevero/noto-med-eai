@@ -15,12 +15,12 @@ export const pesquisaPainelSchema = z.object({
 export class ErroRevisaoCadastro extends Error {
  constructor(readonly status:number, mensagem:string){super(mensagem);}
 }
-type TrabalhoRevisao={id:string;estado:string;dados:DadosCadastro;versao?:string;atualizado_em?:unknown};
+type TrabalhoRevisao={id:string;estado:string;dados:DadosCadastro;versao?:string;diagnostico?:string|null;atualizado_em?:unknown};
 type PerfilRevisao={nome:string;crm:string|null;rqe:string|null};
 const normal=(s:string)=>s.normalize('NFD').replace(/\p{M}/gu,'').trim().toLocaleLowerCase('pt-BR');
 export function montarRevisao(t:TrabalhoRevisao|null,perfil:PerfilRevisao){
  const dados=t?.dados??{};
- const candidatos=dados.empresa?.candidatos??[];
+ const candidatos=dados.empresa?.candidatos??(dados.pendencia?.tipo==='responsavel'?dados.pendencia.candidatos:[]);
  const nome=dados.nomeConfirmado||(candidatos.length===1?candidatos[0].nome:nomeProfissionalValido(perfil.nome)?perfil.nome:'');
  const registros=(dados.pesquisaProfissional?.registros??[]).filter(r=>normal(r.nomeCompleto)===normal(nome)&&normalizarCrm(`${r.crm}/${r.uf}`)?.includes('/'));
  const unicos=[...new Map(registros.map(r=>[normalizarCrm(`${r.crm}/${r.uf}`),r])).values()];
@@ -30,6 +30,7 @@ export function montarRevisao(t:TrabalhoRevisao|null,perfil:PerfilRevisao){
   aprovado:t?.estado==='concluido'&&!!dados.aprovacaoPainel&&dados.aprovacaoPainel.nome===perfil.nome&&dados.aprovacaoPainel.crm===perfil.crm&&dados.aprovacaoPainel.rqe===perfil.rqe,
   nome,crm:crm??'',rqe:(normal(nome)===normal(perfil.nome)?perfil.rqe:null)??registroEscolhido?.rqe??'',candidatos,registros:unicos,
   pesquisaCrm:dados.pesquisaProfissional?.estado??'pendente',
+  pesquisaCodigo:dados.pesquisaProfissional?.codigo??t?.diagnostico??null,
   diagnosticoPesquisa:dados.pesquisaProfissional?.diagnostico??[],
   empresa:dados.empresa?{cnpj:dados.empresa.cnpj,razaoSocial:dados.empresa.razaoSocial,origem:dados.empresa.origem}:null};
 }

@@ -21,6 +21,7 @@ export interface AgendadorFechamentoFiscalConfig {
   instanciaNome: string;
   horariosTexto?: string;
   ativo?: boolean;
+  solicitarVarredura?: (medicoId: string) => Promise<void>;
   comprovanteClient?: PaligemmaComprovanteClient;
   evolutionClient?: EvolutionApiClient;
 }
@@ -71,6 +72,10 @@ export class AgendadorFechamentoFiscal {
       for (const med of medicos) {
         medicosProcessados += 1;
         try {
+          if (this.config.solicitarVarredura) {
+            await this.config.solicitarVarredura(med.id);
+            continue;
+          }
           const resultado = await varrerESolicitarAprovacao(med.id, {
             repositorio: this.repositorio,
             enviarMensagem: this.config.enviarMensagem,

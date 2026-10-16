@@ -1360,7 +1360,7 @@
             <p id="contaRevisaoProfissionalStatus" role="status" aria-live="polite"></p>
             <label for="selectResponsavelProfissional" id="labelResponsavelProfissional" hidden>Responsável encontrado</label>
             <select id="selectResponsavelProfissional" hidden></select>
-            <button type="button" id="btnPesquisarResponsavel" hidden>Pesquisar responsável selecionado</button>
+            <button type="button" id="btnPesquisarResponsavel" hidden>Pesquisar CRM e RQE novamente</button>
             <label for="selectCrmProfissional" id="labelCrmProfissional" hidden>Registros encontrados</label>
             <select id="selectCrmProfissional" hidden></select>
             <label for="selectRqeProfissional" id="labelRqeProfissional" hidden>RQEs encontrados (opcional)</label>
@@ -2664,7 +2664,7 @@
       }
       cadastroRevisao = r;
       const btnPesquisaResponsavel=cadastroEl('btnPesquisarResponsavel');
-      btnPesquisaResponsavel.hidden=!r.trabalhoId||r.aprovado||(r.candidatos||[]).length<2||r.estado!=='aguardando_confirmacao';
+      btnPesquisaResponsavel.hidden=!r.trabalhoId||!['aguardando_confirmacao','concluido'].includes(r.estado);
       const pronto = ['aguardando_confirmacao', 'concluido'].includes(r.estado) && r.whatsappConectado;
       cadastroEl('btnConfirmarProfissional').hidden = !r.trabalhoId || r.aprovado;
       cadastroEl('btnConfirmarProfissional').disabled = !pronto || aprovandoCadastro;
@@ -2676,6 +2676,7 @@
         : r.pesquisaCrm === 'indisponivel' ? 'Confira o nome e informe CRM com UF. A pesquisa automática de CRM está indisponível.'
         : r.pesquisaCrm === 'nao_encontrado' ? 'Não encontramos evidência pública suficiente. Confira o nome e informe CRM com UF; resultados online são apenas sugestões.'
         : 'Confira ou corrija os dados do médico antes de confirmar. RQE é opcional.';
+      if (r.pesquisaCodigo) cadastroEl('contaRevisaoProfissionalStatus').textContent += ` Código da pesquisa: ${r.pesquisaCodigo}.`;
       for (const [campo,id] of [['nome','inputContaNome'],['crm','inputContaCrm'],['rqe','inputContaRqe']]) {
         const el = cadastroEl(id); if (el.readOnly) el.value = r[campo] || '';
       }
@@ -2707,8 +2708,8 @@
         const vazio = document.createElement('option');vazio.value = '';vazio.textContent = 'Selecione o registro correto';select.appendChild(vazio);
         for (const c of opcoes) { const option = document.createElement('option');option.value = valor(c);option.textContent = texto(c);select.appendChild(option); }
       }
-      const responsavelSelecionado=cadastroEl('selectResponsavelProfissional').value;
-      btnPesquisaResponsavel.disabled=pesquisandoResponsavel||!responsavelSelecionado||responsavelSelecionado===r.nome;
+      const responsavelSelecionado=nomeParaPesquisaProfissional();
+      btnPesquisaResponsavel.disabled=pesquisandoResponsavel||!responsavelSelecionado;
     }
     async function atualizarRevisaoCadastro(preencher = false) {
       if (!painelDisponivel || !sessaoAtual?.tokenAcesso || consultaCadastroPendente || aprovandoCadastro) return;
@@ -2727,7 +2728,7 @@
     cadastroEl('btnRevisarProfissional').addEventListener('click', () => abrirSecaoConta('dados'));
     cadastroEl('selectResponsavelProfissional').addEventListener('change', e => {
       if (!e.target.value) return;marcarEdicaoCadastro();cadastroEl('inputContaNome').value = e.target.value;cadastroEl('inputContaCrm').value = '';cadastroEl('inputContaRqe').value='';cadastroEl('selectRqeProfissional').value='';
-      cadastroEl('btnPesquisarResponsavel').disabled=pesquisandoResponsavel||e.target.value===cadastroRevisao?.nome;
+      cadastroEl('btnPesquisarResponsavel').disabled=pesquisandoResponsavel||!nomeParaPesquisaProfissional();
     });
     cadastroEl('selectCrmProfissional').addEventListener('change', e => {
       if (!e.target.value) return;marcarEdicaoCadastro();cadastroEl('inputContaCrm').value = e.target.value;const registro=cadastroRevisao.registros.find(r=>`${r.crm}/${r.uf}`===e.target.value);cadastroEl('inputContaRqe').value=registro?.rqe || '';
@@ -2741,9 +2742,13 @@
     cadastroEl('inputContaNome').addEventListener('input',()=>{marcarEdicaoCadastro();cadastroEl('inputContaCrm').value='';cadastroEl('inputContaRqe').value='';cadastroEl('selectCrmProfissional').value='';cadastroEl('selectRqeProfissional').value='';});
     cadastroEl('inputContaCrm').addEventListener('input',()=>{marcarEdicaoCadastro();cadastroEl('inputContaRqe').value='';cadastroEl('selectRqeProfissional').value='';});
     cadastroEl('inputContaRqe').addEventListener('input',marcarEdicaoCadastro);
+    function nomeParaPesquisaProfissional() {
+      return cadastroEl('selectResponsavelProfissional').value || cadastroRevisao?.nome ||
+        (cadastroRevisao?.candidatos?.length === 1 ? cadastroRevisao.candidatos[0].nome : '');
+    }
     let pesquisandoResponsavel=false;
     cadastroEl('btnPesquisarResponsavel').addEventListener('click',async()=>{
-      const revisao=cadastroRevisao,nome=cadastroEl('selectResponsavelProfissional').value,sessao=sessaoAtual;
+      const revisao=cadastroRevisao,nome=nomeParaPesquisaProfissional(),sessao=sessaoAtual;
       if(!revisao?.trabalhoId||!nome||pesquisandoResponsavel||!sessao?.tokenAcesso)return;
       pesquisandoResponsavel=true;cadastroEl('btnPesquisarResponsavel').disabled=true;cadastroEl('contaRevisaoProfissionalStatus').textContent='Pesquisando registros públicos do responsável selecionado…';
       try{const res=await fetch('/api/conta/cadastro/pesquisar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+sessao.tokenAcesso},body:JSON.stringify({trabalhoId:revisao.trabalhoId,versao:revisao.versao,nome})});const data=await res.json();
@@ -2751,7 +2756,7 @@
         if(!res.ok||!data.ok){cadastroEl('contaRevisaoProfissionalStatus').textContent=data.detalhe||'Não foi possível iniciar a pesquisa.';return;}
         cadastroEdicaoPendente=false;await atualizarRevisaoCadastro(true);
       }catch{if(sessao===sessaoAtual)cadastroEl('contaRevisaoProfissionalStatus').textContent='Não foi possível iniciar a pesquisa. Tente novamente.';}
-      finally{pesquisandoResponsavel=false;if(sessao===sessaoAtual)cadastroEl('btnPesquisarResponsavel').disabled=!cadastroEl('selectResponsavelProfissional').value||cadastroEl('selectResponsavelProfissional').value===cadastroRevisao?.nome;}
+      finally{pesquisandoResponsavel=false;if(sessao===sessaoAtual)cadastroEl('btnPesquisarResponsavel').disabled=!nomeParaPesquisaProfissional();}
     });
     cadastroEl('btnConfirmarProfissional').addEventListener('click', async () => {
       if (!cadastroRevisao?.trabalhoId || aprovandoCadastro || !sessaoAtual?.tokenAcesso) return;

@@ -88,7 +88,7 @@ describe('processarComandoFiscalMedico', () => {
           contatoNome: 'Bruno Z',
           mensagens: [
             { id: 'm-1', direcao: 'enviada', tipo: 'texto', conteudo: 'Consulta em 13/10/2026. Valor 400,00', criadoEm: '2026-10-13T10:00:00Z' },
-            { id: 'm-2', direcao: 'recebida', tipo: 'imagem', conteudo: '', criadoEm: '2026-10-13T11:00:00Z' }
+            { id: 'm-2', direcao: 'recebida', tipo: 'imagem', conteudo: '', criadoEm: '2026-10-13T11:00:00Z', payloadBruto: { comprovante: { ehComprovante: true, statusPagamento: 'realizado', dataPagamento: '2026-10-13', valorCentavos: 40000 } } }
           ]
         }
       ],

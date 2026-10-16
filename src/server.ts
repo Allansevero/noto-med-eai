@@ -14,8 +14,12 @@ import { criarRouterNfse } from './api/nfse/nfse-router.js';
 import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-api-repositorio.js';
 import { PostgresCandidatosNotaRepositorio } from './agente-fiscal/io/postgres-candidatos-nota-repositorio.js';
 import { AgendadorFechamentoFiscal } from './agente-fiscal/agendador/agendador-fechamento-fiscal.js';
-import { processarComandoFiscalMedico } from './agente-fiscal/fluxos/processar-comando-fiscal-medico.js';
-import { varrerESolicitarAprovacao } from './agente-fiscal/fluxos/varrer-e-solicitar-aprovacao.js';
+import { PostgresCasosRepositorio } from './agente-fiscal/casos/repositorio.js';
+import { LocalizadorCandidatos } from './agente-fiscal/casos/localizar-candidatos.js';
+import { ServicoEmissaoCasos } from './agente-fiscal/casos/servico-emissao.js';
+import { OrquestradorCasos } from './agente-fiscal/casos/orquestrador.js';
+import { WorkerCasos } from './agente-fiscal/casos/worker.js';
+import { NvidiaInterpretadorCaso } from './io/nvidia/interpretador-caso.js';
 import { iniciarOnboardingPosConexao } from './agente-fiscal/fluxos/iniciar-onboarding-pos-conexao.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
@@ -122,7 +126,7 @@ export function criarAppExpress() {
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
     }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada);
-  if (config.notoCadastroModo === 'confirmacao' && process.env.NODE_ENV !== 'test') {
+  if (process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
       // Enriquecimento automático de dados (Google/CFM) sem envio de perguntas no WhatsApp.
       void cadastroCertificado.recuperar().catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
@@ -141,6 +145,20 @@ export function criarAppExpress() {
     : undefined;
 
   const candidatosNotaRepo = new PostgresCandidatosNotaRepositorio(pool, config.appPepper, config.encryptionKey);
+  const casosRepo = new PostgresCasosRepositorio(pool);
+  const emissaoCasos = new ServicoEmissaoCasos(pool, config.appPepper, config.encryptionKey);
+  const orquestradorCasos = new OrquestradorCasos(casosRepo,
+    new LocalizadorCandidatos(pool, paligemmaClient, evolutionClient, config.encryptionKey), emissaoCasos,
+    new NvidiaInterpretadorCaso(config.nvidiaApiKey || '', config.nvidiaModel));
+  const workerCasos = new WorkerCasos(pool, casosRepo, orquestradorCasos, emissaoCasos,
+    evolutionAssistantClient, config.evolutionAssistantInstanceName);
+  const solicitarVarreduraCasos = async (medicoId: string) => {
+    const medico = await candidatosNotaRepo.obterDadosMedico(medicoId);
+    if (!medico?.telefone) return;
+    await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
+      mensagemId: `varredura:${medicoId}:${Math.floor(Date.now() / 60000)}`,
+      payload: { tarefa: 'varrer', telefone: medico.telefone } });
+  };
   const agendadorFechamentoFiscal = new AgendadorFechamentoFiscal({
     pool,
     pepper: config.appPepper,
@@ -148,6 +166,7 @@ export function criarAppExpress() {
     repositorio: candidatosNotaRepo,
     enviarMensagem: evolutionAssistantClient,
     instanciaNome: config.evolutionAssistantInstanceName,
+    solicitarVarredura: solicitarVarreduraCasos,
     horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',
     ativo: Boolean(config.agenteFiscalAtivo),
     comprovanteClient: paligemmaClient,
@@ -155,6 +174,7 @@ export function criarAppExpress() {
   });
   if (process.env['NODE_ENV'] !== 'test') {
     agendadorFechamentoFiscal.iniciar();
+    workerCasos.iniciar();
   }
 
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
@@ -181,6 +201,7 @@ export function criarAppExpress() {
         enviarMensagemAssistente: evolutionAssistantClient,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         sincronizarHistorico: sincronizarHistoricoInstancia,
+        solicitarVarredura: solicitarVarreduraCasos,
         comprovanteClient: paligemmaClient,
         evolutionClient
       });
@@ -738,12 +759,14 @@ export function criarAppExpress() {
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         enviarMensagemAssistente: evolutionAssistantClient,
         modoCadastro: config.notoCadastroModo,
-        processarComandoFiscal: async (medicoId, texto, telefone) => {
-          return processarComandoFiscalMedico(medicoId, texto, telefone, {
-            repositorio: candidatosNotaRepo,
-            enviarMensagem: evolutionAssistantClient,
-            instanciaNome: config.evolutionAssistantInstanceName
-          });
+        processarComandoFiscal: async (medicoId, texto, telefone, mensagem) => {
+          if (!mensagem?.id) throw new Error('MENSAGEM_SEM_IDENTIDADE');
+          const casoRecebido = await casosRepo.obterAtivo(medicoId);
+          await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
+            mensagemId: mensagem.id, payload: { texto, telefone, mensagemCitadaId: mensagem.citadaId, instanteMensagem: mensagem.instante,
+              casoRecebidoId: casoRecebido?.id ?? null,
+              perguntaRecebidaId: casoRecebido?.perguntaPendente?.mensagemId ?? null } });
+          return { tratado: true, detalhe: { estado: 'recebido' } };
         },
         async aoAtualizarConexao(evento) {
           if (
@@ -759,6 +782,7 @@ export function criarAppExpress() {
               enviarMensagemAssistente: evolutionAssistantClient,
               instanciaAssistenteNome: config.evolutionAssistantInstanceName,
               sincronizarHistorico: sincronizarHistoricoInstancia,
+              solicitarVarredura: solicitarVarreduraCasos,
               comprovanteClient: paligemmaClient,
               evolutionClient
             }).catch(err => console.warn('[Onboarding Pós-Conexão] Falha:', err?.message || err));
@@ -977,11 +1001,7 @@ export function criarAppExpress() {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
             console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
             if (row.medico_id) {
-              void varrerESolicitarAprovacao(row.medico_id, {
-                repositorio: candidatosNotaRepo,
-                enviarMensagem: evolutionAssistantClient,
-                instanciaNome: config.evolutionAssistantInstanceName
-              }).catch(err => console.warn('[Agente Fiscal Boot] Falha:', err?.message || err));
+              await solicitarVarreduraCasos(row.medico_id);
             }
           } catch (erro: any) {
             console.warn('[Evolution] Histórico não recuperado ao iniciar:', erro?.message || erro);
