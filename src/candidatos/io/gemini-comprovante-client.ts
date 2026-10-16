@@ -190,14 +190,23 @@ function mapearDadosExtraidos(d: z.infer<typeof schemaRespostaGemini>): DadosCom
   const valorCentavos = d.valor !== undefined ? Math.round(d.valor * 100) : undefined;
   const pagadorCpf = sanitizarCpfValido(d.pagadorCpf);
   const tomadorCpf = sanitizarCpfValido(d.tomadorCpf);
+  let dataPagamento = d.dataPagamento;
+  if (dataPagamento) {
+    const matchBr = dataPagamento.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (matchBr) {
+      dataPagamento = `${matchBr[3]}-${matchBr[2].padStart(2, '0')}-${matchBr[1].padStart(2, '0')}`;
+    }
+  }
 
   return {
     ehComprovante: d.ehComprovante,
     ehNotaFiscal: d.ehNotaFiscal,
+    versaoExtracao: 2,
+    statusPagamento: d.ehComprovante ? 'realizado' : undefined,
     tipo: d.tipo as TipoPagamentoComprovante | undefined,
     valorCentavos,
     valorFormatado: d.valor !== undefined ? d.valor.toFixed(2) : undefined,
-    dataPagamento: d.dataPagamento,
+    dataPagamento,
     dataConsultaReferencia: d.dataConsultaReferencia,
     idTransacao: d.idTransacao,
     pagadorNome: d.pagadorNome,

@@ -2,7 +2,7 @@ import type pg from 'pg';
 import type { EvolutionApiClient } from '../../io/evolution/evolution-api-client.js';
 import { validarComprovanteCache, type PaligemmaComprovanteClient } from '../../io/nvidia/paligemma-comprovante-client.js';
 import { correlacionarConsultaPagamento, type CandidatoNotaFiscal, type MensagemContextoConversa } from '../regras/correlacionar-consulta-pagamento.js';
-import { inicioJanelaPagamentosBrasilia, normalizarIdentidade, obterPagamentoDocumental, obterNotaFiscalDocumental } from '../regras/evidencias-documentais.js';
+import { inicioJanelaPagamentosBrasilia, normalizarIdentidade, obterPagamentoDocumental, obterNotaFiscalDocumental, verificarCompatibilidadeFavorecido } from '../regras/evidencias-documentais.js';
 import { prepararMidiaFiscal, MidiaFiscalNaoSuportada } from '../io/preparar-midia-fiscal.js';
 
 export interface ResultadoLocalizacao {
@@ -141,12 +141,12 @@ export class LocalizadorCandidatos {
       if (conversa.pendente) continue;
       const candidatos = correlacionarConsultaPagamento(conversa.mensagens, conversa.telefone, conversa.nome, agora, undefined, corte);
       for (const candidato of candidatos) {
-        const documento = candidato.favorecidoDocumento?.replace(/\D/g, '');
-        const documentoCompleto = documento && [11, 14].includes(documento.length) &&
-          !/[*xX]/.test(candidato.favorecidoDocumento || '');
-        const nome = normalizarIdentidade(candidato.favorecidoNome);
-        const nomeCompativel = nome && [fiscal.nome_completo, fiscal.razao_social].some(n => normalizarIdentidade(n) === nome);
-        if (documentoCompleto ? documento !== fiscal.documento?.replace(/\D/g, '') : !nomeCompativel) {
+        const compativel = verificarCompatibilidadeFavorecido(
+          candidato.favorecidoNome,
+          candidato.favorecidoDocumento,
+          fiscal
+        );
+        if (!compativel) {
           candidato.requerRevisao = true;
           candidato.motivosRevisao = [...(candidato.motivosRevisao || []), 'Favorecido do pagamento não confirmado no cadastro fiscal.'];
         }

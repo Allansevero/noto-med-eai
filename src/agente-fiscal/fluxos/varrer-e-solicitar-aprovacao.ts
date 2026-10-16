@@ -99,7 +99,7 @@ export async function varrerESolicitarAprovacao(
     }
   }
 
-  const DIAS_JANELA_FATURAMENTO = 15;
+  const DIAS_JANELA_FATURAMENTO = 45;
   const dataCortePagamento = deps.dataCorte || new Date(Date.now() - DIAS_JANELA_FATURAMENTO * 24 * 60 * 60 * 1000);
 
   const conversas = await deps.repositorio.buscarConversasComHistorico(medicoId, dataCortePagamento);
@@ -112,9 +112,9 @@ export async function varrerESolicitarAprovacao(
   }
 
   let candidatoEleito: CandidatoNotaFiscal | null = null;
-  const instanciaMidia = deps.instanciaClinicaNome || deps.instanciaNome;
 
   for (const conv of conversas) {
+    const instanciaMidia = conv.nomeInstancia || deps.instanciaClinicaNome || deps.instanciaNome;
     await enriquecerMidiasConversa(conv.mensagens, instanciaMidia, deps);
 
     const candidatos = correlacionarConsultaPagamento(

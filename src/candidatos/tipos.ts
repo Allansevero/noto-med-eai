@@ -17,6 +17,8 @@ export type StatusCandidatoEmissao =
 export interface DadosComprovanteExtraidos {
   ehComprovante: boolean;
   ehNotaFiscal?: boolean;
+  versaoExtracao?: number;
+  statusPagamento?: 'realizado' | 'agendado' | 'cancelado' | 'desconhecido';
   tipo?: TipoPagamentoComprovante;
   valorCentavos?: number;
   valorFormatado?: string;

@@ -91,6 +91,7 @@ export async function iniciarOnboardingPosConexao(
         repositorio: deps.repositorio,
         enviarMensagem: deps.enviarMensagemAssistente,
         instanciaNome: deps.instanciaAssistenteNome,
+        instanciaClinicaNome: deps.nomeInstancia,
         comprovanteClient: deps.comprovanteClient,
         evolutionClient: deps.evolutionClient
       });

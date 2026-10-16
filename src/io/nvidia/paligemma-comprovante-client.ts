@@ -19,9 +19,12 @@ export interface DadosComprovanteExtraidos {
   valorCentavos?: number;
   valorFormatado?: string;
   dataPagamento?: string;
+  dataConsultaReferencia?: string;
   pagadorNome?: string;
   favorecidoNome?: string;
   favorecidoDocumento?: string;
+  tomadorNome?: string;
+  tomadorCpf?: string;
   transacaoId?: string;
   tipo?: 'pix' | 'ted' | 'transferencia' | 'cartao' | 'outro';
 }
@@ -145,10 +148,13 @@ const cacheComprovanteSchema = z.object({
   valorCentavos: z.number().int().positive().safe().optional(),
   valorFormatado: z.string().optional(),
   dataPagamento: z.string().optional(),
+  dataConsultaReferencia: z.string().optional(),
   pagadorNome: z.string().optional(),
   pagadorDocumento: z.string().optional(),
   favorecidoNome: z.string().optional(),
   favorecidoDocumento: z.string().optional(),
+  tomadorNome: z.string().optional(),
+  tomadorCpf: z.string().optional(),
   transacaoId: z.string().optional(),
   documentoHash: z.string().optional(),
   tipo: z.enum(['pix', 'ted', 'transferencia', 'cartao', 'outro']).optional(),
@@ -162,9 +168,14 @@ export function validarComprovanteCache(valor: unknown): DadosComprovanteExtraid
   const d = resultado.data;
   if (d.versaoExtracao === 2) return d;
   if (!d.ehComprovante || !d.statusPagamento || !d.valorCentavos || !d.dataPagamento) return null;
-  const instante = Date.parse(d.dataPagamento);
-  if (!Number.isFinite(instante) || !/^\d{4}-\d{2}-\d{2}/.test(d.dataPagamento)) return null;
-  return { ...d, versaoExtracao: 2 };
+  let dataPagamento = d.dataPagamento;
+  const matchBr = dataPagamento.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (matchBr) {
+    dataPagamento = `${matchBr[3]}-${matchBr[2].padStart(2, '0')}-${matchBr[1].padStart(2, '0')}`;
+  }
+  const instante = Date.parse(dataPagamento);
+  if (!Number.isFinite(instante) || !/^\d{4}-\d{2}-\d{2}/.test(dataPagamento)) return null;
+  return { ...d, dataPagamento, versaoExtracao: 2 };
 }
 
 export class PaligemmaComprovanteClient {

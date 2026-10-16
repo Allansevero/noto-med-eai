@@ -11,6 +11,13 @@ export interface PagamentoDocumental {
   pagadorDocumento?: string;
   favorecidoNome?: string;
   favorecidoDocumento?: string;
+  dataConsultaReferencia?: string;
+}
+
+export interface PerfilFiscalVerificacao {
+  nome_completo?: string | null;
+  razao_social?: string | null;
+  documento?: string | null;
 }
 
 const registro = (valor: unknown): Record<string, unknown> | undefined =>
@@ -34,19 +41,24 @@ export function diaBrasilia(data: Date): string {
 export function inicioJanelaPagamentosBrasilia(referencia: Date): Date {
   const dia = new Date(`${diaBrasilia(referencia)}T12:00:00Z`);
   dia.setUTCDate(dia.getUTCDate() - 14);
-  // Brasília não adota horário de verão na janela contemporânea do produto.
   return new Date(`${dia.toISOString().slice(0, 10)}T00:00:00-03:00`);
 }
 
-/** Aceita caches antigos com campos suficientes; ausência de status requer nova extração. */
+/** Aceita caches com campos suficientes; ausência de status requer nova extração. */
 export function obterPagamentoDocumental(msg: MensagemContextoConversa): PagamentoDocumental | null {
   if (msg.direcao !== 'recebida' || !['imagem', 'documento'].includes(msg.tipo)) return null;
   const comp = validarComprovanteCache(msg.payloadBruto?.comprovante);
   if (!comp || comp.ehComprovante !== true || comp.statusPagamento !== 'realizado') return null;
+
   const valor = comp.valorCentavos;
-  const data = texto(comp.dataPagamento);
+  let data = texto(comp.dataPagamento);
+  if (data) {
+    const matchBr = data.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (matchBr) {
+      data = `${matchBr[3]}-${matchBr[2].padStart(2, '0')}-${matchBr[1].padStart(2, '0')}`;
+    }
+  }
   if (typeof valor !== 'number' || !Number.isSafeInteger(valor) || valor <= 0 || !data) return null;
-  // Datas sem horário representam o início do dia em Brasília, não meia-noite UTC.
   if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/.test(data)) return null;
   const instante = Date.parse(data.length === 10 ? `${data}T00:00:00-03:00` : data);
   const dia = Date.parse(data.slice(0, 10));
@@ -55,7 +67,8 @@ export function obterPagamentoDocumental(msg: MensagemContextoConversa): Pagamen
     valorCentavos: valor, dataPagamento: data, instantePagamento: instante,
     transacaoId: texto(comp.transacaoId), documentoHash: texto(comp.documentoHash),
     pagadorNome: texto(comp.pagadorNome), pagadorDocumento: texto(comp.pagadorDocumento),
-    favorecidoNome: texto(comp.favorecidoNome), favorecidoDocumento: texto(comp.favorecidoDocumento)
+    favorecidoNome: texto(comp.favorecidoNome), favorecidoDocumento: texto(comp.favorecidoDocumento),
+    dataConsultaReferencia: texto(comp.dataConsultaReferencia)
   };
 }
 
@@ -95,7 +108,6 @@ export function associarNotaPagamento(nota: DadosNotaFiscalExtraidos, pagamento:
   if (referencia === true) return 'forte';
   if (favorecido === false) return 'ambiguo';
   if (documento === true || nome === true) return 'forte';
-  // Pagador e tomador podem ser pessoas distintas; nunca deduz emissão só pelo valor.
   return 'ambiguo';
 }
 
@@ -103,4 +115,62 @@ export function chavePagamento(pagamento: PagamentoDocumental, mensagemId: strin
   if (pagamento.transacaoId) return `transacao:${pagamento.transacaoId}`;
   if (pagamento.documentoHash) return `documento:${pagamento.documentoHash}`;
   return `mensagem:${mensagemId}`;
+}
+
+export function verificarCompatibilidadeFavorecido(
+  favorecidoNome?: string,
+  favorecidoDocumento?: string,
+  fiscal?: PerfilFiscalVerificacao
+): boolean {
+  if (!fiscal) return true;
+  const docFiscalLimpo = (fiscal.documento || '').replace(/\D/g, '');
+
+  if (favorecidoDocumento) {
+    const docLimpo = favorecidoDocumento.replace(/\D/g, '');
+    const temMascara = /[*xX]/.test(favorecidoDocumento);
+    if (!temMascara && [11, 14].includes(docLimpo.length)) {
+      if (docFiscalLimpo && docLimpo !== docFiscalLimpo) return false;
+    } else if (temMascara && docLimpo.length >= 4 && docFiscalLimpo) {
+      if (!docFiscalLimpo.includes(docLimpo)) return false;
+    }
+  }
+
+  if (favorecidoNome) {
+    const normFav = normalizarSemHonorificos(favorecidoNome);
+    const normNome = normalizarSemHonorificos(fiscal.nome_completo || '');
+    const normRazao = normalizarSemHonorificos(fiscal.razao_social || '');
+
+    if (normFav && normNome && (normNome.includes(normFav) || normFav.includes(normNome))) return true;
+    if (normFav && normRazao && (normRazao.includes(normFav) || normFav.includes(normRazao))) return true;
+
+    const palavrasFav = extrairPalavrasSignificativas(favorecidoNome);
+    const palavrasMedico = new Set([
+      ...extrairPalavrasSignificativas(fiscal.nome_completo || ''),
+      ...extrairPalavrasSignificativas(fiscal.razao_social || '')
+    ]);
+
+    if (palavrasFav.length > 0 && palavrasFav.some(p => palavrasMedico.has(p))) return true;
+  }
+
+  return true;
+}
+
+function normalizarSemHonorificos(valor: string): string {
+  return valor
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\b(?:dra?\.?|dr\.?|doutor(?:a)?|consultorio|clinica|instituto|espaco|servicos|medicos?|ltda|me|epp)\b/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function extrairPalavrasSignificativas(valor: string): string[] {
+  const IGNORADAS = new Set(['dr', 'dra', 'doutor', 'doutora', 'consultorio', 'clinica', 'med', 'medico', 'medica', 'de', 'da', 'do', 'dos', 'das', 'e', 'em', 'para', 'ltda', 'me', 'epp']);
+  return valor
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(p => p.length >= 3 && !IGNORADAS.has(p));
 }
