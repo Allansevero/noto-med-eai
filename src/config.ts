@@ -51,6 +51,10 @@ export interface AppConfig {
   stripePublishableKey?: string;
   stripePriceId?: string;
   stripeWebhookSecret?: string;
+  fiscalServiceUrl?: string;
+  internalFiscalToken?: string;
+  iaServiceUrl?: string;
+  internalIaToken?: string;
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -109,7 +113,11 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     stripeSecretKey: env['STRIPE_SECRET_KEY'],
     stripePublishableKey: env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
     stripePriceId: env['STRIPE_PRICE_ID'] || 'price_1UFaloBMqkVPUWioDTWXIPv6',
-    stripeWebhookSecret: env['STRIPE_WEBHOOK_SECRET']
+    stripeWebhookSecret: env['STRIPE_WEBHOOK_SECRET'],
+    fiscalServiceUrl: env['FISCAL_SERVICE_URL'] || 'http://fiscal:3001',
+    internalFiscalToken: env['INTERNAL_FISCAL_TOKEN'] || 'dev-fiscal-token-segredo',
+    iaServiceUrl: env['IA_SERVICE_URL'] || 'http://ia:3002',
+    internalIaToken: env['INTERNAL_IA_TOKEN'] || 'dev-ia-token-segredo'
   };
 }
 
