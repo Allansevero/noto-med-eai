@@ -27,7 +27,8 @@ describe('consultarStatusOnboarding', () => {
             confirmado_pelo_medico: true,
             aliquota_iss: '2.00',
             cert_ativos: 1,
-            whats_conectados: 1
+            whats_conectados: 1,
+            revisao_profissional: { estado: 'concluido', dados: { aprovacaoPainel: { nome: 'Dr. Allan Severo', crm: '12345/RS', rqe: null, confirmadoEm: '2026-10-16T00:00:00.000Z' } } }
           }
         ]
       })
@@ -39,6 +40,7 @@ describe('consultarStatusOnboarding', () => {
     assert.equal(status.passos.passo2XmlEnviado, true);
     assert.equal(status.passos.passo2FiscalConfirmado, true);
     assert.equal(status.passos.passo3CertificadoValido, true);
+    assert.equal(status.passos.passoProfissionalAprovado, true);
     assert.equal(status.passos.passo4WhatsappConectado, true);
     assert.equal(status.liberadoParaEmitir, true);
   });
@@ -83,4 +85,33 @@ it('nome provisório bloqueia emissão sem bloquear acesso após A1 e WhatsApp',
   assert.equal(status.passos.passo1Nome, false);
   assert.equal(status.liberadoParaEmitir, false);
   assert.equal(status.passos.passo4WhatsappConectado, true);
+});
+
+for (const caso of [
+  { nome: 'legado conectado sem aprovação', trabalho: null },
+  { nome: 'enriquecimento automático concluído', trabalho: { estado: 'concluido', dados: {} } },
+  { nome: 'consulta retomada depois da aprovação', trabalho: { estado: 'consultando', dados: { aprovacaoPainel: { nome: 'Ana de Souza', crm: '37341/RS', rqe: null, confirmadoEm: '2026-10-16' } } } },
+  { nome: 'nome alterado depois da aprovação', trabalho: { estado: 'concluido', dados: { aprovacaoPainel: { nome: 'Maria de Souza', crm: '37341/RS', rqe: null, confirmadoEm: '2026-10-16' } } } },
+  { nome: 'CRM alterado depois da aprovação', trabalho: { estado: 'concluido', dados: { aprovacaoPainel: { nome: 'Ana de Souza', crm: '222/RS', rqe: null, confirmadoEm: '2026-10-16' } } } },
+  { nome: 'RQE alterado depois da aprovação', trabalho: { estado: 'concluido', dados: { aprovacaoPainel: { nome: 'Ana de Souza', crm: '37341/RS', rqe: '123', confirmadoEm: '2026-10-16' } } } },
+  { nome: 'aprovação sem carimbo', trabalho: { estado: 'concluido', dados: { aprovacaoPainel: { nome: 'Ana de Souza', crm: '37341/RS', rqe: null } } } }
+]) {
+  it(`exige revisão profissional para ${caso.nome}`, async () => {
+    const pool: any = { query: async () => ({ rows: [{ medico_id: 'med', usuario_id: 'user', medico_nome: 'Ana de Souza', crm: '37341/RS', rqe: null,
+      confirmado_pelo_medico: true, cert_ativos: 1, whats_conectados: 1, revisao_profissional: caso.trabalho }] }) };
+    const status = await consultarStatusOnboarding(pool, 'med');
+    assert.equal(status.passos.passo2FiscalConfirmado, true);
+    assert.equal(status.passos.passoProfissionalAprovado, false);
+    assert.equal(status.liberadoParaEmitir, false);
+  });
+}
+
+it('aprovação profissional é independente da conexão WhatsApp', async () => {
+  const pool: any = { query: async () => ({ rows: [{ medico_id: 'med', usuario_id: 'user', medico_nome: 'Ana de Souza', crm: '37341/RS', rqe: null,
+    confirmado_pelo_medico: true, cert_ativos: 1, whats_conectados: 0,
+    revisao_profissional: { estado: 'concluido', dados: { aprovacaoPainel: { nome: 'Ana de Souza', crm: '37341/RS', rqe: null, confirmadoEm: '2026-10-16' } } } }] }) };
+  const status = await consultarStatusOnboarding(pool, 'med');
+  assert.equal(status.passos.passoProfissionalAprovado, true);
+  assert.equal(status.passos.passo4WhatsappConectado, false);
+  assert.equal(status.liberadoParaEmitir, false);
 });

@@ -37,9 +37,9 @@ test('resposta atrasada após troca de sessão não preenche dados de outra cont
  assert.equal(f.node('inputContaNome').value,'');
 });
 
-test('confirmação fica desabilitada enquanto WhatsApp estiver desconectado',()=>{
+test('dados profissionais podem ser aprovados antes de conectar WhatsApp',()=>{
  const f=tela();vm.runInContext("renderizarRevisaoCadastro({trabalhoId:'t',versao:'v1',whatsappConectado:false,estado:'aguardando_confirmacao',aprovado:false,nome:'Ana de Souza',crm:'37341/RS',rqe:'',candidatos:[],registros:[],pesquisaCrm:'consultado'},true)",f.c);
- assert.equal(f.node('btnConfirmarProfissional').disabled,true);assert.match(f.node('contaRevisaoProfissionalStatus').textContent,/Conecte seu WhatsApp/);
+ assert.equal(f.node('btnConfirmarProfissional').disabled,false);assert.doesNotMatch(f.node('contaRevisaoProfissionalStatus').textContent,/Conecte seu WhatsApp/);
 });
 test('pesquisa nome do Hub selecionado pelo painel sem exigir WhatsApp nem confirmar perfil',async()=>{
  const f=tela();vm.runInContext("renderizarRevisaoCadastro({trabalhoId:'t',versao:'v3',whatsappConectado:false,estado:'aguardando_confirmacao',aprovado:false,nome:'',crm:'',rqe:'',candidatos:[{nome:'Ana de Souza'},{nome:'Beatriz Lima'}],registros:[],pesquisaCrm:'pendente'},true)",f.c);
@@ -49,4 +49,27 @@ test('pesquisa nome do Hub selecionado pelo painel sem exigir WhatsApp nem confi
  assert.equal(f.pedidos[0].url,'/api/conta/cadastro/pesquisar');
  assert.equal(JSON.parse(f.pedidos[0].init.body).nome,'Beatriz Lima');
  assert.equal(f.pedidos.some(p=>p.url==='/api/conta/cadastro/aprovar'),false);
+});
+
+test('falha Serper não é apresentada como pesquisa em andamento e código fica em detalhes',()=>{
+ const f=tela();vm.runInContext("renderizarRevisaoCadastro({trabalhoId:'t',versao:'v1',estado:'pendente',nome:'Ana de Souza',crm:'',rqe:'',candidatos:[],registros:[],pesquisaCrm:'indisponivel',pesquisaCodigo:'SERPER_HTTP_400'},true)",f.c);
+ const status=f.node('contaRevisaoProfissionalStatus').textContent;
+ assert.match(status,/Não foi possível concluir/);assert.doesNotMatch(status,/Estamos|SERPER_HTTP/);
+ assert.equal(f.node('btnConfirmarProfissional').disabled,false);
+ assert.equal(f.node('detalhesPesquisaProfissional').hidden,false);
+ assert.match(f.node('codigoPesquisaProfissional').textContent,/SERPER_HTTP_400/);
+});
+test('resultado novo durante edição preserva os campos e usa versão atual na aprovação',async()=>{
+ const f=tela();vm.runInContext("renderizarRevisaoCadastro({trabalhoId:'t',versao:'v1',estado:'consultando',nome:'Ana de Souza',crm:'',rqe:'',candidatos:[],registros:[]},true)",f.c);
+ f.node('inputContaCrm').value='37341/RS';f.node('inputContaCrm').handlers.input();
+ vm.runInContext("renderizarRevisaoCadastro({trabalhoId:'t',versao:'v2',estado:'aguardando_confirmacao',nome:'Ana de Souza',crm:'99999/RS',rqe:'',candidatos:[],registros:[]})",f.c);
+ assert.equal(f.node('inputContaCrm').value,'37341/RS');
+ await f.node('btnConfirmarProfissional').handlers.click();
+ const body=JSON.parse(f.pedidos[0].init.body);assert.equal(body.versao,'v2');assert.equal(body.crm,'37341/RS');
+});
+test('créditos esgotados explicam falha nos detalhes e permitem preencher dados',()=>{
+ const f=tela();vm.runInContext("renderizarRevisaoCadastro({trabalhoId:'t',versao:'v1',estado:'aguardando_confirmacao',nome:'Ana de Souza',crm:'',rqe:'',candidatos:[],registros:[],pesquisaCrm:'indisponivel',pesquisaCodigo:'SERPER_HTTP_400',diagnosticoPesquisa:[{etapa:'serper_http',status:400,motivo:'CREDITOS_INSUFICIENTES'}]},true)",f.c);
+ assert.doesNotMatch(f.node('contaRevisaoProfissionalStatus').textContent,/Estamos|consultando/);
+ assert.match(f.node('codigoPesquisaProfissional').textContent,/Créditos.*esgotados/);
+ assert.equal(f.node('btnConfirmarProfissional').disabled,false);
 });

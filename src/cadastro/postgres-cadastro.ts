@@ -11,19 +11,22 @@ export interface AvisoCadastro { id:string; trabalho_id:string; chave:string; pe
 export interface RespostaCadastro { id:string; trabalho_id:string; pendencia_id:string; texto:string; reserva:string; tentativas:number; trabalho:TrabalhoCadastro }
 export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
- async agendarPesquisaProfissional():Promise<void>{
+ async agendarPesquisaProfissional(provedor?:'openserp'):Promise<void>{
   await this.pool.query(`update cadastro_certificado_trabalhos t set estado='pendente',proxima_tentativa_em=now(),reserva=null,reservado_em=null,
-   tentativas=0,diagnostico=null,dados=dados-'pesquisaProfissional'-'cadastroIndisponivel',atualizado_em=now()
-   where estado='aguardando_confirmacao' and (
+   diagnostico=null,dados=dados-'pesquisaProfissional'-'cadastroIndisponivel',atualizado_em=now(),
+   tentativas=case when $1='openserp' and left(dados->'pesquisaProfissional'->>'codigo',7)='SERPER_' then 0 else tentativas end
+   where estado='aguardando_confirmacao' and dados #>> '{aprovacaoPainel,confirmadoEm}' is null
+   and (tentativas<3 or ($1='openserp' and left(dados->'pesquisaProfissional'->>'codigo',7)='SERPER_') or left(dados->'pesquisaProfissional'->>'codigo',3)='IA_' or left(dados->'pesquisaProfissional'->>'codigo',7)='NVIDIA_') and (
     dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA'
     or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_'
     or left(dados->'pesquisaProfissional'->>'codigo',12)='INFOSIMPLES_'
+    or ($1='openserp' and left(dados->'pesquisaProfissional'->>'codigo',7)='SERPER_')
     or left(dados->'pesquisaProfissional'->>'codigo',3)='IA_'
     or (left(dados->'pesquisaProfissional'->>'codigo',7)='NVIDIA_' and dados->'pesquisaProfissional'->>'codigo'<>'NVIDIA_SEM_REGISTROS')
     or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(dados #> '{pesquisaProfissional,registros}')='array'
      then dados #> '{pesquisaProfissional,registros}' else '[]'::jsonb end) as r(registro) where r.registro->>'origem' ilike '%Infosimples%')
    )
-   and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`);
+   and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`,[provedor??null]);
  }
  async revisaoPainel(medicoId:string){
   const r=(await this.pool.query(`select m.nome_completo as nome,m.crm,m.rqe,to_jsonb(t) as trabalho,${versaoRevisaoSql} as versao
@@ -38,16 +41,16 @@ export class PostgresCadastro {
   const e=pesquisaPainelSchema.parse(entrada);
   await this.transacao(async c=>{
    const t=(await c.query('select * from cadastro_certificado_trabalhos where id=$1 and medico_id=$2 for update',[e.trabalhoId,medicoId])).rows[0] as TrabalhoCadastro|undefined;
-   if(!t||t.estado!=='aguardando_confirmacao')throw new ErroRevisaoCadastro(409,'O cadastro mudou. Atualize os dados antes de pesquisar.');
+   if(!t||!['aguardando_confirmacao','concluido'].includes(t.estado))throw new ErroRevisaoCadastro(409,'O cadastro mudou. Atualize os dados antes de pesquisar.');
    const cert=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[medicoId])).rows[0];
    const ativo=(await c.query('select u.ativo from usuarios u join medicos m on m.usuario_id=u.id where m.id=$1',[medicoId])).rows[0]?.ativo;
    if(!ativo||cert?.id!==t.certificado_id)throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de pesquisar.');
    const versao=(await c.query(`select ${versaoRevisaoSql} as versao from cadastro_certificado_trabalhos t join medicos m on m.id=t.medico_id where t.id=$1`,[t.id])).rows[0]?.versao;
    if(versao!==e.versao)throw new ErroRevisaoCadastro(409,'Os dados foram atualizados. Revise novamente antes de pesquisar.');
-   const candidatos=t.dados.empresa?.candidatos??[];
-   if(!candidatos.some(candidato=>candidato.nome===e.nome))throw new ErroRevisaoCadastro(400,'Selecione um dos responsáveis encontrados para pesquisar.');
-   if(t.dados.nomeConfirmado===e.nome&&t.dados.pesquisaProfissional?.nome===e.nome&&t.dados.pesquisaProfissional?.estado!=='indisponivel')throw new ErroRevisaoCadastro(409,'Este nome já foi pesquisado. Revise o resultado ou escolha outro responsável.');
-   const dados:DadosCadastro={...t.dados,nomeConfirmado:e.nome};delete dados.pesquisaProfissional;delete dados.pendencia;delete dados.cadastroIndisponivel;
+   const candidatos=t.dados.empresa?.candidatos??(t.dados.pendencia?.tipo==='responsavel'?t.dados.pendencia.candidatos:[]);
+   if(t.dados.nomeConfirmado!==e.nome&&!candidatos.some(candidato=>candidato.nome===e.nome))throw new ErroRevisaoCadastro(400,'Selecione um dos responsáveis encontrados para pesquisar.');
+   const dados:DadosCadastro={...t.dados,nomeConfirmado:e.nome,pesquisaSolicitadaPainel:true};delete dados.pesquisaProfissional;delete dados.pendencia;delete dados.cadastroIndisponivel;
+   if(t.dados.nomeConfirmado!==e.nome)delete dados.aprovacaoPainel;
    await c.query("update cadastro_certificado_trabalhos set estado='pendente',dados=$2,tentativas=0,proxima_tentativa_em=now(),reserva=null,reservado_em=null,diagnostico=null,atualizado_em=now() where id=$1",[t.id,JSON.stringify(dados)]);
   });
   return this.revisaoPainel(medicoId);
@@ -60,11 +63,9 @@ export class PostgresCadastro {
    const m=(await c.query('select nome_completo,crm,rqe from medicos where id=$1 for update',[medicoId])).rows[0];
    const cert=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[medicoId])).rows[0];
    const ativo=(await c.query('select u.ativo from usuarios u join medicos m on m.usuario_id=u.id where m.id=$1',[medicoId])).rows[0]?.ativo;
-   if(!ativo||cert?.id!==t.certificado_id||!['aguardando_confirmacao','concluido'].includes(t.estado))throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de confirmar.');
+   if(!ativo||cert?.id!==t.certificado_id||!['pendente','consultando','aguardando_confirmacao','concluido'].includes(t.estado))throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de confirmar.');
    const anterior=t.dados.aprovacaoPainel;
-   const conectado=(await c.query("select 1 from whatsapp_instancias where medico_id=$1 and oficial=false and status='conectado' for share",[medicoId])).rowCount;
-   if(!conectado)throw new ErroRevisaoCadastro(409,'Conecte seu WhatsApp antes de confirmar os dados profissionais.');
-   if(t.estado==='concluido'&&anterior?.nome===e.nome&&anterior.crm===e.crm&&anterior.rqe===e.rqe&&m.nome_completo===e.nome&&m.crm===e.crm&&m.rqe===e.rqe)return;
+   if(t.estado==='concluido'&&anterior?.confirmadoEm&&anterior.nome===e.nome&&anterior.crm===e.crm&&anterior.rqe===e.rqe&&m.nome_completo===e.nome&&m.crm===e.crm&&m.rqe===e.rqe)return;
    const versao=(await c.query(`select ${versaoRevisaoSql} as versao from cadastro_certificado_trabalhos t join medicos m on m.id=t.medico_id where t.id=$1`,[t.id])).rows[0].versao;
    if(versao!==e.versao)throw new ErroRevisaoCadastro(409,'Os dados foram atualizados. Revise novamente antes de confirmar.');
    await c.query('update medicos set nome_completo=$2,crm=$3,rqe=$4,atualizado_em=now() where id=$1',[medicoId,e.nome,e.crm,e.rqe]);
@@ -102,10 +103,10 @@ export class PostgresCadastro {
    const r=(await c.query(`select * from cadastro_certificado_trabalhos where estado in ('pendente','consultando') and proxima_tentativa_em<=now()
     and (reserva is null or reservado_em<now()-interval '30 minutes') order by criado_em,id for update skip locked limit 1`)).rows[0] as TrabalhoCadastro|undefined;
    if(!r)return null;const token=randomUUID();
-   const m=(await c.query('select nome_completo,crm from medicos where id=$1',[r.medico_id])).rows[0];
+   const m=(await c.query('select nome_completo,crm,rqe from medicos where id=$1',[r.medico_id])).rows[0];
    const confirmadoAnterior=(await c.query("select id from cadastro_certificado_trabalhos where medico_id=$1 and dados->>'nomeConfirmado'=$2 limit 1",[r.medico_id,m.nome_completo])).rows.length>0;
    r.tentativas++;await c.query("update cadastro_certificado_trabalhos set estado='consultando',reserva=$2,reservado_em=now(),tentativas=$3 where id=$1",[r.id,token,r.tentativas]);
-   return {trabalho:r,token,perfil:{nome:m.nome_completo,crm:m.crm,nomeConfirmado:nomeProfissionalValido(m.nome_completo)&&confirmadoAnterior}};
+   return {trabalho:r,token,perfil:{nome:m.nome_completo,crm:m.crm,rqe:m.rqe,nomeConfirmado:nomeProfissionalValido(m.nome_completo)&&confirmadoAnterior}};
   });
  }
  async documento(r:ReservaCadastro,documento:string|undefined):Promise<void>{await this.pool.query('update cadastro_certificado_trabalhos set documento_titular=$3 where id=$1 and reserva=$2',[r.trabalho.id,r.token,documento??null]);r.trabalho.documento_titular=documento??null;}
@@ -113,7 +114,7 @@ export class PostgresCadastro {
   await this.transacao(async c=>{
    const t=(await c.query('select * from cadastro_certificado_trabalhos where id=$1 and reserva=$2 for update',[r.trabalho.id,r.token])).rows[0] as TrabalhoCadastro|undefined;
    if(!t)return;
-   const m=(await c.query('select nome_completo,crm from medicos where id=$1 for update',[t.medico_id])).rows[0];
+   const m=(await c.query('select nome_completo,crm,rqe from medicos where id=$1 for update',[t.medico_id])).rows[0];
    const ativo=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[t.medico_id])).rows[0];
    if(ativo?.id!==t.certificado_id){await c.query("update cadastro_certificado_trabalhos set estado='obsoleto',reserva=null where id=$1",[t.id]);return;}
    if(m.nome_completo!==t.snapshot.nome || m.crm!==t.snapshot.crm){
@@ -129,7 +130,7 @@ export class PostgresCadastro {
    let dados=resultado.dados;let estado:string=resultado.estado;let espera=0;
    if(estado==='retentar'){
     if(t.tentativas<3){estado='pendente';espera=t.tentativas===1?30:120;}
-    else{estado='pendente';dados={...dados,cadastroIndisponivel:true};if(dados.nomeConfirmado){estado='aguardando_confirmacao';dados.pendencia=criarPendencia('crm');}}
+    else{estado='pendente';dados={...dados,cadastroIndisponivel:true};if(dados.nomeConfirmado){estado='aguardando_confirmacao';if(!normalizarCrm(m.crm))dados.pendencia=criarPendencia('crm');}}
    }
    await c.query(`update cadastro_certificado_trabalhos set estado=$2,dados=$3,reserva=null,reservado_em=null,diagnostico=$4,
     proxima_tentativa_em=now()+$5*interval '1 second',snapshot=$6,atualizado_em=now() where id=$1`,[t.id,estado,JSON.stringify(dados),resultado.codigo??null,espera,JSON.stringify({nome:resultado.nome??m.nome_completo,crm:resultado.crm??m.crm})]);

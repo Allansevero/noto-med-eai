@@ -10,7 +10,7 @@ function tela(sessaoSalva: string | null = null) {
     if (!nodes.has(id)) {
       const valores = new Set(classes.split(' ').filter(Boolean));
       nodes.set(id, { value: '', textContent: '', disabled: false, handlers: {} as any, dataset: {}, style: { setProperty(k: string, v: string) { (this as any)[k] = v; } },
-        children: [] as any[], replaceChildren() { this.children = []; }, append(...els: any[]) { this.children.push(...els); },
+        children: [] as any[], replaceChildren() { this.children = []; }, append(...els: any[]) { this.children.push(...els); }, appendChild(el: any) { this.children.push(el); el.parentNode = this; return el; },
         classList: { add(...c: string[]) { c.forEach(v => valores.add(v)); }, remove(...c: string[]) { c.forEach(v => valores.delete(v)); },
           contains(c: string) { return valores.has(c); }, toggle(c: string, ativo = !valores.has(c)) { ativo ? valores.add(c) : valores.delete(c); } },
         addEventListener(e: string, h: any) { this.handlers[e] = h; }, setAttribute() {}, removeAttribute() {}, checkValidity() { return true; }, focus() {}, querySelector() { return null; } });
@@ -31,7 +31,7 @@ function tela(sessaoSalva: string | null = null) {
   const contexto = vm.createContext({ document: { getElementById: node, createElement() { return node('created' + nodes.size); }, body: node('body', 'onboarding-active'),
     querySelectorAll(s: string) { return s === '.otp-digit' ? otp : tabs; } },
     localStorage: { getItem() { return sessaoSalva; }, setItem() {}, removeItem() {} }, window: { location: { search: '' }, history: {} },
-    URLSearchParams, FileReader, Uint8Array, btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
+    URLSearchParams, URL, AbortSignal, FileReader, Uint8Array, btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
     setTimeout() {}, clearInterval() {}, setInterval(fn: any) { intervalos.push(fn); return intervalos.length; }, console,
     async fetch(url: string, opcoes?: any) {
       pedidos.push({ url, body: opcoes?.body ? JSON.parse(opcoes.body) : undefined });
@@ -62,13 +62,15 @@ test('acesso por telefone e OTP não pede nem salva nome e segue para certificad
   assert.equal(t.pedidos.some(p => p.url === '/api/onboarding/nome'), false);
   assert.equal(t.node('step3View').classList.contains('hidden'), false);
 });
-test('certificado salvo avança ao WhatsApp sem expor parâmetros ou exigir confirmação', async () => {
+test('certificado salvo abre revisão profissional antes da conexão do WhatsApp', async () => {
   const t = tela();
   vm.runInContext('sessaoAtual = { usuario: { medicoId: "med" } }; mostrarPasso(3)', t.contexto);
   t.node('fileCertInput').handlers.change({ target: { files: [{ name: 'cert.pfx' }] } }); t.carregarArquivo();
   t.node('inputSenhaCert').value = 'segredo';
   await t.node('btnSalvarCertificado').handlers.click();
-  assert.equal(t.node('step4View').classList.contains('hidden'), false);
+  assert.equal(t.node('stepProfissionalView').classList.contains('hidden'), false);
+  assert.equal(t.node('step4View').classList.contains('hidden'), true);
+  assert.equal(t.node('inputContaNome').readOnly, false);
   assert.equal(t.node('tabContentConta').classList.contains('hidden'), true);
   assert.equal(t.pedidos.some(p => p.url === '/api/onboarding/confirmar-fiscal'), false);
   assert.equal(t.pedidos.find(p => p.url === '/api/onboarding/certificado').body.consentimentoFiscal, 'continuar-a1-v1');
@@ -77,7 +79,7 @@ test('certificado salvo avança ao WhatsApp sem expor parâmetros ou exigir conf
 test('nome e confirmação fiscal pendentes não bloqueiam acesso à Conta após WhatsApp', () => {
   const t = tela();
   t.contexto.statusTeste = { nomeUsuario: '', liberadoParaEmitir: false,
-    passos: { passo1Nome: false, passo3CertificadoValido: true, passo4WhatsappConectado: true, passo2FiscalConfirmado: false } };
+    passos: { passo1Nome: false, passo3CertificadoValido: true, passoProfissionalAprovado: true, passo4WhatsappConectado: true, passo2FiscalConfirmado: false } };
   vm.runInContext('renderizarPassos(statusTeste); alternarAba("conta")', t.contexto);
   assert.equal(t.node('tabsNavigation').classList.contains('hidden'), false);
   assert.equal(t.node('tabContentConta').classList.contains('hidden'), false);
@@ -321,3 +323,38 @@ test('adicionar novo parâmetro fiscal inclui campo dinâmico e persiste na conf
   assert.equal(pedido.body.usarReferencia, false);
 });
 
+
+test('certificado válido exige aprovação profissional mesmo com WhatsApp já vinculado',()=>{
+ const t=tela();t.contexto.statusTeste={passos:{passo3CertificadoValido:true,passoProfissionalAprovado:false,passo4WhatsappVinculado:true},liberadoParaEmitir:false};
+ vm.runInContext('renderizarPassos(statusTeste)',t.contexto);
+ assert.equal(t.node('stepProfissionalView').classList.contains('hidden'),false);
+ assert.equal(t.node('step4View').classList.contains('hidden'),true);
+ assert.equal(t.node('step5View').classList.contains('hidden'),true);
+ assert.equal(t.node('contaSecaoDados').parentNode,t.node('revisaoProfissionalOnboarding'));
+});
+test('aprovação profissional libera a etapa de conexão e retorna formulário para Conta',()=>{
+ const t=tela();t.contexto.statusTeste={passos:{passo3CertificadoValido:true,passoProfissionalAprovado:true,passo4WhatsappVinculado:false},liberadoParaEmitir:false};
+ vm.runInContext('renderizarPassos(statusTeste)',t.contexto);
+ assert.equal(t.node('stepProfissionalView').classList.contains('hidden'),true);
+ assert.equal(t.node('step4View').classList.contains('hidden'),false);
+ assert.equal(t.node('contaSecaoDados').parentNode,t.node('revisaoProfissionalConta'));
+});
+
+test('usuário edita os dados encontrados, aprova e segue para conexão do WhatsApp',async()=>{
+ const t=tela();let aprovado=false;let dadosEnviados:any;
+ const revisao=()=>({trabalhoId:'t',versao:aprovado?'v2':'v1',estado:aprovado?'concluido':'aguardando_confirmacao',aprovado,
+  nome:'Ana de Souza',crm:'37341/RS',rqe:'',candidatos:[],registros:[],whatsappConectado:false});
+ t.contexto.fetch=async(url:string,opcoes?:any)=>{
+  if(url==='/api/conta/cadastro/aprovar'){dadosEnviados=JSON.parse(opcoes.body);aprovado=true;return{ok:true,json:async()=>({ok:true,revisao:revisao()})};}
+  if(url==='/api/conta/cadastro')return{ok:true,json:async()=>({ok:true,revisao:revisao()})};
+  return{ok:true,json:async()=>({ok:true,medicoId:'med',status:{nomeUsuario:'Ana Maria de Souza',passos:{passo1Nome:true,passo3CertificadoValido:true,passoProfissionalAprovado:aprovado,passo4WhatsappVinculado:false}}})};
+ };
+ vm.runInContext('sessaoAtual={tokenAcesso:"jwt",usuario:{medicoId:"med"}};mostrarPasso("profissional")',t.contexto);
+ await new Promise(resolve=>setImmediate(resolve));
+ t.node('inputContaNome').value='Ana Maria de Souza';t.node('inputContaNome').handlers.input();
+ t.node('inputContaCrm').value='37341/RS';
+ await t.node('btnConfirmarProfissional').handlers.click();
+ assert.equal(dadosEnviados.nome,'Ana Maria de Souza');assert.equal(dadosEnviados.crm,'37341/RS');assert.equal(dadosEnviados.rqe,null);
+ assert.equal(t.node('stepProfissionalView').classList.contains('hidden'),true);
+ assert.equal(t.node('step4View').classList.contains('hidden'),false);
+});

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { montarRevisao } from './revisao-painel.js';
 test('revisão sugere responsável e CRM sem tratar nomes divergentes como registro do médico',async()=>{
  const modulo=await import('./revisao-painel.js').catch(()=>null);assert.ok(modulo,'deve existir revisão do painel');
  const dados:any={empresa:{cnpj:'11222333000181',razaoSocial:'Clínica',origem:'Hub',candidatos:[{nome:'Ana de Souza',origem:'Hub'}]},pesquisaProfissional:{nome:'Ana de Souza',estado:'consultado',registros:[{nomeCompleto:'Outra Pessoa',crm:'999',uf:'RS'},{nomeCompleto:'Ana de Souza',crm:'12345',uf:'RS'}]}};
@@ -28,4 +29,12 @@ test('não escolhe primeiro entre CRMs divergentes e conserva fontes individuais
  const revisao=montarRevisao({id:'t',estado:'aguardando_confirmacao',dados},{nome:'Médico 6133',crm:null,rqe:null});
  assert.equal(revisao.crm,'');assert.equal(revisao.rqe,'');assert.equal(revisao.registros.length,2);
  assert.deepEqual(revisao.registros[0].fontesRqe?.map(r=>r.urlOrigem),['https://medicos.example/a','https://medicos.example/b']);
+});
+
+test('titular PF pesquisado antes da confirmação aparece com sugestões de registro',()=>{
+ const r=montarRevisao({id:'t',estado:'aguardando_confirmacao',dados:{
+  pendencia:{id:'p',tipo:'responsavel',perguntaConfirmada:null,candidatos:[{id:'ana',nome:'Ana de Souza',origem:'CPF do titular'}]},
+  pesquisaProfissional:{nome:'Ana de Souza',estado:'consultado',registros:[{nomeCompleto:'Ana de Souza',crm:'37341',uf:'RS',rqe:'12345',verificado:false}]}
+ }},{nome:'Cadastro provisório',crm:null,rqe:null});
+ assert.equal(r.nome,'Ana de Souza');assert.equal(r.crm,'37341/RS');assert.equal(r.rqe,'12345');assert.equal(r.aprovado,false);
 });

@@ -5,6 +5,7 @@
  */
 
 import type pg from 'pg';
+import { temAprovacaoProfissional } from '../../cadastro/revisao-painel.js';
 import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 import { parametrosEmissaoSchema } from '../../fiscal/preparacao/parametros-emissao.js';
 import { validarReferenciaFiscal } from '../../fiscal/preparacao/validar-referencia-fiscal.js';
@@ -24,6 +25,7 @@ export type StatusOnboardingMedico = {
     passo2XmlEnviado: boolean;
     passo2FiscalConfirmado: boolean;
     passo3CertificadoValido: boolean;
+    passoProfissionalAprovado: boolean;
     passo4WhatsappConectado: boolean;
     passo4WhatsappVinculado?: boolean;
   };
@@ -77,6 +79,11 @@ export async function consultarStatusOnboarding(
       msf.aliquota_iss,
       to_jsonb(msf)->'parametros_emissao' as parametros_emissao,
       (select w.numero_telefone from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado' order by w.conectado_em desc nulls last limit 1) as numero_whatsapp,
+      (select to_jsonb(t) from cadastro_certificado_trabalhos t
+        where t.medico_id=m.id and u.ativo=true and t.certificado_id=(
+          select c.id from medico_certificados c where c.medico_id=m.id and c.status='ativo'
+          order by c.criado_em desc,c.id desc limit 1
+        ) limit 1) as revisao_profissional,
       (select count(*) from medico_certificados c where c.medico_id = m.id and c.status = 'ativo') as cert_ativos,
       (select count(*) from whatsapp_instancias w where w.medico_id = m.id and w.status = 'conectado') as whats_conectados,
       exists(select 1 from whatsapp_instancias w where w.medico_id = m.id and w.oficial = false and w.conectado_em is not null) as whatsapp_vinculado
@@ -103,13 +110,14 @@ export async function consultarStatusOnboarding(
     validarReferenciaFiscal(r.dados_reforma_tributaria, r.parametros_emissao).length === 0);
   const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico) && (!preparacaoFiscalAtiva || politicaRevisada) && referenciaValidada;
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
+  const passoProfissionalAprovado = temAprovacaoProfissional(r.revisao_profissional ?? null, { nome: r.medico_nome, crm: r.crm ?? null, rqe: r.rqe ?? null });
   const passo4WhatsappConectado = Number(r.whats_conectados || 0) > 0;
   // A temporary disconnect does not undo the completed pairing step.
   const passo4WhatsappVinculado = Boolean(r.whatsapp_vinculado) || passo4WhatsappConectado;
 
   // Identidade profissional não impede acesso ao painel, mas é obrigatória para emissão.
   const cadastroProfissionalCompleto = dadosProfissionaisCompletos({ nomeCompleto: r.medico_nome, crm: r.crm });
-  const liberadoParaEmitir = cadastroProfissionalCompleto && passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
+  const liberadoParaEmitir = cadastroProfissionalCompleto && passoProfissionalAprovado && passo2FiscalConfirmado && passo3CertificadoValido && passo4WhatsappConectado;
 
   return {
     medicoId: r.medico_id,
@@ -126,6 +134,7 @@ export async function consultarStatusOnboarding(
       passo2XmlEnviado,
       passo2FiscalConfirmado,
       passo3CertificadoValido,
+      passoProfissionalAprovado,
       passo4WhatsappConectado,
       passo4WhatsappVinculado
     },
