@@ -296,7 +296,7 @@ export class PesquisaRegistroProfissional implements ConsultaRegistro {
     this.modelo = (opcoes.modelo?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : opcoes.modelo?.trim()) || 'meta/llama-3.2-90b-vision-instruct';
     // O cadastro agenda as retentativas; não multiplicar o prazo dentro da chamada.
     this.completar = opcoes.completar ?? (mensagens => completarNvidia(opcoes.nvidiaApiKey || '', this.modelo, mensagens, {
-      temperature: 0.1, formatoJson: true, timeoutMs: 120_000, maxTokens: 2048, tentativasMax: 1
+      temperature: 0.1, formatoJson: true, timeoutMs: 180_000, maxTokens: 2048, tentativasMax: 1
     }));
   }
 

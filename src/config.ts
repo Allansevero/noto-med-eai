@@ -86,7 +86,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     openserpBaseUrl: env['OPENSERP_BASE_URL']?.trim() || undefined,
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: (env['NVIDIA_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
-    nvidiaRegistroModel: env['NVIDIA_REGISTRO_MODEL']?.trim() || 'mistralai/mistral-7b-instruct-v0.3',
+    nvidiaRegistroModel: env['NVIDIA_REGISTRO_MODEL']?.trim() || 'meta/llama-3.2-90b-vision-instruct',
     nvidiaVisionModel: (env['NVIDIA_VISION_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_VISION_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
     notoCadastroModo: env['NOTO_CADASTRO_MODO'] === 'conversacional' ? 'conversacional' : 'confirmacao',
     assistenteContextualAtivo: env['ASSISTENTE_CONTEXTUAL_ATIVO'] === 'true',

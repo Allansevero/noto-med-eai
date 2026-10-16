@@ -54,20 +54,25 @@ Nas variáveis do serviço **Notomed**, adicione:
 OPENSERP_BASE_URL=http://SEU_HOST_INTERNO_OPENSERP:7000
 NVIDIA_API_KEY=SUA_CHAVE_NVIDIA_EXISTENTE
 # Opcional: esse já é o padrão para CRM/RQE.
-NVIDIA_REGISTRO_MODEL=mistralai/mistral-7b-instruct-v0.3
+NVIDIA_REGISTRO_MODEL=meta/llama-3.2-90b-vision-instruct
 ```
 
 Substitua o hostname pelo valor real do painel e preserve a chave NVIDIA já
 configurada. Remova `SERPER_API_KEY` desse serviço se não houver outro uso.
 Reconstrua e implante a aplicação com o código atualizado.
 
-A extração de CRM/RQE usa um modelo de texto independente de `NVIDIA_MODEL`
-e `NVIDIA_VISION_MODEL`. O padrão é o Mistral 7B listado no catálogo NVIDIA;
-isso permite reservar os modelos das demais funções para suas tarefas.
-Cada chamada de extração tem prazo de 120 s, saída de até 2048 tokens e uma
+A extração textual de CRM/RQE usa uma configuração de modelo independente de
+`NVIDIA_MODEL` e `NVIDIA_VISION_MODEL`. O padrão é
+`meta/llama-3.2-90b-vision-instruct`, que respondeu HTTP 200 na chamada de
+inferência feita no ambiente do usuário. O Mistral 7B anteriormente sugerido
+retornou HTTP 404, apesar de aparecer no catálogo. A listagem de um modelo não
+comprova disponibilidade para inferência.
+Se você configurou `NVIDIA_REGISTRO_MODEL` com o Mistral, substitua o valor pelo
+Llama acima antes de implantar; a variável explícita prevalece sobre o padrão.
+Cada chamada de extração tem prazo de 180 s, saída de até 2048 tokens e uma
 tentativa HTTP. As novas tentativas ficam sob o orçamento do trabalho de
 cadastro. `IA_TEMPO_ESGOTADO` identifica o prazo expirado; a disponibilidade e a
-latência reais do novo modelo precisam ser conferidas após a implantação.
+latência e o resultado da extração precisam ser conferidos após a implantação.
 Quando houver resposta de erro HTTP, o diagnóstico `nvidia_http` informa apenas
 o status, sem registrar a chave nem o corpo retornado pelo provedor.
 Se um cadastro já esgotou suas tentativas, solicite nova pesquisa no painel
