@@ -11,11 +11,15 @@ import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
 import { ehMensagemAutomatica } from '../../whatsapp/regras/eh-mensagem-automatica.js';
 import type { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidatos-nota-repositorio.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
+import type { PaligemmaComprovanteClient } from '../../io/nvidia/paligemma-comprovante-client.js';
+import type { EvolutionApiClient } from '../../io/evolution/evolution-api-client.js';
 
 export interface ProcessarComandoFiscalDeps {
   repositorio: PostgresCandidatosNotaRepositorio;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaNome: string;
+  comprovanteClient?: PaligemmaComprovanteClient;
+  evolutionClient?: EvolutionApiClient;
 }
 
 export type ResultadoComandoFiscal =
@@ -127,7 +131,9 @@ export async function processarComandoFiscalMedico(
       repositorio: deps.repositorio,
       enviarMensagem: deps.enviarMensagem,
       instanciaNome: deps.instanciaNome,
-      telefoneDestinoSobrescrito: telefoneMedico
+      telefoneDestinoSobrescrito: telefoneMedico,
+      comprovanteClient: deps.comprovanteClient,
+      evolutionClient: deps.evolutionClient
     });
 
     if (resVarredura.ok && resVarredura.status === 'nenhum_candidato_pendente') {
@@ -175,7 +181,9 @@ export async function processarComandoFiscalMedico(
         enviarMensagem: deps.enviarMensagem,
         instanciaNome: deps.instanciaNome,
         telefoneDestinoSobrescrito: telefoneMedico,
-        ehContinuacao: true
+        ehContinuacao: true,
+        comprovanteClient: deps.comprovanteClient,
+        evolutionClient: deps.evolutionClient
       });
 
       if (proximaVarredura.ok && proximaVarredura.status === 'nenhum_candidato_pendente') {

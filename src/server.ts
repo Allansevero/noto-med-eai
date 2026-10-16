@@ -853,7 +853,9 @@ export function criarAppExpress() {
           return processarComandoFiscalMedico(medicoId, texto, telefone, {
             repositorio: candidatosNotaRepo,
             enviarMensagem: evolutionAssistantClient,
-            instanciaNome: config.evolutionAssistantInstanceName
+            instanciaNome: config.evolutionAssistantInstanceName,
+            comprovanteClient: paligemmaClient,
+            evolutionClient
           });
         },
         async aoAtualizarConexao(evento) {
