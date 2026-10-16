@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noto — Documentação Técnica da Arquitetura</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FAFAFA;
+      --surface: #FFFFFF;
+      --surface-subtle: #F4F4F5;
+      --border: #E4E4E7;
+      --border-strong: #27272A;
+      --text: #09090B;
+      --text-muted: #71717A;
+      --text-secondary: #3F3F46;
+      --primary: #18181B;
+      --primary-hover: #27272A;
+      --accent-green: #10B981;
+      --accent-blue: #3B82F6;
+      --accent-purple: #8B5CF6;
+      --accent-orange: #F59E0B;
+      --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Header Superior */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 60px;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .badge-doc {
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      color: var(--text-secondary);
+    }
+
+    .header-links {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      font-size: 0.875rem;
+    }
+
+    .header-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .header-links a:hover {
+      color: var(--text);
+    }
+
+    /* Container Principal */
+    .docs-container {
+      display: flex;
+      flex: 1;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Sidebar Lateral */
+    aside.sidebar {
+      width: 290px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+      position: sticky;
+      top: 60px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-group {
+      margin-bottom: 1.75rem;
+    }
+
+    .sidebar-group-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      padding-left: 0.75rem;
+    }
+
+    .nav-list {
+      list-style: none;
+    }
+
+    .nav-item {
+      margin-bottom: 0.2rem;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius);
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+
+    .nav-link:hover {
+      background: var(--surface-subtle);
+      color: var(--text);
+    }
+
+    .nav-link.active {
+      background: var(--primary);
+      color: #FFFFFF;
+      font-weight: 600;
+    }
+
+    .nav-pill {
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.06);
+    }
+
+    .nav-link.active .nav-pill {
+      background: rgba(255, 255, 255, 0.2);
+      color: #FFFFFF;
+    }
+
+    /* Conteúdo Principal */
+    main.content {
+      flex: 1;
+      padding: 2.5rem 3.5rem;
+      max-width: 950px;
+      overflow-x: hidden;
+    }
+
+    .section-content {
+      display: none;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+
+    .section-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+      color: var(--text);
+    }
+
+    p.lead {
+      font-size: 1.125rem;
+      color: var(--text-secondary);
+      margin-bottom: 2rem;
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p, li {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      margin-bottom: 1rem;
+    }
+
+    ul, ol {
+      padding-left: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Cards e Callouts */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin: 1.25rem 0;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+
+    .callout {
+      border-left: 4px solid var(--primary);
+      background: var(--surface-subtle);
+      padding: 1rem 1.25rem;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      margin: 1.5rem 0;
+    }
+
+    .callout-success { border-color: var(--accent-green); }
+    .callout-warning { border-color: var(--accent-orange); }
+
+    /* Badges de Métodos HTTP */
+    .method-badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      color: #FFFFFF;
+      display: inline-block;
+      text-transform: uppercase;
+    }
+
+    .method-post { background: var(--accent-green); }
+    .method-get { background: var(--accent-blue); }
+    .method-put { background: var(--accent-orange); }
+
+    .endpoint-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      margin: 0.75rem 0;
+      background: var(--surface-subtle);
+      padding: 0.6rem 0.8rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .endpoint-path {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .endpoint-desc {
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* Blocos de Código */
+    .code-container {
+      position: relative;
+      margin: 1rem 0 1.5rem 0;
+    }
+
+    pre {
+      background: #18181B;
+      color: #F4F4F5;
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius);
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    .btn-copy {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      color: #F4F4F5;
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: background 0.15s ease;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Links de Conexão em Grid */
+    .connection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+
+    .connection-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      transition: border-color 0.15s ease;
+    }
+
+    .connection-card:hover {
+      border-color: var(--border-strong);
+    }
+
+    .connection-card h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .connection-url {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: var(--surface-subtle);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 0.5rem;
+      word-break: break-all;
+    }
+
+    /* Tabela Técnica */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.25rem 0;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.65rem 0.85rem;
+      text-align: left;
+    }
+
+    th {
+      background: var(--surface-subtle);
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    td {
+      background: var(--surface);
+      color: var(--text-secondary);
+    }
+
+    /* Mobile toggle */
+    .menu-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.6rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+
+    @media (max-width: 860px) {
+      aside.sidebar {
+        display: none;
+        position: fixed;
+        left: 0;
+        top: 60px;
+        z-index: 99;
+        width: 100%;
+        height: calc(100vh - 60px);
+      }
+      aside.sidebar.mobile-open {
+        display: block;
+      }
+      main.content {
+        padding: 1.5rem;
+      }
+      .menu-toggle {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <button class="menu-toggle" id="menuToggle" aria-label="Abrir menu">☰ Menu</button>
+      <a href="/" class="brand">
+        Noto
+        <span class="badge-doc">Docs Monorepo</span>
+      </a>
+    </div>
+    <div class="header-links">
+      <a href="/">App Web</a>
+      <a href="/termos">Termos</a>
+      <a href="/privacidade">Privacidade</a>
+      <span class="nav-pill" style="color: var(--accent-green); font-weight: 600;">● 3 Serviços Ativos</span>
+    </div>
+  </header>
+
+  <!-- Docs Container -->
+  <div class="docs-container">
+
+    <!-- Sidebar com Navegação -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Introdução</div>
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a class="nav-link active" data-target="visao-geral">
+              Visão Geral
+              <span class="nav-pill">3 Apps</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="fluxo-onboarding">
+              Fluxo Onboarding
+              <span class="nav-pill">7 Passos</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="rede-easypanel">
+              Rede & Topologia
+              <span class="nav-pill">Easypanel</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Serviços & Contratos</div>
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a class="nav-link" data-target="servico-fiscal">
+              /fiscal
+              <span class="nav-pill">:3001</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="servico-ia">
+              /ia
+              <span class="nav-pill">:3002</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="servico-noto">
+              /noto
+              <span class="nav-pill">:3000</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="contratos-api">
+              /contratos
+              <span class="nav-pill">OpenAPI</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Guias de Implementação</div>
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a class="nav-link" data-target="como-implementar-docs">
+              Como Implementar no Docs
+              <span class="nav-pill">Guia</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="regras-agentes">
+              Regras para Agentes
+              <span class="nav-pill">agent.md</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Conteúdo Dinâmico -->
+    <main class="content">
+
+      <!-- 1. Visão Geral -->
+      <section id="visao-geral" class="section-content active">
+        <h1>Arquitetura Monorepo: 3 Serviços Isolados</h1>
+        <p class="lead">O Noto é um SaaS de emissão autônoma de NFS-e para médicos via WhatsApp. Sua arquitetura é decomposta em 3 serviços independentes que falham e escalam separadamente.</p>
+
+        <div class="connection-grid">
+          <div class="connection-card">
+            <h4>💬 /noto (App Principal)</h4>
+            <span class="connection-url">http://noto:3000</span>
+            <p style="font-size: 0.85rem; margin:0;">Login OTP, WhatsApp (Evolution API), CRM/RQE, orquestração e painel do médico.</p>
+          </div>
+          <div class="connection-card">
+            <h4>🏛️ /fiscal (Serviço Fiscal)</h4>
+            <span class="connection-url">http://fiscal:3001</span>
+            <p style="font-size: 0.85rem; margin:0;">Guarda exclusiva do Certificado Digital A1, Serpro/DPS, alíquotas, IBS/CBS e PDF.</p>
+          </div>
+          <div class="connection-card">
+            <h4>🤖 /ia (Serviço de IA)</h4>
+            <span class="connection-url">http://ia:3002</span>
+            <p style="font-size: 0.85rem; margin:0;">Detecção multimodal de comprovantes, inferência de data e autocorreção fiscal.</p>
+          </div>
+        </div>
+
+        <h2>Princípios de Isolamento</h2>
+        <ul>
+          <li><strong>Isolamento de Falhas:</strong> Se o serviço de IA cair, pedidos já autorizados continuam sendo emitidos. Se o serviço fiscal oscilar, as solicitações aguardam na fila sem perda de dados.</li>
+          <li><strong>Zero Cross-Import:</strong> Nenhuma pasta importa código de outra pasta via TypeScript. Toda a comunicação ocorre via HTTP interno seguindo <code>/contratos</code>.</li>
+          <li><strong>Segurança do Certificado A1:</strong> As chaves criptográficas do certificado residem <strong>exclusivamente</strong> no serviço <code>/fiscal</code>. O Noto nunca armazena o binário nem a senha.</li>
+        </ul>
+      </section>
+
+      <!-- 2. Fluxo Onboarding -->
+      <section id="fluxo-onboarding" class="section-content">
+        <h1>Fluxo Oficial de Onboarding</h1>
+        <p class="lead">Sequência canônica de 7 etapas para ativação de novos médicos no sistema.</p>
+
+        <div class="card">
+          <ol style="margin-bottom: 0;">
+            <li><strong>Login Inicial:</strong> Autenticação no painel via WhatsApp + código OTP de 6 dígitos.</li>
+            <li><strong>Envio do Certificado A1:</strong> Médico envia o arquivo PFX + senha na tela web. O Noto repassa ao <code>/fiscal</code> sem armazenar o arquivo em disco.</li>
+            <li><strong>Extração Fiscal:</strong> O <code>/fiscal</code> descriptografa o A1 em memória, extrai CNPJ/CPF, nome, consulta histórico no ADN e devolve os parâmetros prontos.</li>
+            <li><strong>Busca Profissional:</strong> O Noto pesquisa o CRM, RQE e especialidade do médico (OpenSerp / Hub do Desenvolvedor).</li>
+            <li><strong>Revisão e Aceite:</strong> Médico visualiza e aprova seus dados cadastrais e fiscais no painel.</li>
+            <li><strong>Pareamento do WhatsApp:</strong> Conexão do WhatsApp do consultório via Pairing Code ou QR Code na Evolution API.</li>
+            <li><strong>Uso Autônomo Liberado:</strong> O agente Noto passa a acompanhar a rotina e sugerir emissões diretamente no WhatsApp.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 3. Rede & Topologia -->
+      <section id="rede-easypanel" class="section-content">
+        <h1>Rede e Topologia no Easypanel</h1>
+        <p class="lead">Configurações de infraestrutura, comunicação interna e cabeçalhos de segurança.</p>
+
+        <div class="callout callout-warning">
+          <strong>Atenção:</strong> A comunicação interserviços ocorre <strong>estritamente na rede interna do Docker / Easypanel</strong>. Nenhuma URL pública é utilizada entre os serviços.
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Serviço</th>
+              <th>Host Interno</th>
+              <th>Porta</th>
+              <th>Variável de URL no Noto</th>
+              <th>Header de Autenticação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>/fiscal</strong></td>
+              <td><code>http://fiscal</code></td>
+              <td><code>3001</code></td>
+              <td><code>FISCAL_SERVICE_URL</code></td>
+              <td><code>X-Internal-Token: $INTERNAL_FISCAL_TOKEN</code></td>
+            </tr>
+            <tr>
+              <td><strong>/ia</strong></td>
+              <td><code>http://ia</code></td>
+              <td><code>3002</code></td>
+              <td><code>IA_SERVICE_URL</code></td>
+              <td><code>X-Internal-Token: $INTERNAL_IA_TOKEN</code></td>
+            </tr>
+            <tr>
+              <td><strong>/noto</strong></td>
+              <td><code>http://noto</code></td>
+              <td><code>3000</code></td>
+              <td>(App público)</td>
+              <td>Webhook Secret Evolution</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 4. Serviço Fiscal -->
+      <section id="servico-fiscal" class="section-content">
+        <h1>Serviço Fiscal (/fiscal)</h1>
+        <p class="lead">Responsável pela guarda criptográfica do A1, assinatura digital XML, validações tributárias e transmissão Serpro.</p>
+
+        <h2>Endpoints Disponíveis</h2>
+
+        <div class="endpoint-row">
+          <span class="method-badge method-post">POST</span>
+          <span class="endpoint-path">/v1/onboarding/certificado</span>
+          <span class="endpoint-desc">Upload e extração do A1</span>
+        </div>
+        <p>Recebe o certificado em Base64, valida a vigência e devolve apenas o titular e parâmetros fiscais sugeridos.</p>
+
+        <div class="endpoint-row">
+          <span class="method-badge method-post">POST</span>
+          <span class="endpoint-path">/v1/notas/emitir</span>
+          <span class="endpoint-desc">Emissão com Idempotency-Key</span>
+        </div>
+        <p>Emite a nota fiscal de forma estritamente idempotente. Retentativas com o mesmo <code>pedidoId</code> retornam o resultado anterior sem duplicar na prefeitura.</p>
+
+        <div class="endpoint-row">
+          <span class="method-badge method-get">GET</span>
+          <span class="endpoint-path">/v1/notas/:pedidoId/pdf</span>
+          <span class="endpoint-desc">Download do DANFSE em PDF</span>
+        </div>
+        <p>Retorna o stream binário do DANFSE formatado em A4 via <code>pdf-lib</code>.</p>
+
+        <div class="endpoint-row">
+          <span class="method-badge method-get">GET</span>
+          <span class="endpoint-path">/v1/parametros-fiscais/:medicoId</span>
+          <span class="endpoint-desc">Consulta parâmetros tributários</span>
+        </div>
+
+        <h2>Exemplo de Conexão (cURL)</h2>
+        <div class="code-container">
+          <button class="btn-copy" onclick="copiarCodigo(this)">Copiar</button>
+          <pre><code>curl -X POST http://fiscal:3001/v1/notas/emitir \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Token: SEU_TOKEN_INTERNO" \
+  -H "Idempotency-Key: a5f78c92-3c41-4c6e-8f92-9f7a8109bc54" \
+  -d '{
+    "pedidoId": "a5f78c92-3c41-4c6e-8f92-9f7a8109bc54",
+    "medicoId": "b1e2c3d4-0000-0000-0000-000000000001",
+    "tomador": { "cpfCnpj": "12345678901", "nome": "Mariana Silva" },
+    "servico": { "valorCentavos": 45000, "dataCompetencia": "2026-10-14", "discriminacao": "Consulta médica" }
+  }'</code></pre>
+        </div>
+      </section>
+
+      <!-- 5. Serviço de IA -->
+      <section id="servico-ia" class="section-content">
+        <h1>Serviço de Inteligência Artificial (/ia)</h1>
+        <p class="lead">Detecção de comprovantes bancários, inferência da data da consulta e autocorreção autônoma de rejeições SEFIN.</p>
+
+        <div class="callout callout-success">
+          <strong>A IA decide; o Noto fala:</strong> O serviço de IA nunca envia mensagens diretamente no WhatsApp. Ele processa o contexto e devolve a pergunta pronta para o Noto enviar ao médico.
+        </div>
+
+        <h2>Endpoints Disponíveis</h2>
+
+        <div class="endpoint-row">
+          <span class="method-badge method-post">POST</span>
+          <span class="endpoint-path">/v1/analise/detectar-candidatos</span>
+          <span class="endpoint-desc">Detecção e elaboração de pergunta</span>
+        </div>
+        <p>Avalia mensagens e mídias (80% regra, 20% IA) e retorna a sugestão de pergunta com dados faltantes (se houver).</p>
+
+        <div class="endpoint-row">
+          <span class="method-badge method-post">POST</span>
+          <span class="endpoint-path">/v1/analise/autocorrigir-falha</span>
+          <span class="endpoint-desc">Autocorreção fiscal autônoma</span>
+        </div>
+        <p>Recebe erros de rejeição (ex: MEI confundido com Simples, alíquota incorreta) e determina a correção autônoma sem incomodar o médico.</p>
+
+        <h2>Exemplo de Resposta de Detecção</h2>
+        <div class="code-container">
+          <button class="btn-copy" onclick="copiarCodigo(this)">Copiar</button>
+          <pre><code>{
+  "sucesso": true,
+  "candidatoDetectado": true,
+  "confianca": 0.95,
+  "dadosExtraidos": {
+    "valorCentavos": 45000,
+    "dataPagamento": "2026-10-15",
+    "dataConsultaSugerida": "2026-10-14",
+    "origemDataConsulta": "mensagem_agendamento",
+    "pagadorNome": "Mariana Silva"
+  },
+  "perguntaSugeridaMedico": "Identifiquei um pagamento de R$ 450,00 de Mariana Silva referente à consulta de 14/10. Posso emitir a nota fiscal?",
+  "dadosFaltantes": [],
+  "perguntaDadosFaltantes": null
+}</code></pre>
+        </div>
+      </section>
+
+      <!-- 6. App Principal (/noto) -->
+      <section id="servico-noto" class="section-content">
+        <h1>App Principal (/noto)</h1>
+        <p class="lead">Gateway do WhatsApp, orquestrador de diálogos, autenticação Supabase e pesquisa profissional de CRM/RQE.</p>
+
+        <h2>Responsabilidades Exclusivas</h2>
+        <ul>
+          <li><strong>Dono do canal WhatsApp:</strong> Gerencia instâncias oficiais e do assistente na Evolution API.</li>
+          <li><strong>Busca Profissional:</strong> Consulta CRM e RQE via OpenSerp e Hub do Desenvolvedor sem onerar o fiscal.</li>
+          <li><strong>Consumo dos Serviços:</strong> Utiliza <code>FiscalClient</code> e <code>IaClient</code> via rede interna.</li>
+        </ul>
+      </section>
+
+      <!-- 7. Contratos -->
+      <section id="contratos-api" class="section-content">
+        <h1>Contratos de API (/contratos)</h1>
+        <p class="lead">Definições canônicas compartilhadas entre todos os serviços do monorepo.</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Arquivo</th>
+              <th>Formato</th>
+              <th>Finalidade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>contratos/openapi-fiscal.yaml</code></td>
+              <td>OpenAPI 3.1</td>
+              <td>Especificação formal de rotas, esquemas e respostas do /fiscal.</td>
+            </tr>
+            <tr>
+              <td><code>contratos/openapi-ia.yaml</code></td>
+              <td>OpenAPI 3.1</td>
+              <td>Especificação formal de detecção e autocorreção do /ia.</td>
+            </tr>
+            <tr>
+              <td><code>contratos/tipos-fiscal.ts</code></td>
+              <td>TypeScript</td>
+              <td>Interfaces e DTOs puros de entrada/saída fiscal.</td>
+            </tr>
+            <tr>
+              <td><code>contratos/tipos-ia.ts</code></td>
+              <td>TypeScript</td>
+              <td>Interfaces e DTOs puros de entrada/saída de IA.</td>
+            </tr>
+            <tr>
+              <td><code>contratos/codigos-erro.ts</code></td>
+              <td>TypeScript</td>
+              <td>Catálogo unificado de códigos de erro imutáveis.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 8. Como Implementar no Docs -->
+      <section id="como-implementar-docs" class="section-content">
+        <h1>Como Implementar no Docs</h1>
+        <p class="lead">Manual técnico completo de como esta documentação é servida, como adicionar novas seções e como implantar em produção.</p>
+
+        <h2>1. Arquitetura da Página de Documentação</h2>
+        <p>A documentação é construída em padrão Single Page Application (SPA) nativo em HTML5, CSS moderno e Vanilla JavaScript, garantindo carregamento instantâneo sem necessidade de bundlers adicionais.</p>
+        <ul>
+          <li><strong>Arquivo estático:</strong> <code>src/ui/docs.html</code></li>
+          <li><strong>Rota no servidor Express:</strong> <code>GET /docs</code> em <code>src/server.ts</code></li>
+          <li><strong>Navegação:</strong> Gerenciada por âncoras de hash (ex: <code>/docs#servico-fiscal</code>) com sincronização automática do menu ativo.</li>
+        </ul>
+
+        <h2>2. Como Disponibilizar a Rota no Servidor</h2>
+        <p>Para servir a página no servidor do Noto, registre a rota estática antes das rotas dinâmicas da API:</p>
+        <div class="code-container">
+          <button class="btn-copy" onclick="copiarCodigo(this)">Copiar</button>
+          <pre><code>// Em src/server.ts
+app.get('/docs', (_req: Request, res: Response) => {
+  res.sendFile(join(__dirname, 'ui', 'docs.html'));
+});</code></pre>
+        </div>
+
+        <h2>3. Como Adicionar uma Nova Sessão</h2>
+        <p>Para adicionar um novo tópico na documentação, siga 2 passos simples:</p>
+        <ol>
+          <li>
+            <strong>Adicione o link na Sidebar:</strong> No <code>&lt;aside class="sidebar"&gt;</code>, inclua o novo item apontando para o identificador da sessão:
+            <div class="code-container">
+              <button class="btn-copy" onclick="copiarCodigo(this)">Copiar</button>
+              <pre><code>&lt;li class="nav-item"&gt;
+  &lt;a class="nav-link" data-target="meu-novo-topico"&gt;
+    Meu Novo Tópico
+    &lt;span class="nav-pill"&gt;Novo&lt;/span&gt;
+  &lt;/a&gt;
+&lt;/li&gt;</code></pre>
+            </div>
+          </li>
+          <li>
+            <strong>Adicione o container de conteúdo:</strong> No <code>&lt;main class="content"&gt;</code>, crie o bloco <code>&lt;section&gt;</code> com o mesmo ID:
+            <div class="code-container">
+              <button class="btn-copy" onclick="copiarCodigo(this)">Copiar</button>
+              <pre><code>&lt;section id="meu-novo-topico" class="section-content"&gt;
+  &lt;h1&gt;Título do Tópico&lt;/h1&gt;
+  &lt;p class="lead"&gt;Descrição clara do objetivo.&lt;/p&gt;
+  &lt;!-- Seu conteúdo, tabelas e exemplos aqui --&gt;
+&lt;/section&gt;</code></pre>
+            </div>
+          </li>
+        </ol>
+
+        <h2>4. Deploy e Monitoramento no Easypanel</h2>
+        <p>Ao publicar no Easypanel, certifique-se de que a rota <code>/docs</code> está acessível publicamente enquanto as rotas internas continuam restritas:</p>
+        <ul>
+          <li><strong>App Noto (Porta 3000):</strong> Rota pública <code>https://app.notomed.com.br/docs</code></li>
+          <li><strong>Healthcheck:</strong> <code>GET /health</code></li>
+        </ul>
+      </section>
+
+      <!-- 9. Regras para Agentes -->
+      <section id="regras-agentes" class="section-content">
+        <h1>Regras para Agentes (agent.md)</h1>
+        <p class="lead">Diretrizes invioláveis de governança para desenvolvimento com IA no monorepo.</p>
+
+        <div class="card">
+          <h3>Regras Principais:</h3>
+          <ul>
+            <li><strong>Confinamento Estrito:</strong> Trabalhe apenas dentro da pasta da tarefa indicada (<code>/noto</code>, <code>/fiscal</code> ou <code>/ia</code>).</li>
+            <li><strong>Proibição de Cross-Import:</strong> Jamais faça <code>import ... from '../fiscal'</code> ou <code>../ia</code>. Use chamadas HTTP baseadas em <code>/contratos</code>.</li>
+            <li><strong>Governança de /contratos:</strong> Imutável sem aprovação explícita do desenvolvedor humano.</li>
+            <li><strong>Qualidade de Código:</strong> Teto de ~300 linhas por arquivo, funções curtas (&lt; 25 linhas), guard clauses e testes unitários <code>node:test</code> ao lado de cada módulo.</li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    // Gerenciamento de navegação por abas/sessões na Sidebar
+    const navLinks = document.querySelectorAll('.nav-link');
+    const sections = document.querySelectorAll('.section-content');
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebar = document.getElementById('sidebar');
+
+    function ativarSecao(targetId) {
+      if (!targetId) return;
+
+      // Atualiza estado visual dos links
+      navLinks.forEach(link => {
+        if (link.getAttribute('data-target') === targetId) {
+          link.classList.add('active');
+        } else {
+          link.classList.remove('active');
+        }
+      });
+
+      // Exibe a seção ativa
+      sections.forEach(sec => {
+        if (sec.id === targetId) {
+          sec.classList.add('active');
+        } else {
+          sec.classList.remove('active');
+        }
+      });
+
+      // Atualiza o hash da URL sem causar scroll jump
+      history.replaceState(null, '', `#${targetId}`);
+
+      // Fecha sidebar no mobile após clique
+      if (window.innerWidth <= 860) {
+        sidebar.classList.remove('mobile-open');
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Event listeners nos itens da sidebar
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = link.getAttribute('data-target');
+        ativarSecao(target);
+      });
+    });
+
+    // Toggle menu mobile
+    if (menuToggle) {
+      menuToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('mobile-open');
+      });
+    }
+
+    // Leitura inicial de hash na URL
+    window.addEventListener('DOMContentLoaded', () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash && document.getElementById(hash)) {
+        ativarSecao(hash);
+      }
+    });
+
+    // Função de copiar código para clipboard
+    function copiarCodigo(botao) {
+      const pre = botao.parentElement.querySelector('code');
+      if (!pre) return;
+      navigator.clipboard.writeText(pre.innerText).then(() => {
+        const textoOriginal = botao.innerText;
+        botao.innerText = 'Copiado!';
+        botao.style.background = '#10B981';
+        setTimeout(() => {
+          botao.innerText = textoOriginal;
+          botao.style.background = '';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

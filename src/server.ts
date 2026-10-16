@@ -293,6 +293,9 @@ export function criarAppExpress() {
   app.get('/privacidade', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, 'ui', 'privacidade.html'));
   });
+  app.get('/docs', (_req: Request, res: Response) => {
+    res.sendFile(join(__dirname, 'ui', 'docs.html'));
+  });
 
   // Verificação de propriedade do domínio no Google Search Console
   app.get('/google7e12f4f1b60db1c4.html', (_req: Request, res: Response) => {
