@@ -7,7 +7,8 @@
 import type pg from 'pg';
 import type { CandidatoNotaFiscal, MensagemContextoConversa } from '../regras/correlacionar-consulta-pagamento.js';
 import { gerarHashCpf } from '../../paciente/hash-cpf.js';
-import { extrairCpfTexto } from '../../paciente/extrair-cpf-texto.js';
+import { extrairCpfTexto, extrairCpfConversaSegura } from '../../paciente/extrair-cpf-texto.js';
+import { extrairTextoPayloadBruto } from '../../whatsapp/payload-webhook-schema.js';
 import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 
 export interface ConversaComHistorico {
@@ -24,6 +25,7 @@ export interface CandidatoMemoriaContextual {
   medicoId: string;
   pacienteNome: string;
   pacienteTelefone: string;
+  pacienteCpf?: string;
   valorCentavos: number;
   valorFormatado: string;
   dataConsulta: string;
@@ -223,13 +225,25 @@ export class PostgresCandidatosNotaRepositorio {
             [candidato.pacienteNome, pacienteId]
           );
         }
+        if (candidato.pacienteCpf) {
+          const cpfHash = gerarHashCpf(candidato.pacienteCpf, this.pepper);
+          await this.pool.query(
+            `update pacientes
+             set cpf_cnpj_hash = $1,
+                 cpf_cnpj_encriptado = coalesce(cpf_cnpj_encriptado, pgp_sym_encrypt($2, $3)),
+                 atualizado_em = now()
+             where id = $4`,
+            [cpfHash, candidato.pacienteCpf, this.chaveCriptografia, pacienteId]
+          );
+        }
       } else {
-        const cpfFake = gerarHashCpf(telLimpo, this.pepper);
+        const cpfReal = candidato.pacienteCpf || null;
+        const cpfHash = gerarHashCpf(cpfReal || telLimpo, this.pepper);
         const ins = await this.pool.query(
-          `insert into pacientes (medico_id, nome, telefone, cpf_cnpj_hash, origem_cadastro)
-           values ($1, $2, $3, $4, 'agente_fiscal')
+          `insert into pacientes (medico_id, nome, telefone, cpf_cnpj_hash, cpf_cnpj_encriptado, origem_cadastro)
+           values ($1, $2, $3, $4, case when $5::text is not null then pgp_sym_encrypt($5, $6) else null end, 'agente_fiscal')
            returning id`,
-          [medicoId, candidato.pacienteNome, telLimpo, cpfFake]
+          [medicoId, candidato.pacienteNome, telLimpo, cpfHash, cpfReal, this.chaveCriptografia]
         );
         pacienteId = ins.rows[0].id;
       }
@@ -353,7 +367,7 @@ export class PostgresCandidatosNotaRepositorio {
 
       if (pacRows.length > 0) {
         pacienteId = pacRows[0].id;
-        let cpfLimpo = pacRows[0].cpf_limpo;
+        let cpfLimpo = pacRows[0].cpf_limpo || candidato.pacienteCpf || null;
 
         // Se o paciente não tiver nome preenchido, atualiza com o nome do candidato
         if (!pacRows[0].nome && candidato.pacienteNome && candidato.pacienteNome !== 'Paciente') {
@@ -366,46 +380,40 @@ export class PostgresCandidatosNotaRepositorio {
         // Se não possui CPF cadastrado, busca a fundo nas mensagens da conversa
         if (!cpfLimpo) {
           const sqlMsgs = `
-            select m.conteudo, m.payload_bruto
+            select m.direcao, m.conteudo, m.payload_bruto
             from whatsapp_mensagens m
             join whatsapp_conversas c on c.id = m.conversa_id
             where c.medico_id = $1 and c.contato_telefone like '%' || $2 || '%'
             order by m.criado_em desc
           `;
           const { rows: msgRows } = await client.query(sqlMsgs, [medicoId, telLimpo]);
-          for (const row of msgRows) {
-            const cpfCand =
-              extrairCpfTexto(row.conteudo) ||
-              extrairCpfTexto((row.payload_bruto as any)?.message?.conversation) ||
-              extrairCpfTexto((row.payload_bruto as any)?.message?.extendedTextMessage?.text) ||
-              extrairCpfTexto((row.payload_bruto as any)?.message?.imageMessage?.caption);
-            if (cpfCand) {
-              cpfLimpo = cpfCand;
-              const cpfHash = gerarHashCpf(cpfCand, this.pepper);
-              await client.query(
-                `update pacientes
-                 set cpf_cnpj_hash = $1,
-                     cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
-                     atualizado_em = now()
-                 where id = $4`,
-                [cpfHash, cpfCand, this.chaveCriptografia, pacienteId]
-              );
-              break;
-            }
-          }
+          cpfLimpo = extrairCpfDeLinhasMensagem(msgRows);
+        }
+
+        if (cpfLimpo && !pacRows[0].cpf_limpo) {
+          const cpfHash = gerarHashCpf(cpfLimpo, this.pepper);
+          await client.query(
+            `update pacientes
+             set cpf_cnpj_hash = $1,
+                 cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
+                 atualizado_em = now()
+             where id = $4`,
+            [cpfHash, cpfLimpo, this.chaveCriptografia, pacienteId]
+          );
         }
 
         temCpfValido = Boolean(cpfLimpo);
       } else {
-        const cpfFake = gerarHashCpf(telLimpo, this.pepper);
+        const cpfReal = candidato.pacienteCpf || null;
+        const cpfHash = gerarHashCpf(cpfReal || telLimpo, this.pepper);
         const ins = await client.query(
-          `insert into pacientes (medico_id, nome, telefone, cpf_cnpj_hash, origem_cadastro)
-           values ($1, $2, $3, $4, 'agente_fiscal')
+          `insert into pacientes (medico_id, nome, telefone, cpf_cnpj_hash, cpf_cnpj_encriptado, origem_cadastro)
+           values ($1, $2, $3, $4, case when $5::text is not null then pgp_sym_encrypt($5, $6) else null end, 'agente_fiscal')
            returning id`,
-          [medicoId, candidato.pacienteNome, telLimpo, cpfFake]
+          [medicoId, candidato.pacienteNome, telLimpo, cpfHash, cpfReal, this.chaveCriptografia]
         );
         pacienteId = ins.rows[0].id;
-        temCpfValido = false;
+        temCpfValido = Boolean(cpfReal);
       }
 
       // 3. Montar descrição do serviço
@@ -691,7 +699,8 @@ export class PostgresCandidatosNotaRepositorio {
     const sqlPacientes = `
       select p.id, p.nome, c.id as conversa_id
       from pacientes p
-      join whatsapp_conversas c on c.paciente_id = p.id
+      join whatsapp_conversas c on c.medico_id = p.medico_id
+        and (c.paciente_id = p.id or (p.telefone is not null and p.telefone != '' and c.contato_telefone like '%' || p.telefone || '%'))
       where p.medico_id = $1 and p.cpf_cnpj_encriptado is null
     `;
     const { rows: pacs } = await this.pool.query(sqlPacientes, [medicoId]);
@@ -699,34 +708,46 @@ export class PostgresCandidatosNotaRepositorio {
 
     for (const pac of pacs) {
       const sqlMsgs = `
-        select conteudo, payload_bruto
+        select direcao, conteudo, payload_bruto
         from whatsapp_mensagens
         where conversa_id = $1
         order by criado_em desc
       `;
       const { rows: msgs } = await this.pool.query(sqlMsgs, [pac.conversa_id]);
-      for (const m of msgs) {
-        const cpfCand = extrairCpfTexto(m.conteudo) ||
-          extrairCpfTexto((m.payload_bruto as any)?.message?.conversation) ||
-          extrairCpfTexto((m.payload_bruto as any)?.message?.extendedTextMessage?.text) ||
-          extrairCpfTexto((m.payload_bruto as any)?.message?.imageMessage?.caption);
+      const cpfCand = extrairCpfDeLinhasMensagem(msgs);
 
-        if (cpfCand) {
-          const cpfHash = gerarHashCpf(cpfCand, this.pepper);
-          await this.pool.query(
-            `update pacientes
-             set cpf_cnpj_hash = $1,
-                 cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
-                 atualizado_em = now()
-             where id = $4`,
-            [cpfHash, cpfCand, this.chaveCriptografia, pac.id]
-          );
-          atualizados += 1;
-          break;
-        }
+      if (cpfCand) {
+        const cpfHash = gerarHashCpf(cpfCand, this.pepper);
+        await this.pool.query(
+          `update pacientes
+           set cpf_cnpj_hash = $1,
+               cpf_cnpj_encriptado = pgp_sym_encrypt($2, $3),
+               atualizado_em = now()
+           where id = $4`,
+          [cpfHash, cpfCand, this.chaveCriptografia, pac.id]
+        );
+        atualizados += 1;
       }
     }
 
     return atualizados;
   }
 }
+
+function extrairCpfDeLinhasMensagem(
+  linhas: Array<{ direcao?: string; conteudo?: string | null; payload_bruto?: unknown }>
+): string | null {
+  for (const m of linhas) {
+    const comp = (m.payload_bruto as Record<string, any> | undefined)?.comprovante;
+    const cpfMidia = extrairCpfTexto(comp?.tomadorCpf) || extrairCpfTexto(comp?.pagadorCpf);
+    if (cpfMidia) return cpfMidia;
+  }
+
+  return extrairCpfConversaSegura(
+    linhas.map(m => ({
+      direcao: m.direcao === 'enviada' ? 'enviada' : 'recebida',
+      conteudo: [m.conteudo || '', extrairTextoPayloadBruto(m.payload_bruto)].filter(Boolean).join('\n')
+    }))
+  );
+}
+

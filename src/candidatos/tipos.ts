@@ -21,9 +21,13 @@ export interface DadosComprovanteExtraidos {
   valorCentavos?: number;
   valorFormatado?: string;
   dataPagamento?: string; // Formato YYYY-MM-DD
+  dataConsultaReferencia?: string; // Formato YYYY-MM-DD quando citado no documento
   idTransacao?: string; // txid, identificador fim-a-fim ou autenticação
   pagadorNome?: string;
+  pagadorCpf?: string; // 11 dígitos validados (Módulo 11)
   favorecidoNome?: string;
+  tomadorNome?: string; // Nome do tomador em PDF de NFS-e / DANFSe
+  tomadorCpf?: string; // CPF de 11 dígitos do tomador em PDF de NFS-e / DANFSe
   confianca?: number;
 }
 
@@ -37,6 +41,7 @@ export interface CandidatoEmissao {
   nomePaciente?: string | null;
   valorCentavos: number;
   dataPagamento?: string | null;
+  dataConsulta?: string | null; // Formato DD/MM/AAAA inferido do histórico da conversa
   idTransacao?: string | null;
   tipoPagamento?: TipoPagamentoComprovante | string | null;
   status: StatusCandidatoEmissao;
@@ -57,11 +62,13 @@ export interface CriarCandidatoParams {
   nomePaciente?: string | null;
   valorCentavos: number;
   dataPagamento?: string | null;
+  dataConsulta?: string | null;
   idTransacao?: string | null;
   tipoPagamento?: string | null;
   dadosBrutos?: unknown;
   referenciaExterna: string;
 }
+
 
 export type DecisaoMedico =
   | { acao: 'aprovar'; valorAjustadoCentavos?: number }

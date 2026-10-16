@@ -13,11 +13,13 @@ export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
  async agendarPesquisaProfissional():Promise<void>{
   await this.pool.query(`update cadastro_certificado_trabalhos t set estado='pendente',proxima_tentativa_em=now(),reserva=null,reservado_em=null,
-   tentativas=0,diagnostico=null,dados=dados-'pesquisaProfissional',atualizado_em=now()
+   tentativas=0,diagnostico=null,dados=dados-'pesquisaProfissional'-'cadastroIndisponivel',atualizado_em=now()
    where estado='aguardando_confirmacao' and (
     dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA'
     or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_'
     or left(dados->'pesquisaProfissional'->>'codigo',12)='INFOSIMPLES_'
+    or left(dados->'pesquisaProfissional'->>'codigo',3)='IA_'
+    or (left(dados->'pesquisaProfissional'->>'codigo',7)='NVIDIA_' and dados->'pesquisaProfissional'->>'codigo'<>'NVIDIA_SEM_REGISTROS')
     or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(dados #> '{pesquisaProfissional,registros}')='array'
      then dados #> '{pesquisaProfissional,registros}' else '[]'::jsonb end) as r(registro) where r.registro->>'origem' ilike '%Infosimples%')
    )
@@ -44,8 +46,8 @@ export class PostgresCadastro {
    if(versao!==e.versao)throw new ErroRevisaoCadastro(409,'Os dados foram atualizados. Revise novamente antes de pesquisar.');
    const candidatos=t.dados.empresa?.candidatos??[];
    if(!candidatos.some(candidato=>candidato.nome===e.nome))throw new ErroRevisaoCadastro(400,'Selecione um dos responsáveis encontrados para pesquisar.');
-   if(t.dados.nomeConfirmado===e.nome&&t.dados.pesquisaProfissional?.nome===e.nome)throw new ErroRevisaoCadastro(409,'Este nome já foi pesquisado. Revise o resultado ou escolha outro responsável.');
-   const dados:DadosCadastro={...t.dados,nomeConfirmado:e.nome};delete dados.pesquisaProfissional;delete dados.pendencia;
+   if(t.dados.nomeConfirmado===e.nome&&t.dados.pesquisaProfissional?.nome===e.nome&&t.dados.pesquisaProfissional?.estado!=='indisponivel')throw new ErroRevisaoCadastro(409,'Este nome já foi pesquisado. Revise o resultado ou escolha outro responsável.');
+   const dados:DadosCadastro={...t.dados,nomeConfirmado:e.nome};delete dados.pesquisaProfissional;delete dados.pendencia;delete dados.cadastroIndisponivel;
    await c.query("update cadastro_certificado_trabalhos set estado='pendente',dados=$2,tentativas=0,proxima_tentativa_em=now(),reserva=null,reservado_em=null,diagnostico=null,atualizado_em=now() where id=$1",[t.id,JSON.stringify(dados)]);
   });
   return this.revisaoPainel(medicoId);

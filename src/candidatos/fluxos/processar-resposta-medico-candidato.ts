@@ -105,11 +105,14 @@ export async function processarRespostaMedicoCandidato(
     ? decisao.valorAjustadoCentavos
     : candidato.valorCentavos;
 
+  const datasConsultas = resolverDataConsultaParaEmissao(candidato);
+
   const resultadoApi = await deps.processarEmissaoApi(
     {
       ref: candidato.referenciaExterna,
       medicoId: params.medicoId,
       valor: valorFinalCentavos / 100,
+      ...(datasConsultas ? { datasConsultas } : {}),
       paciente: {
         cpf: cpfParaEmissao,
         nome: nomePaciente,
@@ -118,6 +121,7 @@ export async function processarRespostaMedicoCandidato(
     },
     { repositorio: deps.emissaoApiRepo }
   );
+
 
   if (!resultadoApi.ok) {
     const detalheErro = resultadoApi.erro.mensagem || 'Falha ao enfileirar emissão';
@@ -151,3 +155,15 @@ export async function processarRespostaMedicoCandidato(
 
   return { tratado: true, acao: 'emissao_enfileirada', solicitacaoId, candidato };
 }
+
+function resolverDataConsultaParaEmissao(candidato: CandidatoEmissao): string | null {
+  if (candidato.dataConsulta && candidato.dataConsulta.trim()) {
+    return candidato.dataConsulta.trim();
+  }
+  if (candidato.dataPagamento && /^\d{4}-\d{2}-\d{2}$/.test(candidato.dataPagamento)) {
+    const [ano, mes, dia] = candidato.dataPagamento.split('-');
+    return `${dia}/${mes}/${ano}`;
+  }
+  return null;
+}
+

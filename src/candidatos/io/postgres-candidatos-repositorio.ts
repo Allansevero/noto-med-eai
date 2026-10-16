@@ -1,11 +1,14 @@
 /**
  * Implementação PostgreSQL do repositório de candidatos a emissão de notas fiscais.
- * Gerencia persistência, verificação estrita de faturamento anterior e dados de tomador
- * criptografados no banco de dados.
+ * Gerencia persistência, verificação estrita de faturamento anterior, busca por variantes
+ * de telefone brasileiro e mineração automática de CPF no histórico da conversa.
  */
 
 import type pg from 'pg';
 import { gerarHashCpf } from '../../paciente/hash-cpf.js';
+import { extrairCpfConversaSegura } from '../../paciente/extrair-cpf-texto.js';
+import { extrairTextoPayloadBruto } from '../../whatsapp/payload-webhook-schema.js';
+import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
 import type {
   CandidatoEmissao,
   CriarCandidatoParams,
@@ -13,6 +16,7 @@ import type {
 } from '../tipos.js';
 import type {
   CandidatosRepositorio,
+  MensagemConversaRegistro,
   PacienteDadosBasicos,
   MedicoDadosBasicos
 } from './candidatos-repositorio.js';
@@ -25,6 +29,13 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
   ) {}
 
   async salvarCandidato(params: CriarCandidatoParams): Promise<CandidatoEmissao> {
+    const dadosComData =
+      params.dadosBrutos && typeof params.dadosBrutos === 'object'
+        ? { ...(params.dadosBrutos as Record<string, unknown>), ...(params.dataConsulta ? { dataConsulta: params.dataConsulta } : {}) }
+        : params.dataConsulta
+          ? { dataConsulta: params.dataConsulta }
+          : params.dadosBrutos ?? null;
+
     const sql = `
       insert into candidatos_emissao (
         medico_id, paciente_id, mensagem_id, conversa_id, telefone_paciente,
@@ -34,6 +45,7 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
       on conflict (medico_id, mensagem_id) do update set
         valor_centavos = excluded.valor_centavos,
         nome_paciente = coalesce(excluded.nome_paciente, candidatos_emissao.nome_paciente),
+        dados_brutos = coalesce(excluded.dados_brutos, candidatos_emissao.dados_brutos),
         atualizado_em = now()
       returning *
     `;
@@ -48,7 +60,7 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
       params.dataPagamento ?? null,
       params.idTransacao ?? null,
       params.tipoPagamento ?? 'pix',
-      params.dadosBrutos ? JSON.stringify(params.dadosBrutos) : null,
+      dadosComData ? JSON.stringify(dadosComData) : null,
       params.referenciaExterna
     ];
 
@@ -112,7 +124,26 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
     );
   }
 
+  async buscarMensagensConversa(conversaId: string): Promise<MensagemConversaRegistro[]> {
+    const sql = `
+      select id, direcao, tipo_mensagem, conteudo, criado_em, payload_bruto
+      from whatsapp_mensagens
+      where conversa_id = $1
+      order by criado_em asc
+    `;
+    const { rows } = await this.pool.query(sql, [conversaId]);
+    return rows.map(r => ({
+      id: r.id,
+      direcao: r.direcao as 'enviada' | 'recebida',
+      tipo: r.tipo_mensagem as 'texto' | 'imagem' | 'documento' | 'outro',
+      conteudo: r.conteudo || extrairTextoPayloadBruto(r.payload_bruto),
+      criadoEm: r.criado_em instanceof Date ? r.criado_em : new Date(r.criado_em),
+      payloadBruto: r.payload_bruto
+    }));
+  }
+
   async buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteDadosBasicos | null> {
+    const variantes = gerarVariantesTelefoneBrasileiro(telefone);
     const limpo = telefone.replace(/\D/g, '');
     const telBusca = limpo.startsWith('55') ? limpo.slice(2) : limpo;
 
@@ -124,18 +155,65 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
                else null
              end as cpf_limpo
       from pacientes
-      where medico_id = $1 and telefone like '%' || $2 || '%'
+      where medico_id = $1
+        and (telefone = any($4::text[]) or telefone like '%' || $2 || '%')
+      order by (cpf_cnpj_encriptado is not null) desc, nome_validado desc, atualizado_em desc
       limit 1
     `;
-    const { rows } = await this.pool.query(sql, [medicoId, telBusca, this.chaveCriptografia ?? null]);
+    const { rows } = await this.pool.query(sql, [
+      medicoId,
+      telBusca,
+      this.chaveCriptografia ?? null,
+      variantes
+    ]);
     if (rows.length === 0) return null;
+
+    let cpfLimpo: string | null = rows[0].cpf_limpo || null;
+    if (!cpfLimpo) {
+      cpfLimpo = await this.minerarCpfDaConversaPorTelefone(medicoId, telBusca, variantes);
+      if (cpfLimpo) {
+        await this.salvarCpfPaciente(medicoId, rows[0].id, cpfLimpo);
+      }
+    }
 
     return {
       id: rows[0].id,
       nome: rows[0].nome,
-      cpfLimpo: rows[0].cpf_limpo,
+      cpfLimpo,
       telefone: rows[0].telefone
     };
+  }
+
+  private async minerarCpfDaConversaPorTelefone(
+    medicoId: string,
+    telBusca: string,
+    variantes: string[]
+  ): Promise<string | null> {
+    const sqlMsgs = `
+      select m.direcao, m.conteudo, m.payload_bruto
+      from whatsapp_mensagens m
+      join whatsapp_conversas c on c.id = m.conversa_id
+      where c.medico_id = $1
+        and (c.contato_telefone = any($3::text[]) or c.contato_telefone like '%' || $2 || '%')
+      order by m.criado_em asc
+    `;
+    const { rows } = await this.pool.query(sqlMsgs, [medicoId, telBusca, variantes]);
+    if (rows.length === 0) return null;
+
+    for (const r of rows) {
+      const comp = r.payload_bruto?.comprovante;
+      const cpfMidia = comp?.tomadorCpf || comp?.pagadorCpf;
+      if (typeof cpfMidia === 'string' && cpfMidia.length === 11) {
+        return cpfMidia;
+      }
+    }
+
+    return extrairCpfConversaSegura(
+      rows.map(r => ({
+        direcao: r.direcao as 'recebida' | 'enviada',
+        texto: r.conteudo || extrairTextoPayloadBruto(r.payload_bruto)
+      }))
+    );
   }
 
   async salvarCpfPaciente(medicoId: string, pacienteId: string, cpfLimpo: string): Promise<void> {
@@ -169,14 +247,12 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
       valorCentavos: number;
     }
   ): Promise<boolean> {
-    // 1. Checagem direta por referência externa já existente
     const { rows: refRows } = await this.pool.query(
       `select id from solicitacoes_nota where medico_id = $1 and referencia_externa = $2 limit 1`,
       [medicoId, params.referenciaExterna]
     );
     if (refRows.length > 0) return true;
 
-    // 2. Checagem por txid já registrado em candidato aprovado ou emitido
     if (params.txid) {
       const { rows: txRows } = await this.pool.query(
         `select id from candidatos_emissao
@@ -209,6 +285,16 @@ export class PostgresCandidatosRepositorio implements CandidatosRepositorio {
 }
 
 function mapearLinhaCandidato(row: any): CandidatoEmissao {
+  const dataPagIso = row.data_pagamento
+    ? (row.data_pagamento instanceof Date ? row.data_pagamento.toISOString().split('T')[0] : String(row.data_pagamento).slice(0, 10))
+    : null;
+  const dataConsultaBr =
+    typeof row.dados_brutos?.dataConsulta === 'string'
+      ? row.dados_brutos.dataConsulta
+      : dataPagIso
+        ? formatarIsoParaBr(dataPagIso)
+        : null;
+
   return {
     id: row.id,
     medicoId: row.medico_id,
@@ -218,7 +304,8 @@ function mapearLinhaCandidato(row: any): CandidatoEmissao {
     telefonePaciente: row.telefone_paciente,
     nomePaciente: row.nome_paciente,
     valorCentavos: row.valor_centavos,
-    dataPagamento: row.data_pagamento ? row.data_pagamento.toISOString().split('T')[0] : null,
+    dataPagamento: dataPagIso,
+    dataConsulta: dataConsultaBr,
     idTransacao: row.id_transacao,
     tipoPagamento: row.tipo_pagamento,
     status: row.status,
@@ -230,3 +317,9 @@ function mapearLinhaCandidato(row: any): CandidatoEmissao {
     atualizadoEm: row.atualizado_em
   };
 }
+
+function formatarIsoParaBr(iso: string): string {
+  const [ano, mes, dia] = iso.split('-');
+  return dia && mes && ano ? `${dia}/${mes}/${ano}` : iso;
+}
+

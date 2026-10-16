@@ -75,4 +75,42 @@ describe('extrairDatasConsulta', () => {
     assert.strictEqual(res.encontrou, false);
     assert.strictEqual(res.datas.length, 0);
   });
+
+  it('deve interpretar termo relativo "amanhã" e "depois de amanhã"', () => {
+    const resAmanha = extrairDatasConsulta('Confirmando nossa consulta de amanhã às 14h', agoraFixo);
+    assert.strictEqual(resAmanha.encontrou, true);
+    assert.strictEqual(resAmanha.textoFormatado, '01/10/2026');
+
+    const resDepois = extrairDatasConsulta('Agendado para depois de amanhã', agoraFixo);
+    assert.strictEqual(resDepois.encontrou, true);
+    assert.strictEqual(resDepois.textoFormatado, '02/10/2026');
+  });
+
+  it('deve extrair datas por extenso ("13 de outubro", "15 de set de 2026")', () => {
+    const res1 = extrairDatasConsulta('Sua consulta foi agendada para 13 de outubro às 10h', agoraFixo);
+    assert.strictEqual(res1.encontrou, true);
+    assert.strictEqual(res1.textoFormatado, '13/10/2026');
+
+    const res2 = extrairDatasConsulta('Atendimento realizado em 15 de set de 2026', agoraFixo);
+    assert.strictEqual(res2.encontrou, true);
+    assert.strictEqual(res2.textoFormatado, '15/09/2026');
+  });
+
+  it('deve extrair "dia DD" contextual resolvendo virada de mês quando agendado para início do mês seguinte', () => {
+    const resMesmoMes = extrairDatasConsulta('Pode ser dia 28 às 15h', agoraFixo);
+    assert.strictEqual(resMesmoMes.encontrou, true);
+    assert.strictEqual(resMesmoMes.textoFormatado, '28/09/2026');
+
+    const resProximoMes = extrairDatasConsulta('Confirmado para o dia 05 às 14h', agoraFixo);
+    assert.strictEqual(resProximoMes.encontrou, true);
+    assert.strictEqual(resProximoMes.textoFormatado, '05/10/2026');
+  });
+
+  it('deve extrair dia da semana em contexto de agendamento relativo à data da mensagem', () => {
+    // 30/09/2026 é quarta-feira (getDay() === 3). Quinta-feira seguinte é 01/10/2026.
+    const resQuinta = extrairDatasConsulta('Sua consulta está agendada para quinta-feira às 16h', agoraFixo);
+    assert.strictEqual(resQuinta.encontrou, true);
+    assert.strictEqual(resQuinta.textoFormatado, '01/10/2026');
+  });
 });
+

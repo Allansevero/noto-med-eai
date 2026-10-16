@@ -451,4 +451,148 @@ describe('correlacionarConsultaPagamento', () => {
     assert.equal(candidatos[0].origemEvidencia.mensagemPagamentoId, 'msg-pagamento-recente');
     assert.equal(candidatos[0].dataConsulta, '13/10/2026');
   });
+
+  test('NÃO deve considerar receita médica em PDF enviada pela clínica como nota fiscal emitida', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-1',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá Fernanda! Confirmando sua consulta de amanhã às 15h. Valor: 450,00',
+        criadoEm: '2026-10-12T10:00:00.000Z'
+      },
+      {
+        id: 'msg-2',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 45000,
+            tipo: 'pix'
+          }
+        },
+        criadoEm: '2026-10-13T15:30:00.000Z'
+      },
+      {
+        id: 'msg-3',
+        direcao: 'enviada',
+        tipo: 'documento',
+        conteudo: 'Segue sua receita médica',
+        payloadBruto: {
+          message: {
+            documentMessage: {
+              fileName: 'receita_fernanda.pdf',
+              caption: 'Receituário'
+            }
+          }
+        },
+        criadoEm: '2026-10-13T16:00:00.000Z'
+      }
+    ];
+
+    const candidatos = correlacionarConsultaPagamento(mensagens, '5551999991111');
+    assert.equal(candidatos.length, 1);
+    assert.equal(candidatos[0].pacienteNome, 'Fernanda');
+    assert.equal(candidatos[0].dataConsulta, '13/10/2026');
+  });
+
+  test('deve detectar que já foi faturado mesmo se o paciente enviou mensagem ou foto de exame entre o comprovante e a nota', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-1',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Olá Roberto! Consulta agendada para 10/10/2026.',
+        criadoEm: '2026-10-09T10:00:00.000Z'
+      },
+      {
+        id: 'msg-2',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 35000,
+            tipo: 'pix'
+          }
+        },
+        criadoEm: '2026-10-10T14:00:00.000Z'
+      },
+      {
+        id: 'msg-3',
+        direcao: 'recebida',
+        tipo: 'texto',
+        conteudo: 'Pronto, acabei de mandar o comprovante do pix acima!',
+        criadoEm: '2026-10-10T14:01:00.000Z'
+      },
+      {
+        id: 'msg-4',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Obrigada! Segue sua nota fiscal.',
+        criadoEm: '2026-10-10T16:00:00.000Z'
+      }
+    ];
+
+    const candidatos = correlacionarConsultaPagamento(mensagens, '5551999992222');
+    assert.equal(candidatos.length, 0);
+  });
+
+  test('deve recuperar CPF e nome civil extraídos de PDF de nota fiscal anterior enviada na conversa', () => {
+    const mensagens: MensagemContextoConversa[] = [
+      {
+        id: 'msg-nota-antiga',
+        direcao: 'enviada',
+        tipo: 'documento',
+        conteudo: 'Sua nota fiscal',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: false,
+            ehNotaFiscal: true,
+            tomadorCpf: '52998224725',
+            tomadorNome: 'MARCELO SIMOES DA SILVA'
+          },
+          message: {
+            documentMessage: {
+              fileName: '43149022228297130000157000000000078226089957487047.pdf'
+            }
+          }
+        },
+        criadoEm: '2026-08-21T10:54:00.000Z'
+      },
+      {
+        id: 'msg-agendamento-novo',
+        direcao: 'enviada',
+        tipo: 'texto',
+        conteudo: 'Confirmando nossa consulta de amanhã às 17h30.',
+        criadoEm: '2026-10-12T10:00:00.000Z'
+      },
+      {
+        id: 'msg-pix-novo',
+        direcao: 'recebida',
+        tipo: 'imagem',
+        conteudo: '',
+        payloadBruto: {
+          comprovante: {
+            ehComprovante: true,
+            valorCentavos: 32000,
+            tipo: 'pix'
+          }
+        },
+        criadoEm: '2026-10-13T20:30:00.000Z'
+      }
+    ];
+
+    const candidatos = correlacionarConsultaPagamento(mensagens, '555181005225');
+    assert.equal(candidatos.length, 1);
+    assert.equal(candidatos[0].pacienteCpf, '52998224725');
+    assert.equal(candidatos[0].pacienteNome, 'MARCELO SIMOES DA SILVA');
+    assert.equal(candidatos[0].dataConsulta, '13/10/2026');
+    assert.equal(candidatos[0].temEmissaoAnteriorNaConversa, true);
+    assert.equal(candidatos[0].quantidadeEmissoesAnteriores, 1);
+  });
 });
+

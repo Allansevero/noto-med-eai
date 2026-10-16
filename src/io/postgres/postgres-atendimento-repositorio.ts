@@ -109,13 +109,23 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   }
 
   async buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null> {
-    const sql = `
-      select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
-      from pacientes
-      where medico_id = $1 and telefone = $2
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId, telefone]);
+    const variantes = gerarVariantesTelefoneBrasileiro(telefone);
+    const sql = variantes.length > 0
+      ? `
+        select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
+        from pacientes
+        where medico_id = $1 and (telefone = $2 or regexp_replace(telefone, '\\D', '', 'g') = any($3::text[]))
+        order by (telefone = $2) desc, nome_validado desc, atualizado_em desc
+        limit 1
+      `
+      : `
+        select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
+        from pacientes
+        where medico_id = $1 and telefone = $2
+        limit 1
+      `;
+    const params = variantes.length > 0 ? [medicoId, telefone, variantes] : [medicoId, telefone];
+    const { rows } = await this.pool.query(sql, params);
     if (rows.length === 0) return null;
     return {
       id: rows[0].id,

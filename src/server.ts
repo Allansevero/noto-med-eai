@@ -193,7 +193,8 @@ export function criarAppExpress() {
   app.use('/api/conta/cadastro', criarRouterCadastroPainel({
     pool,repo:cadastroCertificado.repo,
     autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
-    aoAprovarProfissional: dispararOnboardingFiscal
+    aoAprovarProfissional: dispararOnboardingFiscal,
+    processarPendentes: () => cadastroCertificado.recuperar()
   }));
   app.use('/api/whatsapp', criarRouterStatusWhatsapp({
     pool,
@@ -578,8 +579,9 @@ export function criarAppExpress() {
       });
 
       if (config.notoCadastroModo === 'confirmacao') {
-        void cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular}).catch(() =>
-          console.warn('[Cadastro automático]', {codigo:'AGENDAMENTO_FALHOU'}));
+        void cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular})
+          .then(() => cadastroCertificado.recuperar())
+          .catch(() => console.warn('[Cadastro automático]', {codigo:'AGENDAMENTO_FALHOU'}));
       }
 
       if (consentimentoFiscal === versaoConsentimentoFiscal) {

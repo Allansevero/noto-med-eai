@@ -80,6 +80,8 @@ export async function processarHistoricoWebhook(
 }
 
 interface GrupoHistorico {
+  mensagensPaciente: string[];
+  mensagensClinica: string[];
   mensagens: string[];
   mensagensCompletas: DadosMensagemEvolution[];
   nomeContato: string | null;
@@ -91,12 +93,19 @@ function agruparMensagensPorTelefone(
   const agrupadas = new Map<string, GrupoHistorico>();
 
   for (const mensagem of mensagens) {
+    const chave = mensagem.key as Record<string, any>;
+    const msgAny = mensagem as Record<string, any>;
     const telefone =
-      extrairTelefoneJid(mensagem.key.remoteJidAlt) ||
-      extrairTelefoneJid(mensagem.key.remoteJid);
+      extrairTelefoneJid(chave.remoteJidAlt) ||
+      extrairTelefoneJid(chave.remoteJid) ||
+      extrairTelefoneJid(chave.participantAlt) ||
+      extrairTelefoneJid(chave.participant) ||
+      extrairTelefoneJid(msgAny.senderPn);
     if (!telefone) continue;
 
     const atual = agrupadas.get(telefone) ?? {
+      mensagensPaciente: [],
+      mensagensClinica: [],
       mensagens: [],
       mensagensCompletas: [],
       nomeContato: null
@@ -104,7 +113,16 @@ function agruparMensagensPorTelefone(
 
     atual.mensagensCompletas.push(mensagem);
     const texto = extrairTextoMensagem(mensagem);
-    if (texto) atual.mensagens.push(texto);
+    if (texto) {
+      if (mensagem.key.fromMe) {
+        if (!/\b(?:chave\s*pix|pix\s*(?:cpf|cnpj)|nosso\s*pix|dados\s*banc[aá]rios|favorecido)\b/i.test(texto)) {
+          atual.mensagensClinica.push(texto);
+        }
+      } else {
+        atual.mensagensPaciente.push(texto);
+      }
+      atual.mensagens = [...atual.mensagensPaciente, ...atual.mensagensClinica];
+    }
     if (!mensagem.key.fromMe && mensagem.pushName?.trim()) {
       atual.nomeContato = mensagem.pushName.trim();
     }
@@ -113,6 +131,7 @@ function agruparMensagensPorTelefone(
 
   return agrupadas;
 }
+
 
 function mapearMensagensParaPersistencia(
   conversaId: string,

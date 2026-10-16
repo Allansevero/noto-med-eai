@@ -2622,6 +2622,9 @@
         if (!res.ok || !data.ok) throw Error('consulta');
         if (preencher) cadastroEdicaoPendente = false;
         renderizarRevisaoCadastro(data.revisao, preencher);
+        if (data.revisao?.estado === 'pendente' || data.revisao?.estado === 'consultando' || data.revisao?.pesquisaCrm === 'pendente') {
+          setTimeout(() => { if (sessao === sessaoAtual && painelDisponivel) void atualizarRevisaoCadastro(preencher); }, 1500);
+        }
       } catch { if (sessao === sessaoAtual) cadastroEl('contaRevisaoProfissionalStatus').textContent = 'Não foi possível consultar o cadastro. Tente atualizar os dados.'; }
       finally { consultaCadastroPendente = false; }
     }
@@ -2650,7 +2653,9 @@
       try{const res=await fetch('/api/conta/cadastro/pesquisar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+sessao.tokenAcesso},body:JSON.stringify({trabalhoId:revisao.trabalhoId,versao:revisao.versao,nome})});const data=await res.json();
         if(sessao!==sessaoAtual||!painelDisponivel)return;
         if(!res.ok||!data.ok){cadastroEl('contaRevisaoProfissionalStatus').textContent=data.detalhe||'Não foi possível iniciar a pesquisa.';return;}
-        cadastroEdicaoPendente=false;await atualizarRevisaoCadastro(true);
+        cadastroEdicaoPendente=false;
+        if(data.revisao)renderizarRevisaoCadastro(data.revisao,true);
+        await atualizarRevisaoCadastro(true);
       }catch{if(sessao===sessaoAtual)cadastroEl('contaRevisaoProfissionalStatus').textContent='Não foi possível iniciar a pesquisa. Tente novamente.';}
       finally{pesquisandoResponsavel=false;if(sessao===sessaoAtual)cadastroEl('btnPesquisarResponsavel').disabled=!cadastroEl('selectResponsavelProfissional').value||cadastroEl('selectResponsavelProfissional').value===cadastroRevisao?.nome;}
     });

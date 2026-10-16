@@ -8,12 +8,19 @@ import type { ConsultaRegistro, ResultadoConsulta, ResultadoConsultaRegistro } f
 import type { DiagnosticoPesquisaRegistro } from './diagnostico-pesquisa-registro.js';
 export type { DiagnosticoPesquisaRegistro } from './diagnostico-pesquisa-registro.js';
 import { lerExtracaoGoogle } from './ler-extracao-google.js';
+import {
+  extrairCrms,
+  extrairRqes,
+  extrairRegistrosDeterministico,
+  normalizarTexto,
+  registroInativo,
+  type ExtracaoRegistro,
+  type ExtracaoRqe,
+  type ResultadoOrganicoGoogle
+} from './extrair-registros-google.js';
+export { extrairRegistrosDeterministico, type ResultadoOrganicoGoogle } from './extrair-registros-google.js';
 import type { DadosMedicoOnline, FonteRqeProfissional } from '../medico/io/buscar-medico-online.js';
 
-export interface ResultadoOrganicoGoogle { indice: number; titulo: string; trecho: string; url: string }
-interface Evidencia { fonte: number; trecho?: string; trechos?: string[] }
-interface ExtracaoRqe { numero: string; uf?: string | null; evidencia: Evidencia }
-interface ExtracaoRegistro { nomeCompleto: string; crm: string; uf: string; evidenciaCrm: Evidencia; rqes?: ExtracaoRqe[] }
 type Diagnosticar = (evento: DiagnosticoPesquisaRegistro) => void;
 interface OpcoesGoogleRegistro {
   serperApiKey?: string;
@@ -24,11 +31,9 @@ interface OpcoesGoogleRegistro {
   diagnosticar?: Diagnosticar;
   incluirDiagnostico?: boolean;
 }
-type RegistroValidado = { crm: string; uf: string };
 
 const ENDPOINT_SERPER = 'https://google.serper.dev/search';
 const LIMITE_TEXTO_FONTE = 2500;
-const normalizarTexto = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt-BR');
 const falha = (codigo: string): ResultadoConsulta<DadosMedicoOnline[]> => ({ estado: 'indisponivel', codigo });
 
 function lerFonte(valor: unknown, indice: number): ResultadoOrganicoGoogle | null {
@@ -44,43 +49,6 @@ function lerFonte(valor: unknown, indice: number): ResultadoOrganicoGoogle | nul
     trecho: item.snippet.trim().slice(0, LIMITE_TEXTO_FONTE),
     url: url.toString().slice(0, 2000)
   };
-}
-
-function normalizarNumero(valor: string): string { return valor.replace(/\D/g, ''); }
-
-function extrairCrms(texto: string): RegistroValidado[] {
-  const encontrados: RegistroValidado[] = [];
-  const formatador = String.raw`(\d{1,3}(?:\.\d{3})+|\d+)`;
-  const padroes = [
-    new RegExp(String.raw`\bCRM\s*[-/\s]+([A-Z]{2})\s*[:#-]?\s*${formatador}(?!\d)`, 'giu'),
-    new RegExp(String.raw`\bCRM\s*[:#]?\s*${formatador}\s*(?:[/\-]|\s)\s*([A-Z]{2})\b`, 'giu')
-  ];
-  for (const padrao of padroes) {
-    for (const match of texto.matchAll(padrao)) {
-      const uf = (padrao === padroes[0] ? match[1] : match[2]).toUpperCase();
-      const numero = normalizarNumero(padrao === padroes[0] ? match[2] : match[1]);
-      const crm = normalizarCrm(`${numero}/${uf}`);
-      if (crm) encontrados.push({ crm: crm.split('/')[0], uf: crm.split('/')[1] });
-    }
-  }
-  return [...new Map(encontrados.map(r => [`${r.crm}/${r.uf}`, r])).values()];
-}
-
-function extrairRqes(texto: string): Array<{ numero: string; uf?: string }> {
-  const encontrados: Array<{ numero: string; uf?: string }> = [];
-  const formatador = String.raw`(\d{1,3}(?:\.\d{3})+|\d+)`;
-  const padroes = [
-    new RegExp(String.raw`\bRQE\s*[-/\s]+([A-Z]{2})\s*[:#-]?\s*${formatador}(?!\d)`, 'giu'),
-    new RegExp(String.raw`\bRQE\s*[:#]?\s*${formatador}(?!\d)(?:\s*(?:[/\-]|\s)\s*([A-Z]{2})\b)?`, 'giu')
-  ];
-  for (const padrao of padroes) {
-    for (const match of texto.matchAll(padrao)) {
-      const uf = (padrao === padroes[0] ? match[1] : match[2])?.toUpperCase();
-      const numero = normalizarNumero(padrao === padroes[0] ? match[2] : match[1]);
-      if (/^[1-9]\d{0,11}$/.test(numero)) encontrados.push({ numero, uf });
-    }
-  }
-  return [...new Map(encontrados.map(r => [`${r.numero}/${r.uf}`, r])).values()];
 }
 
 function trechoContido(texto: string, citacao: string): boolean {
@@ -112,10 +80,6 @@ function lerEvidencia(evidencia: unknown, fontes: ResultadoOrganicoGoogle[], inf
     }
   }
   return { fonte, trecho };
-}
-
-function registroInativo(texto: string): boolean {
-  return /\b(?:transferid[oa]s?|cancelad[oa]s?|inativ[oa]s?|suspens[oa]s?|cassad[oa]s?)\b/iu.test(texto);
 }
 
 function validarRegistro(contexto: { nome: string; fontes: ResultadoOrganicoGoogle[]; entrada: unknown; candidato: number }, diagnosticar?: Diagnosticar): DadosMedicoOnline | null {
@@ -179,8 +143,9 @@ function validarRegistro(contexto: { nome: string; fontes: ResultadoOrganicoGoog
       const crmsRelacionados = extrairCrms(trechoRqe);
       const rqesRelacionados = extrairRqes(trechoRqe);
       if (crmsRelacionados.length !== 1 || crmsRelacionados[0].crm !== crm || crmsRelacionados[0].uf !== uf) { informarRqe('CRM_CITACAO_RQE_NAO_CONFIRMADO');continue; }
-      if (rqesRelacionados.length !== 1 || rqesRelacionados[0].numero !== rqe.numero) { informarRqe('RQE_CITACAO_NAO_CONFIRMADO');continue; }
-      const ufRqe = rqesRelacionados[0].uf;
+      const rqeCitado = rqesRelacionados.find(r => r.numero === rqe.numero);
+      if (!rqeCitado) { informarRqe('RQE_CITACAO_NAO_CONFIRMADO');continue; }
+      const ufRqe = rqeCitado.uf;
       if (ufRqe && ufRqe !== uf) { informarRqe('RQE_UF_CITACAO_DIVERGENTE');continue; }
       fontesRqe.push({ numero: rqe.numero, uf, ufOrigem: rqesFonte.some(r => r.uf) ? 'rqe' : 'crm', titulo: evidencia.fonte.titulo, urlOrigem: evidencia.fonte.url, evidencia: trechoRqe });
       informarRqe('ACEITO');
@@ -248,10 +213,12 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
   private readonly requisitar: typeof fetch;
   private readonly completar: (mensagens: MensagemNvidia[]) => Promise<string>;
   private readonly modelo: string;
+  private readonly usaExtracaoDeterministica: boolean;
   constructor(private readonly opcoes: OpcoesGoogleRegistro) {
     this.requisitar = opcoes.requisitar ?? fetch;
-    this.modelo = (opcoes.modelo?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : opcoes.modelo?.trim()) || 'meta/llama-3.2-90b-vision-instruct';
-    this.completar = opcoes.completar ?? (mensagens => completarNvidia(opcoes.nvidiaApiKey || '', this.modelo, mensagens, { temperature: 0.1, formatoJson: true }));
+    this.modelo = (['moonshotai/kimi-k3', 'meta/llama-3.2-90b-vision-instruct'].includes(opcoes.modelo?.trim() || '') ? 'meta/llama-3.2-11b-vision-instruct' : opcoes.modelo?.trim()) || 'meta/llama-3.2-11b-vision-instruct';
+    this.usaExtracaoDeterministica = !opcoes.completar;
+    this.completar = opcoes.completar ?? (mensagens => completarNvidia(opcoes.nvidiaApiKey || '', this.modelo, mensagens, { temperature: 0.1, formatoJson: true, timeoutMs: 4500, maxTokens: 1024, tentativasMax: 1 }));
   }
 
   async buscar(nome: string, _uf?: string): Promise<ResultadoConsultaRegistro> {
@@ -269,7 +236,7 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
     let resposta: Response;
     try {
       resposta = await this.requisitar(ENDPOINT_SERPER, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12_000),
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(8_000),
         headers: { 'X-API-KEY': chaveSerper, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ q: `CRM ${nome.trim()}`, gl: 'br', hl: 'pt-br', num: 10 })
       });
@@ -286,8 +253,18 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
       fontesComMencaoRqe: fontes.filter(f => /\bRQE\b/iu.test(`${f.titulo}\n${f.trecho}`)).length });
     if (!fontes.length) return { estado: 'nao_encontrado', codigo: 'SERPER_SEM_RESULTADOS_UTILIZAVEIS' };
     let extracao: string;
-    try { extracao = await this.completar(mensagensExtracao(nome.trim(), fontes)); }
-    catch (erro) { return falha(erro instanceof ErroNvidiaChat ? erro.codigo : 'NVIDIA_CONSULTA_INDISPONIVEL'); }
+    if (this.usaExtracaoDeterministica) {
+      const deterministicos = extrairRegistrosDeterministico(nome.trim(), fontes);
+      if (deterministicos.length > 0) {
+        extracao = JSON.stringify({ registros: deterministicos });
+      } else {
+        try { extracao = await this.completar(mensagensExtracao(nome.trim(), fontes)); }
+        catch { extracao = '{"registros":[]}'; }
+      }
+    } else {
+      try { extracao = await this.completar(mensagensExtracao(nome.trim(), fontes)); }
+      catch (erro) { return falha(erro instanceof ErroNvidiaChat ? erro.codigo : 'NVIDIA_CONSULTA_INDISPONIVEL'); }
+    }
     const resultado = lerExtracaoGoogle(extracao);
     if (!resultado.ok) return falha(resultado.codigo);
     diagnosticar({ etapa: 'nvidia', candidatos: resultado.registros.length });

@@ -6,33 +6,95 @@
 
 import { validarCpf } from './validar-cpf.js';
 
-export function extrairCpfTexto(texto?: string | null): string | null {
-  if (!texto || typeof texto !== 'string') {
-    return null;
+const PADROES_CPF = [
+  /(?<!\d)\d{3}\s*[.\-\s]\s*\d{3}\s*[.\-\s]\s*\d{3}\s*[-\/. \s]\s*\d{2}(?!\d)/g,
+  /(?<!\d)\d{9}\s*[-\/. ]\s*\d{2}(?!\d)/g,
+  /(?<!\d)\d{11}(?!\d)/g,
+  /(?:cpf|doc|documento|chave(?:\s+pix)?)\s*:?\s*([0-9.\s\-\/]{11,20})/gi
+];
+
+export function extrairTodosCpfsTexto(
+  texto?: string | null,
+  cpfsIgnorados: string[] = []
+): string[] {
+  if (!texto || typeof texto !== 'string') return [];
+
+  const ignorados = new Set(cpfsIgnorados.map(c => c.replace(/\D/g, '')).filter(Boolean));
+  const encontrados = new Set<string>();
+
+  for (const regex of PADROES_CPF) {
+    coletarMatchesPadrao(texto, regex, ignorados, encontrados);
   }
 
-  // Procura padrão mascarado (ex.: 123.456.789-00), com espaços, traço ou sequência de 11 dígitos
-  const padroes = [
-    /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g,
-    /\b\d{3}\s+\d{3}\s+\d{3}[-\s]\d{2}\b/g,
-    /\b\d{3}\.\d{3}\.\d{3}\s+\d{2}\b/g,
-    /\b\d{9}-\d{2}\b/g,
-    /\b\d{11}\b/g,
-    /(?:cpf|doc|documento|chave(?:\s+pix)?)\s*:?\s*([0-9.\s\-\/]{11,18})/gi
-  ];
+  return Array.from(encontrados);
+}
 
-  for (const regex of padroes) {
-    const matches = texto.match(regex);
-    if (!matches) continue;
+export function extrairCpfTexto(
+  texto?: string | null,
+  cpfsIgnorados: string[] = []
+): string | null {
+  const todos = extrairTodosCpfsTexto(texto, cpfsIgnorados);
+  return todos[0] ?? null;
+}
 
-    for (const candidato of matches) {
-      const apenasDigitos = candidato.replace(/\D/g, '');
-      if (apenasDigitos.length === 11 && validarCpf(apenasDigitos)) {
-        return apenasDigitos;
+export interface MensagemDirecionadaCpf {
+  direcao: 'recebida' | 'enviada';
+  texto?: string | null;
+}
+
+const REGEX_CONTEXTO_PIX_CLINICA = /\b(?:chave\s*pix|nosso\s*pix|pix\s*(?:da\s*cl[ií]nica|da\s*dra|do\s*dr|é|e|:)|dados\s*banc[aá]rios|favorecido|conta\s*corrente)\b/i;
+
+export function extrairCpfConversaSegura(
+  mensagens: MensagemDirecionadaCpf[],
+  cpfsIgnorados: string[] = []
+): string | null {
+  if (!mensagens || mensagens.length === 0) return null;
+
+  const ignorados = new Set(cpfsIgnorados.map(c => c.replace(/\D/g, '')).filter(Boolean));
+  for (const m of mensagens) {
+    if (m.direcao === 'enviada' && m.texto && REGEX_CONTEXTO_PIX_CLINICA.test(m.texto)) {
+      for (const cpfPix of extrairTodosCpfsTexto(m.texto)) {
+        ignorados.add(cpfPix);
       }
     }
   }
 
+  const listaIgnorados = Array.from(ignorados);
+
+  for (const m of mensagens) {
+    if (m.direcao !== 'recebida' || !m.texto) continue;
+    const cpf = extrairCpfTexto(m.texto, listaIgnorados);
+    if (cpf) return cpf;
+  }
+
+  for (const m of mensagens) {
+    if (m.direcao !== 'enviada' || !m.texto) continue;
+    if (REGEX_CONTEXTO_PIX_CLINICA.test(m.texto)) continue;
+    const cpf = extrairCpfTexto(m.texto, listaIgnorados);
+    if (cpf) return cpf;
+  }
+
   return null;
 }
+
+function coletarMatchesPadrao(
+  texto: string,
+  regex: RegExp,
+  ignorados: Set<string>,
+  encontrados: Set<string>
+): void {
+  const matches = texto.match(regex);
+  if (!matches) return;
+
+  for (const candidato of matches) {
+    const apenasDigitos = candidato.replace(/\D/g, '');
+    if (apenasDigitos.length !== 11) continue;
+    if (ignorados.has(apenasDigitos)) continue;
+    if (validarCpf(apenasDigitos)) {
+      encontrados.add(apenasDigitos);
+    }
+  }
+}
+
+
 

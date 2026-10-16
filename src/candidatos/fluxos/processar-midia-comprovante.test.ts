@@ -149,3 +149,75 @@ test('registra candidato e envia notificação formatada para o médico', async 
   assert.ok(mensagensEnviadas[0].texto.includes('Mariana Souza'));
   assert.ok(mensagensEnviadas[0].texto.includes('Posso emitir a NFS-e agora?'));
 });
+
+test('infere a data da consulta anterior ao comprovante no histórico da conversa e salva CPF de nota anterior', async () => {
+  const gemini = criarGeminiFalso({
+    ehComprovante: true,
+    tipo: 'pix',
+    valorCentavos: 40000,
+    dataPagamento: '2026-10-14',
+    idTransacao: 'E999888777',
+    pagadorNome: 'Carlos Mendes'
+  });
+
+  const pacienteMemoria: PacienteDadosBasicos = {
+    id: 'pac-carlos',
+    nome: 'Carlos Mendes',
+    cpfLimpo: null,
+    telefone: '5511988888888'
+  };
+  let cpfSalvo: string | null = null;
+  const repo = criarRepoMemoria({ paciente: pacienteMemoria });
+  repo.salvarCpfPaciente = async (_m, _p, cpf) => {
+    cpfSalvo = cpf;
+    pacienteMemoria.cpfLimpo = cpf;
+  };
+  repo.buscarMensagensConversa = async () => [
+    {
+      id: 'm-cpf',
+      direcao: 'recebida',
+      tipo: 'texto',
+      conteudo: 'Meu CPF é 529.982.247-25',
+      criadoEm: new Date('2026-08-10T10:00:00Z')
+    },
+    {
+      id: 'm-agendamento',
+      direcao: 'enviada',
+      tipo: 'texto',
+      conteudo: 'Olá Carlos! Confirmando sua consulta de amanhã às 14h.',
+      criadoEm: new Date('2026-10-09T10:00:00Z')
+    },
+    {
+      id: 'msg-comp',
+      direcao: 'recebida',
+      tipo: 'imagem',
+      conteudo: '',
+      criadoEm: new Date('2026-10-14T15:00:00Z')
+    }
+  ];
+
+  const mensagensEnviadas: Array<{ tel: string; texto: string }> = [];
+  const r = await processarMidiaComprovante(
+    {
+      medicoId: 'med-1',
+      conversaId: 'conv-1',
+      mensagemId: 'msg-comp',
+      telefonePaciente: '5511988888888',
+      base64: 'abc'
+    },
+    {
+      geminiClient: gemini,
+      repositorio: repo,
+      enviarMensagemAoMedico: async (tel, texto) => {
+        mensagensEnviadas.push({ tel, texto });
+        return true;
+      }
+    }
+  );
+
+  assert.equal(r.ok, true);
+  assert.equal(cpfSalvo, '52998224725');
+  assert.ok(mensagensEnviadas[0].texto.includes('referente à consulta de 10/10/2026'));
+  assert.ok(mensagensEnviadas[0].texto.includes('Posso emitir a NFS-e agora?'));
+});
+

@@ -60,34 +60,68 @@ export const webhookEvolutionSchema = z.object({
 export type WebhookEvolutionPayload = z.infer<typeof webhookEvolutionSchema>;
 export type DadosMensagemEvolution = z.infer<typeof dadosMensagemSchema>;
 
-export function extrairTextoMensagem(dados?: DadosMensagemEvolution): string | null {
-  if (!dados || !dados.message) {
-    return null;
-  }
+export function extrairTextoMensagem(dados?: DadosMensagemEvolution | null): string | null {
+  const msg = desembrulharConteudoMensagem(dados?.message);
+  if (!msg) return null;
 
-  if (dados.message.conversation) {
-    return dados.message.conversation.trim();
-  }
+  const candidato =
+    msg.conversation ||
+    msg.extendedTextMessage?.text ||
+    msg.imageMessage?.caption ||
+    msg.documentMessage?.caption ||
+    msg.contactMessage?.vcard ||
+    extrairTextoContactsArray(msg.contactsArrayMessage);
 
-  if (dados.message.extendedTextMessage?.text) {
-    return dados.message.extendedTextMessage.text.trim();
-  }
-
-  if (dados.message.imageMessage?.caption) {
-    return dados.message.imageMessage.caption.trim();
-  }
-
-  if (dados.message.documentMessage?.caption) {
-    return dados.message.documentMessage.caption.trim();
-  }
-
-  return null;
+  return typeof candidato === 'string' && candidato.trim().length > 0
+    ? candidato.trim()
+    : null;
 }
 
-export function extrairTipoMensagem(dados?: DadosMensagemEvolution): 'imagem' | 'documento' | 'texto' {
-  if (!dados || !dados.message) return 'texto';
-  if (dados.message.imageMessage || dados.messageType === 'imageMessage') return 'imagem';
-  if (dados.message.documentMessage || dados.messageType === 'documentMessage') return 'documento';
+export function extrairTextoPayloadBruto(payloadBruto: unknown): string | null {
+  if (!payloadBruto || typeof payloadBruto !== 'object') return null;
+  const registro = payloadBruto as Record<string, any>;
+  if (registro.message) {
+    return extrairTextoMensagem(registro as DadosMensagemEvolution);
+  }
+  return extrairTextoMensagem({ key: { remoteJid: 'x', fromMe: false, id: 'x' }, message: registro });
+}
+
+export function extrairTipoMensagem(dados?: DadosMensagemEvolution | null): 'imagem' | 'documento' | 'texto' {
+  const msg = desembrulharConteudoMensagem(dados?.message);
+  if (!msg) return 'texto';
+  if (msg.imageMessage || dados?.messageType === 'imageMessage') return 'imagem';
+  if (msg.documentMessage || dados?.messageType === 'documentMessage' || dados?.messageType === 'documentWithCaptionMessage') {
+    return 'documento';
+  }
   return 'texto';
 }
+
+function desembrulharConteudoMensagem(msg: any, profundidade = 0): Record<string, any> | null {
+  if (!msg || typeof msg !== 'object' || profundidade > 4) return null;
+
+  const aninhado =
+    msg.ephemeralMessage?.message ||
+    msg.viewOnceMessage?.message ||
+    msg.viewOnceMessageV2?.message ||
+    msg.viewOnceMessageV2Extension?.message ||
+    msg.documentWithCaptionMessage?.message ||
+    msg.editedMessage?.message?.protocolMessage?.editedMessage ||
+    msg.editedMessage?.message ||
+    msg.protocolMessage?.editedMessage;
+
+  if (aninhado && typeof aninhado === 'object') {
+    return desembrulharConteudoMensagem(aninhado, profundidade + 1) ?? aninhado;
+  }
+
+  return msg;
+}
+
+function extrairTextoContactsArray(contactsArray: any): string | null {
+  if (!contactsArray || !Array.isArray(contactsArray.contacts)) return null;
+  const vcards = contactsArray.contacts
+    .map((c: any) => (typeof c?.vcard === 'string' ? c.vcard.trim() : ''))
+    .filter(Boolean);
+  return vcards.length > 0 ? vcards.join('\n') : null;
+}
+
 

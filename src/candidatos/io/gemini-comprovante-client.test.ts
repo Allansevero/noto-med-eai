@@ -92,6 +92,75 @@ test('identifica documento como nota fiscal sem falhar', async () => {
   assert.equal(r.ehNotaFiscal, true);
 });
 
+test('extrai e valida tomadorCpf e tomadorNome de PDF de DANFSe e descarta CPF mascarado com asteriscos', async () => {
+  const mockFetch: typeof fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  ehComprovante: false,
+                  ehNotaFiscal: true,
+                  valor: 320.00,
+                  tomadorNome: 'MARCELO SIMOES',
+                  tomadorCpf: '529.982.247-25',
+                  pagadorCpf: '***.982.247-**'
+                })
+              }
+            ]
+          }
+        }
+      ]
+    })
+  } as any);
+
+  const cliente = new GeminiComprovanteClient('chave_teste', 'gemini-2.5-flash', mockFetch);
+  const r = await cliente.analisarMidia({ base64: 'pdf_danfse', mimeType: 'application/pdf' });
+
+  assert.equal(r.ehNotaFiscal, true);
+  assert.equal(r.tomadorNome, 'MARCELO SIMOES');
+  assert.equal(r.tomadorCpf, '52998224725');
+  assert.equal(r.pagadorCpf, undefined);
+});
+
+test('inferirDataConsultaConversa retorna data formatada em ISO e BR quando Gemini resolve ambiguidade', async () => {
+  const mockFetch: typeof fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  encontrouDataConsulta: true,
+                  dataConsultaIso: '2026-10-12'
+                })
+              }
+            ]
+          }
+        }
+      ]
+    })
+  } as any);
+
+  const cliente = new GeminiComprovanteClient('chave_teste', 'gemini-2.5-flash', mockFetch);
+  const res = await cliente.inferirDataConsultaConversa({
+    mensagens: [
+      { direcao: 'enviada', texto: 'Podemos remarcar para o segundo horário daquela semana?', criadoEmIso: '2026-10-10T10:00:00Z' }
+    ],
+    dataPagamentoIso: '2026-10-14'
+  });
+
+  assert.deepEqual(res, {
+    dataConsultaIso: '2026-10-12',
+    dataConsultaBr: '12/10/2026'
+  });
+});
+
 test('trata erro HTTP da API do Gemini sem lançar exceção', async () => {
   const mockFetch: typeof fetch = async () => ({
     ok: false,
@@ -104,3 +173,4 @@ test('trata erro HTTP da API do Gemini sem lançar exceção', async () => {
 
   assert.equal(r.ehComprovante, false);
 });
+

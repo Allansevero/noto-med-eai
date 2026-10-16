@@ -5,7 +5,7 @@ export interface DecisorCadastro { decidir(pendencia:PendenciaCadastro,texto:str
 export class NvidiaDecisorCadastro implements DecisorCadastro {
  private readonly modelo: string;
  constructor(private apiKey:string, modelo = 'meta/llama-3.2-11b-vision-instruct') {
-  this.modelo = modelo === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-11b-vision-instruct' : modelo;
+  this.modelo = ['moonshotai/kimi-k3', 'meta/llama-3.2-90b-vision-instruct'].includes(modelo) ? 'meta/llama-3.2-11b-vision-instruct' : modelo;
  }
  async decidir(p:PendenciaCadastro,texto:string):Promise<DecisaoConfirmacao>{
   const propostas:DecisaoConfirmacao[]=[

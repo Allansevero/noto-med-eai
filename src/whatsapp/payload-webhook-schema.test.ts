@@ -103,4 +103,50 @@ describe('payload-webhook-schema', () => {
     assert.strictEqual(ehEventoSincronizacaoAuxiliar({ event: 'contacts.set' }), true);
     assert.strictEqual(ehEventoSincronizacaoAuxiliar({ event: 'messages.upsert' }), false);
   });
+
+  it('deve extrair texto de ephemeralMessage, editedMessage e documentWithCaptionMessage', () => {
+    const msgTemporaria: DadosMensagemEvolution = {
+      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false, id: '4' },
+      message: {
+        ephemeralMessage: {
+          message: {
+            extendedTextMessage: { text: 'Meu CPF é 529.982.247-25' }
+          }
+        }
+      } as any
+    };
+    assert.strictEqual(extrairTextoMensagem(msgTemporaria), 'Meu CPF é 529.982.247-25');
+
+    const msgEditada: DadosMensagemEvolution = {
+      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false, id: '5' },
+      message: {
+        editedMessage: {
+          message: {
+            protocolMessage: {
+              editedMessage: {
+                conversation: 'Corrigindo CPF: 529.982.247-25'
+              }
+            }
+          }
+        }
+      } as any
+    };
+    assert.strictEqual(extrairTextoMensagem(msgEditada), 'Corrigindo CPF: 529.982.247-25');
+
+    const docComLegenda: DadosMensagemEvolution = {
+      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false, id: '6' },
+      message: {
+        documentWithCaptionMessage: {
+          message: {
+            documentMessage: {
+              caption: 'Segue comprovante CPF 529.982.247-25',
+              fileName: 'comprovante.pdf'
+            }
+          }
+        }
+      } as any
+    };
+    assert.strictEqual(extrairTextoMensagem(docComLegenda), 'Segue comprovante CPF 529.982.247-25');
+  });
 });
+

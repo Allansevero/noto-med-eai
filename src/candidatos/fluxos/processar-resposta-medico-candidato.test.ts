@@ -170,6 +170,7 @@ test('aciona API existente de emissão diretamente quando médico aprova e pacie
   assert.equal(chamadasEmissao.length, 1);
   assert.equal(chamadasEmissao[0].ref, 'comp_pix_E12345');
   assert.equal(chamadasEmissao[0].valor, 350.00);
+  assert.equal(chamadasEmissao[0].datasConsultas, '14/10/2026');
   assert.equal(chamadasEmissao[0].paciente.cpf, '52998224725');
   assert.equal(chamadasEmissao[0].paciente.nome, 'Mariana Souza');
 
@@ -179,6 +180,7 @@ test('aciona API existente de emissão diretamente quando médico aprova e pacie
   assert.ok(avisosMedico[0].includes('fila de emissão'));
   assert.ok(avisosMedico[0].includes('350,00'));
 });
+
 
 test('grava CPF informado pelo médico e aciona emissão no mesmo passo', async () => {
   const candidato = criarCandidatoPadrao();

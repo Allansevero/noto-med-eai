@@ -1,11 +1,15 @@
 /**
- * Regra pura de correlação contextual entre agendamento de consulta e pagamento.
- * Identifica comprovantes/pagamentos na conversa e busca nas mensagens anteriores
- * a data em que o atendimento foi agendado ou realizado, além do nome do paciente.
- * Isola 100% da lógica sem I/O ou chamadas de rede.
+ * Regra pura de correlação contextual entre agendamento de consulta, comprovante de
+ * pagamento e emissões anteriores no histórico do WhatsApp. Isola 100% da decisão
+ * sem I/O ou chamadas de rede.
  */
 
-import { extrairDatasConsulta } from '../../emissao/regras/extrair-datas-consulta.js';
+import {
+  inferirDataConsultaHistorico,
+  type ResultadoInferirDataConsulta
+} from '../../emissao/regras/inferir-data-consulta-historico.js';
+import { extrairCpfConversaSegura } from '../../paciente/extrair-cpf-texto.js';
+import { validarCpf } from '../../paciente/validar-cpf.js';
 
 export interface MensagemContextoConversa {
   id: string;
@@ -19,10 +23,15 @@ export interface MensagemContextoConversa {
 export interface CandidatoNotaFiscal {
   pacienteNome: string;
   pacienteTelefone: string;
+  pacienteCpf?: string | null;
   valorCentavos: number;
   valorFormatado: string;
   dataConsulta: string;
   dataConsultaIso: string;
+  confiancaData?: 'alta' | 'media' | 'baixa';
+  dataAmbigua?: boolean;
+  temEmissaoAnteriorNaConversa?: boolean;
+  quantidadeEmissoesAnteriores?: number;
   origemEvidencia: {
     mensagemPagamentoId: string;
     mensagemConsultaId?: string;
@@ -35,7 +44,7 @@ export function correlacionarConsultaPagamento(
   mensagens: MensagemContextoConversa[],
   contatoTelefone: string,
   nomeCadastro?: string | null,
-  dataReferencia: Date = new Date(),
+  _dataReferencia: Date = new Date(),
   valorPadraoCentavos?: number,
   dataCortePagamento?: Date
 ): CandidatoNotaFiscal[] {
@@ -47,49 +56,54 @@ export function correlacionarConsultaPagamento(
     return tA - tB;
   });
 
+  const infoGlobal = extrairMetadadosGlobaisConversa(ordenadas);
   const candidatos: CandidatoNotaFiscal[] = [];
 
   for (let i = 0; i < ordenadas.length; i++) {
     const msgAtual = ordenadas[i];
-    const dataMsgAtual = msgAtual.criadoEm instanceof Date
-      ? msgAtual.criadoEm
-      : new Date(msgAtual.criadoEm);
+    const dataMsgAtual = msgAtual.criadoEm instanceof Date ? msgAtual.criadoEm : new Date(msgAtual.criadoEm);
 
-    // Se o pagamento for anterior à data de corte da janela de faturamento, descarta como candidato a nota
     if (dataCortePagamento && dataMsgAtual.getTime() < dataCortePagamento.getTime()) {
       continue;
     }
 
     const mensagensAnteriores = ordenadas.slice(0, i);
+    const mensagensPosteriores = ordenadas.slice(i + 1);
     const dadosPagamento = extrairDadosPagamento(msgAtual, mensagensAnteriores, valorPadraoCentavos);
     if (!dadosPagamento) continue;
 
-    // Se o pagamento já foi faturado (nota fiscal enviada em seguida), descarta este candidato
-    const mensagensPosteriores = ordenadas.slice(i + 1);
     if (foiFaturadoPosteriormente(msgAtual, mensagensPosteriores)) {
       continue;
     }
 
-    // Buscar no histórico ANTERIOR à mensagem de pagamento a data da consulta e o nome do paciente
-    const contextoConsulta = extrairContextoConsultaAnterior(
+    const dataInf: ResultadoInferirDataConsulta = inferirDataConsultaHistorico({
       mensagensAnteriores,
-      msgAtual,
-      nomeCadastro,
-      dataReferencia
-    );
+      msgPagamento: msgAtual,
+      mensagensPosteriores
+    });
+
+    const nomePaciente =
+      dadosPagamento.pagadorNome ||
+      infoGlobal.nomeTomadorNotaAnterior ||
+      extrairNomePacienteHistorico(mensagensAnteriores, nomeCadastro);
 
     candidatos.push({
-      pacienteNome: contextoConsulta.nomePaciente,
+      pacienteNome: nomePaciente,
       pacienteTelefone: limparTelefone(contatoTelefone),
+      pacienteCpf: dadosPagamento.pagadorCpf || infoGlobal.cpfConversa,
       valorCentavos: dadosPagamento.valorCentavos,
       valorFormatado: dadosPagamento.valorFormatado,
-      dataConsulta: contextoConsulta.dataConsultaFormatada,
-      dataConsultaIso: contextoConsulta.dataConsultaIso,
+      dataConsulta: dataInf.dataConsultaFormatada,
+      dataConsultaIso: dataInf.dataConsultaIso,
+      confiancaData: dataInf.confianca,
+      dataAmbigua: dataInf.ambiguo,
+      temEmissaoAnteriorNaConversa: infoGlobal.quantidadeNotasEnviadas > 0,
+      quantidadeEmissoesAnteriores: infoGlobal.quantidadeNotasEnviadas,
       origemEvidencia: {
         mensagemPagamentoId: msgAtual.id,
-        mensagemConsultaId: contextoConsulta.mensagemId,
+        mensagemConsultaId: dataInf.mensagemId,
         trechoPagamento: dadosPagamento.trecho,
-        trechoConsulta: contextoConsulta.trecho
+        trechoConsulta: dataInf.trecho
       }
     });
   }
@@ -101,6 +115,8 @@ interface DadosPagamentoDetectados {
   valorCentavos: number;
   valorFormatado: string;
   trecho: string;
+  pagadorCpf?: string | null;
+  pagadorNome?: string | null;
 }
 
 function extrairDadosPagamento(
@@ -108,214 +124,240 @@ function extrairDadosPagamento(
   mensagensAnteriores: MensagemContextoConversa[] = [],
   valorPadraoCentavos?: number
 ): DadosPagamentoDetectados | null {
-  // 1. MENSAGEM DA CLÍNICA/SECRETÁRIA NUNCA É COMPROVANTE DE PAGAMENTO
-  if (msg.direcao === 'enviada') {
-    return null;
-  }
+  if (msg.direcao === 'enviada') return null;
+  if (msg.tipo !== 'imagem' && msg.tipo !== 'documento') return null;
 
-  // 2. MENSAGENS DE TEXTO PURO NUNCA GERAM CANDIDATOS A EMISSÃO
-  // Apenas comprovantes visuais (imagem ou PDF) atestam que o pagamento de fato ocorreu.
-  if (msg.tipo === 'texto') {
-    return null;
-  }
-
-  // 3. APENAS IMAGENS OU DOCUMENTOS (PDF) RECEBIDOS DO PACIENTE SÃO ELEGÍVEIS
-  if (msg.tipo !== 'imagem' && msg.tipo !== 'documento') {
-    return null;
-  }
-
-  // 4. VERIFICAÇÃO VISUAL PELO MODELO DE VISÃO COMPUTACIONAL (PaliGemma / VLM)
   const comp = msg.payloadBruto?.comprovante as Record<string, any> | undefined;
-
   if (comp) {
-    // Se o modelo de visão determinou que NÃO é um comprovante (ex: exame de sangue, receita, raio-X)
-    if (!comp.ehComprovante) {
-      return null;
-    }
+    if (!comp.ehComprovante || comp.ehNotaFiscal) return null;
 
-    let valorCentavos = typeof comp.valorCentavos === 'number' && comp.valorCentavos > 0
-      ? comp.valorCentavos
-      : undefined;
+    const valorCentavos =
+      (typeof comp.valorCentavos === 'number' && comp.valorCentavos > 0 ? comp.valorCentavos : undefined) ??
+      buscarValorNasMensagensAnteriores(mensagensAnteriores) ??
+      (valorPadraoCentavos && valorPadraoCentavos > 0 ? valorPadraoCentavos : undefined);
 
-    // Se o modelo confirmou que é comprovante bancário mas o valor na foto ficou ilegível,
-    // correlaciona com o valor da consulta passado pela clínica nas mensagens anteriores
-    if (!valorCentavos && mensagensAnteriores.length > 0) {
-      for (let j = mensagensAnteriores.length - 1; j >= 0; j--) {
-        const t = mensagensAnteriores[j].conteudo || '';
-        const mValor = t.match(/(?:r\$\s*|valor(?:\s*da\s*consulta)?\s*(?:é|e|de)?\s*:?\s*)(\d{2,4})(?:[,\.](\d{2}))?/i) ||
-                       t.match(/\b(\d{2,4}),(\d{2})\b/) ||
-                       t.match(/\b(\d{2,4})\s*reais\b/i);
-        if (mValor) {
-          const reais = parseInt(mValor[1].replace(/\./g, ''), 10);
-          const centavos = mValor[2] ? parseInt(mValor[2], 10) : 0;
-          valorCentavos = reais * 100 + centavos;
-          break;
-        }
-      }
-    }
+    if (!valorCentavos || valorCentavos <= 0) return null;
 
-    // Fallback para valor padrão cadastrado do serviço fiscal
-    if (!valorCentavos && valorPadraoCentavos && valorPadraoCentavos > 0) {
-      valorCentavos = valorPadraoCentavos;
-    }
+    const valorFormatado = formatarCentavosBr(valorCentavos);
+    const cpfComp = limparCpfValido(comp.pagadorCpf || comp.tomadorCpf);
+    const nomeComp = limparNomeContato(comp.pagadorNome);
 
-    if (valorCentavos && valorCentavos > 0) {
-      const reais = Math.floor(valorCentavos / 100);
-      const centavos = valorCentavos % 100;
-      const valorFormatado = `${reais},${String(centavos).padStart(2, '0')}`;
-      return {
-        valorCentavos,
-        valorFormatado,
-        trecho: `Comprovante bancário ${comp.tipo || 'Pix'} de R$ ${valorFormatado}`
-      };
-    }
-
-    return null;
+    return {
+      valorCentavos,
+      valorFormatado,
+      trecho: `Comprovante bancário ${comp.tipo || 'Pix'} de R$ ${valorFormatado}`,
+      pagadorCpf: cpfComp,
+      pagadorNome: nomeComp || null
+    };
   }
 
-  // 5. Fallback para comprovantes recebidos do paciente ainda não processados pelo VLM
-  // Só considera candidato se houve prévio agendamento ou pedido de Pix pela clínica no chat
-  if (mensagensAnteriores.length > 0) {
-    const houvePedidoPixOuConsulta = mensagensAnteriores.some(m =>
-      m.direcao === 'enviada' && /\b(?:pix|comprovante|pagamento|consulta|confirmando|hor[aá]rio)\b/i.test(m.conteudo || '')
-    );
-
-    if (houvePedidoPixOuConsulta) {
-      let valorCentavosEncontrado: number | undefined;
-      let trechoEncontrado = 'Comprovante Pix recebido';
-
-      for (let j = mensagensAnteriores.length - 1; j >= 0; j--) {
-        const t = mensagensAnteriores[j].conteudo || '';
-        const mValor = t.match(/(?:r\$\s*|valor(?:\s*da\s*consulta)?\s*(?:é|e|de)?\s*:?\s*)(\d{2,4})(?:[,\.](\d{2}))?/i) ||
-                       t.match(/\b(\d{2,4}),(\d{2})\b/) ||
-                       t.match(/\b(\d{2,4})\s*reais\b/i);
-        if (mValor) {
-          const reais = parseInt(mValor[1].replace(/\./g, ''), 10);
-          const centavos = mValor[2] ? parseInt(mValor[2], 10) : 0;
-          valorCentavosEncontrado = reais * 100 + centavos;
-          trechoEncontrado = `Comprovante Pix de R$ ${reais},${String(centavos).padStart(2, '0')}`;
-          break;
-        }
-      }
-
-      if (!valorCentavosEncontrado && valorPadraoCentavos && valorPadraoCentavos > 0) {
-        valorCentavosEncontrado = valorPadraoCentavos;
-        const reais = Math.floor(valorPadraoCentavos / 100);
-        const centavos = valorPadraoCentavos % 100;
-        trechoEncontrado = `Comprovante Pix de R$ ${reais},${String(centavos).padStart(2, '0')} (valor padrão)`;
-      }
-
-      if (valorCentavosEncontrado && valorCentavosEncontrado > 0) {
-        const reais = Math.floor(valorCentavosEncontrado / 100);
-        const centavos = valorCentavosEncontrado % 100;
-        return {
-          valorCentavos: valorCentavosEncontrado,
-          valorFormatado: `${reais},${String(centavos).padStart(2, '0')}`,
-          trecho: trechoEncontrado
-        };
-      }
-    }
-  }
-
-  return null;
+  return extrairFallbackSemVlm(mensagensAnteriores, valorPadraoCentavos);
 }
 
-interface ContextoConsultaDetectado {
-  nomePaciente: string;
-  dataConsultaFormatada: string;
-  dataConsultaIso: string;
-  mensagemId?: string;
-  trecho?: string;
-}
-
-function extrairContextoConsultaAnterior(
+function extrairFallbackSemVlm(
   mensagensAnteriores: MensagemContextoConversa[],
-  msgPagamento: MensagemContextoConversa,
-  nomeCadastro: string | null | undefined,
-  agora: Date
-): ContextoConsultaDetectado {
-  let nomeEncontrado = limparNomeContato(nomeCadastro);
-  let dataConsultaFormatada = '';
-  let dataConsultaIso = '';
-  let mensagemId: string | undefined;
-  let trecho: string | undefined;
+  valorPadraoCentavos?: number
+): DadosPagamentoDetectados | null {
+  const houveContexto = mensagensAnteriores.some(
+    m => m.direcao === 'enviada' && /\b(?:pix|comprovante|pagamento|consulta|confirmando|hor[aá]rio)\b/i.test(m.conteudo || '')
+  );
+  if (!houveContexto) return null;
 
-  // Percorre as mensagens anteriores de trás para frente (da mais recente para a mais antiga)
-  for (let i = mensagensAnteriores.length - 1; i >= 0; i--) {
-    const msg = mensagensAnteriores[i];
-    const texto = msg.conteudo || '';
+  const valorDoChat = buscarValorNasMensagensAnteriores(mensagensAnteriores);
+  const valorFinal = valorDoChat ?? (valorPadraoCentavos && valorPadraoCentavos > 0 ? valorPadraoCentavos : undefined);
+  if (!valorFinal || valorFinal <= 0) return null;
 
-    // Extrair nome quando a mensagem enviada pela clínica se dirige ao paciente pelo nome
-    if (!nomeEncontrado && msg.direcao === 'enviada') {
-      const matchSaudacaoNome = texto.match(/(?:bom\s+dia|boa\s+tarde|boa\s+noite|ol[áa]|oi),?\s*\*?([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\*?(?:,|\s+tudo\s+bem|\s+como\s+vai|\.|\!|\?|\s+voc[êe]|\s+pode|\s+obrigad|\s+estamos|\n|$)/i);
-      if (matchSaudacaoNome && matchSaudacaoNome[1].length >= 3) {
-        const cand = matchSaudacaoNome[1].trim();
-        if (!ehTermoInvalidoNome(cand)) {
-          nomeEncontrado = cand;
-        }
-      }
-    }
-
-    // Extrair data da consulta / agendamento
-    if (!dataConsultaFormatada) {
-      // Padrões comuns: "agendado para, *13/10/2026*", "consulta de 09/10/26", "retorno dia 08/10"
-      const matchAgendamento = texto.match(/(?:agendad[oa]|procedimento|consulta|atendimento|sess[aã]o|retorno)\s*(?:para|de|em|dia)?,?\s*\*?(\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)\*?/i);
-      if (matchAgendamento) {
-        const extraido = extrairDatasConsulta(matchAgendamento[1], agora);
-        if (extraido.encontrou && extraido.datas.length > 0) {
-          const d = extraido.datas[0];
-          dataConsultaFormatada = formatarDataBr(d);
-          dataConsultaIso = d.toISOString().slice(0, 10);
-          mensagemId = msg.id;
-          trecho = matchAgendamento[0];
-        }
-      } else {
-        // Tentar qualquer data explícita ou relativa na mensagem se contiver termos clínicos
-        if (/(?:agendad|hor[áa]rio|consulta|procedimento|retorno|m[ée]dic|dr)/i.test(texto)) {
-          const extraido = extrairDatasConsulta(texto, agora);
-          if (extraido.encontrou && extraido.datas.length > 0) {
-            const d = extraido.datas[0];
-            dataConsultaFormatada = formatarDataBr(d);
-            dataConsultaIso = d.toISOString().slice(0, 10);
-            mensagemId = msg.id;
-            trecho = texto.slice(0, 100);
-          }
-        }
-      }
-    }
-
-    if (nomeEncontrado && dataConsultaFormatada) break;
-  }
-
-  // Fallback para a data do próprio pagamento ou data da mensagem
-  if (!dataConsultaFormatada) {
-    const dataMsg = msgPagamento.criadoEm instanceof Date ? msgPagamento.criadoEm : new Date(msgPagamento.criadoEm);
-    dataConsultaFormatada = formatarDataBr(dataMsg);
-    dataConsultaIso = dataMsg.toISOString().slice(0, 10);
-  }
-
+  const valorFormatado = formatarCentavosBr(valorFinal);
+  const sufixo = valorDoChat ? '' : ' (valor padrão)';
   return {
-    nomePaciente: nomeEncontrado || 'Paciente',
-    dataConsultaFormatada,
-    dataConsultaIso,
-    mensagemId,
-    trecho
+    valorCentavos: valorFinal,
+    valorFormatado,
+    trecho: `Comprovante Pix de R$ ${valorFormatado}${sufixo}`
   };
 }
 
-function formatarDataBr(d: Date): string {
-  const dia = String(d.getDate()).padStart(2, '0');
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  const ano = d.getFullYear();
-  return `${dia}/${mes}/${ano}`;
+function buscarValorNasMensagensAnteriores(mensagensAnteriores: MensagemContextoConversa[]): number | undefined {
+  for (let j = mensagensAnteriores.length - 1; j >= 0; j--) {
+    const t = mensagensAnteriores[j].conteudo || '';
+    const mValor =
+      t.match(/(?:r\$\s*|valor(?:\s*da\s*consulta)?\s*(?:é|e|de)?\s*:?\s*)(\d{2,4})(?:[,\.](\d{2}))?/i) ||
+      t.match(/\b(\d{2,4}),(\d{2})\b/) ||
+      t.match(/\b(\d{2,4})\s*reais\b/i);
+    if (mValor) {
+      const reais = parseInt(mValor[1].replace(/\./g, ''), 10);
+      const centavos = mValor[2] ? parseInt(mValor[2], 10) : 0;
+      return reais * 100 + centavos;
+    }
+  }
+  return undefined;
+}
+
+function extrairMetadadosGlobaisConversa(ordenadas: MensagemContextoConversa[]): {
+  cpfConversa: string | null;
+  nomeTomadorNotaAnterior: string | null;
+  quantidadeNotasEnviadas: number;
+} {
+  let cpfMidia: string | null = null;
+  let nomeTomadorNotaAnterior: string | null = null;
+  let quantidadeNotasEnviadas = 0;
+
+  for (const m of ordenadas) {
+    if (ehMensagemDeNotaFiscalEnviada(m)) {
+      quantidadeNotasEnviadas += 1;
+    }
+    const comp = m.payloadBruto?.comprovante as Record<string, any> | undefined;
+    if (comp) {
+      const cpfCand = limparCpfValido(comp.tomadorCpf || comp.pagadorCpf);
+      if (cpfCand && !cpfMidia) cpfMidia = cpfCand;
+      const nomeCand = limparNomeContato(comp.tomadorNome);
+      if (nomeCand && !nomeTomadorNotaAnterior) nomeTomadorNotaAnterior = nomeCand;
+    }
+  }
+
+  const cpfTexto = extrairCpfConversaSegura(
+    ordenadas.map(m => ({ direcao: m.direcao, texto: m.conteudo }))
+  );
+
+  return {
+    cpfConversa: cpfMidia || cpfTexto,
+    nomeTomadorNotaAnterior,
+    quantidadeNotasEnviadas
+  };
+}
+
+function extrairNomePacienteHistorico(
+  mensagensAnteriores: MensagemContextoConversa[],
+  nomeCadastro?: string | null
+): string {
+  const doCadastro = limparNomeContato(nomeCadastro);
+  if (doCadastro) return doCadastro;
+
+  for (let i = mensagensAnteriores.length - 1; i >= 0; i--) {
+    const msg = mensagensAnteriores[i];
+    if (msg.direcao !== 'enviada' || !msg.conteudo) continue;
+    const match = msg.conteudo.match(
+      /(?:bom\s+dia|boa\s+tarde|boa\s+noite|ol[áa]|oi),?\s*\*?([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\*?(?:,|\s+tudo\s+bem|\s+como\s+vai|\.|\!|\?|\s+voc[êe]|\s+pode|\s+obrigad|\s+estamos|\n|$)/i
+    );
+    if (match && match[1].length >= 3) {
+      const cand = match[1].trim();
+      if (!ehTermoInvalidoNome(cand)) return cand;
+    }
+  }
+  return 'Paciente';
+}
+
+export function foiFaturadoPosteriormente(
+  msgPagamento: MensagemContextoConversa,
+  mensagensPosteriores: MensagemContextoConversa[]
+): boolean {
+  if (!mensagensPosteriores || mensagensPosteriores.length === 0) return false;
+
+  const dataPagamento = msgPagamento.criadoEm instanceof Date
+    ? msgPagamento.criadoEm.getTime()
+    : new Date(msgPagamento.criadoEm).getTime();
+
+  const LIMITE_DIAS_FATURAMENTO_MS = 45 * 24 * 60 * 60 * 1000;
+
+  for (const msg of mensagensPosteriores) {
+    const dataMsg = msg.criadoEm instanceof Date ? msg.criadoEm.getTime() : new Date(msg.criadoEm).getTime();
+    if (dataMsg - dataPagamento > LIMITE_DIAS_FATURAMENTO_MS) break;
+
+    if (ehNovoCicloDePagamentoDoPaciente(msgPagamento, msg, dataPagamento, dataMsg)) {
+      break;
+    }
+
+    if (ehMensagemDeNotaFiscalEnviada(msg)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function ehNovoCicloDePagamentoDoPaciente(
+  msgPagamentoOriginal: MensagemContextoConversa,
+  msgPosterior: MensagemContextoConversa,
+  tsOriginal: number,
+  tsPosterior: number
+): boolean {
+  if (msgPosterior.direcao !== 'recebida') return false;
+
+  const compPosterior = msgPosterior.payloadBruto?.comprovante as Record<string, any> | undefined;
+  if (compPosterior && compPosterior.ehComprovante === false) {
+    return false;
+  }
+
+  const txOriginal = (msgPagamentoOriginal.payloadBruto?.comprovante as any)?.idTransacao;
+  const txPosterior = compPosterior?.idTransacao;
+  if (txOriginal && txPosterior && txOriginal !== txPosterior) {
+    return true;
+  }
+
+  const intervaloMinimoNovoPagamentoMs = 6 * 60 * 60 * 1000; // 6 horas
+  if (tsPosterior - tsOriginal < intervaloMinimoNovoPagamentoMs) {
+    return false;
+  }
+
+  if (compPosterior?.ehComprovante === true) return true;
+  if (msgPosterior.tipo === 'imagem' || msgPosterior.tipo === 'documento') return true;
+
+  return false;
+}
+
+function ehMensagemDeNotaFiscalEnviada(msg: MensagemContextoConversa): boolean {
+  if (msg.direcao !== 'enviada') return false;
+  const texto = (msg.conteudo || '').trim();
+  if (padraoNotaFiscalTexto(texto)) return true;
+
+  if (msg.tipo === 'documento') {
+    const comp = msg.payloadBruto?.comprovante as Record<string, any> | undefined;
+    if (comp?.ehNotaFiscal === true) return true;
+
+    const payloadMsg = (msg.payloadBruto as any)?.message;
+    const payloadDoc =
+      payloadMsg?.documentMessage ||
+      payloadMsg?.documentWithCaptionMessage?.message?.documentMessage;
+    const nomeArquivo = (payloadDoc?.fileName || payloadDoc?.title || '').trim();
+    const legenda = (payloadDoc?.caption || '').trim();
+
+    return padraoNotaFiscalDocumento(nomeArquivo, legenda);
+  }
+  return false;
+}
+
+function padraoNotaFiscalTexto(texto: string): boolean {
+  if (!texto) return false;
+  return /(?:(?:sua|a|as|esta)\s+nota(?:s)?(?:\s+fiscal|\s+fiscais)?|sua\s+nf|segue\s+(?:sua\s+|a\s+)?(?:nota|nf)|nota\s+fiscal|danfse|nfse|nfs-e)/i.test(
+    texto
+  );
+}
+
+function padraoNotaFiscalDocumento(nomeArquivo: string, legenda: string): boolean {
+  const combinado = `${nomeArquivo} ${legenda}`.trim();
+  if (/\b(?:receita|receitu[aá]rio|atestado|exame|laudo|prescri[cç][aã]o|encaminhamento|relat[oó]rio|orienta[cç][oõ]es|pedido|guia)\b/i.test(combinado)) {
+    return false;
+  }
+  if (padraoNotaFiscalTexto(nomeArquivo) || padraoNotaFiscalTexto(legenda)) return true;
+  if (/\b\d{40,50}\b/.test(nomeArquivo)) return true;
+  if (/\.pdf$/i.test(nomeArquivo)) return true;
+  return false;
+}
+
+function formatarCentavosBr(valorCentavos: number): string {
+  const reais = Math.floor(valorCentavos / 100);
+  const centavos = valorCentavos % 100;
+  return `${reais},${String(centavos).padStart(2, '0')}`;
 }
 
 function limparTelefone(tel: string): string {
   const limpo = tel.replace(/\D/g, '');
-  if (limpo.startsWith('55') && limpo.length >= 12) {
-    return limpo.slice(2);
-  }
-  return limpo;
+  return limpo.startsWith('55') && limpo.length >= 12 ? limpo.slice(2) : limpo;
+}
+
+function limparCpfValido(cpf?: unknown): string | null {
+  if (typeof cpf !== 'string') return null;
+  const digitos = cpf.replace(/\D/g, '');
+  return digitos.length === 11 && validarCpf(digitos) ? digitos : null;
 }
 
 function limparNomeContato(nome?: string | null): string {
@@ -346,95 +388,13 @@ const TERMOS_INVALIDOS_NOME = new Set([
 ]);
 
 function ehTermoInvalidoNome(termo: string): boolean {
-  const norm = termo
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .trim()
-    .toLowerCase();
+  const norm = termo.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
   if (TERMOS_INVALIDOS_NOME.has(norm)) return true;
   const partes = norm.split(/\s+/);
   if (partes.length === 1 && TERMOS_INVALIDOS_NOME.has(partes[0])) return true;
-  if (partes.some(p => ['tudo', 'bem', 'bom', 'podemos', 'confirmar', 'confirmando', 'dia', 'tarde', 'noite', 'ola', 'oi'].includes(p))) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Verifica se após a mensagem de pagamento há evidência de que a nota fiscal
- * já foi emitida e enviada ao paciente (ex: envio de documento PDF de NFS-e ou
- * mensagem dizendo "sua nota fiscal", "segue sua nota", etc.).
- */
-export function foiFaturadoPosteriormente(
-  msgPagamento: MensagemContextoConversa,
-  mensagensPosteriores: MensagemContextoConversa[]
-): boolean {
-  if (!mensagensPosteriores || mensagensPosteriores.length === 0) return false;
-
-  const dataPagamento = msgPagamento.criadoEm instanceof Date
-    ? msgPagamento.criadoEm.getTime()
-    : new Date(msgPagamento.criadoEm).getTime();
-
-  const LIMITE_DIAS_FATURAMENTO_MS = 45 * 24 * 60 * 60 * 1000;
-
-  for (const msg of mensagensPosteriores) {
-    const dataMsg = msg.criadoEm instanceof Date
-      ? msg.criadoEm.getTime()
-      : new Date(msg.criadoEm).getTime();
-
-    if (dataMsg - dataPagamento > LIMITE_DIAS_FATURAMENTO_MS) break;
-
-    // Interrompe a janela se houver um novo envio de comprovante/pagamento do paciente
-    if (
-      msg.direcao === 'recebida' &&
-      (msg.tipo === 'imagem' || /\b(?:comprovante|pago|pix|transferencia)\b/i.test(msg.conteudo || ''))
-    ) {
-      break;
-    }
-
-    if (msg.direcao === 'enviada') {
-      const texto = (msg.conteudo || '').trim();
-
-      // 1. Texto da clínica menciona explicitamente o envio de nota fiscal
-      if (padraoNotaFiscalTexto(texto)) {
-        return true;
-      }
-
-      // 2. Envio de documento (PDF)
-      if (msg.tipo === 'documento') {
-        const payloadDoc = (msg.payloadBruto as any)?.message?.documentMessage;
-        const nomeArquivo = (payloadDoc?.fileName || payloadDoc?.title || '').trim();
-        const legenda = (payloadDoc?.caption || '').trim();
-
-        if (padraoNotaFiscalDocumento(nomeArquivo, legenda)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
-function padraoNotaFiscalTexto(texto: string): boolean {
-  if (!texto) return false;
-  return /(?:(?:sua|a|as|esta)\s+nota(?:s)?(?:\s+fiscal|\s+fiscais)?|sua\s+nf|segue\s+(?:sua\s+|a\s+)?(?:nota|nf)|nota\s+fiscal|danfse|nfse)/i.test(
-    texto
+  return partes.some(p =>
+    ['tudo', 'bem', 'bom', 'podemos', 'confirmar', 'confirmando', 'dia', 'tarde', 'noite', 'ola', 'oi'].includes(p)
   );
 }
 
-function padraoNotaFiscalDocumento(nomeArquivo: string, legenda: string): boolean {
-  if (padraoNotaFiscalTexto(nomeArquivo) || padraoNotaFiscalTexto(legenda)) {
-    return true;
-  }
-  // Chave de acesso de 40 a 50 dígitos (padrão nacional de NFS-e / NF-e)
-  if (/\b\d{40,50}\b/.test(nomeArquivo)) {
-    return true;
-  }
-  // Se for qualquer arquivo PDF enviado pela clínica após o pagamento
-  if (/\.pdf$/i.test(nomeArquivo)) {
-    return true;
-  }
-  return false;
-}
 

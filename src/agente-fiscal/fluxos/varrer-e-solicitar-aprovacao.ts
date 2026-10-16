@@ -5,21 +5,24 @@
  * e solicita aprovação ao médico no WhatsApp em linguagem calma e natural.
  */
 
-import { correlacionarConsultaPagamento, type CandidatoNotaFiscal } from '../regras/correlacionar-consulta-pagamento.js';
+import { correlacionarConsultaPagamento, type CandidatoNotaFiscal, type MensagemContextoConversa } from '../regras/correlacionar-consulta-pagamento.js';
 import { redigirSolicitacaoAprovacao } from '../regras/redigir-solicitacao-aprovacao.js';
 import type { PostgresCandidatosNotaRepositorio } from '../io/postgres-candidatos-nota-repositorio.js';
 import type { EnviarMensagemPaciente } from '../../whatsapp/enviar-mensagem-paciente.js';
 import type { PaligemmaComprovanteClient } from '../../io/nvidia/paligemma-comprovante-client.js';
+import type { GeminiComprovanteClient } from '../../candidatos/io/gemini-comprovante-client.js';
 import type { EvolutionApiClient } from '../../io/evolution/evolution-api-client.js';
 
 export interface VarrerESolicitarAprovacaoDeps {
   repositorio: PostgresCandidatosNotaRepositorio;
   enviarMensagem: EnviarMensagemPaciente;
   instanciaNome: string;
+  instanciaClinicaNome?: string;
   dataCorte?: Date;
   telefoneDestinoSobrescrito?: string; // Para testes manuais onde o usuário quer receber no número oficial do Noto
   ehContinuacao?: boolean;
   comprovanteClient?: PaligemmaComprovanteClient;
+  geminiClient?: GeminiComprovanteClient;
   evolutionClient?: EvolutionApiClient;
 }
 
@@ -64,17 +67,14 @@ export async function varrerESolicitarAprovacao(
     return { ok: false, motivo: 'telefone_medico_ausente' };
   }
 
-  // Não solicita aprovação de notas se o médico ainda tiver pendências fiscais na conta
   if (dadosMedico.fiscalConfirmado === false || dadosMedico.parametrosProntos === false) {
     return { ok: false, motivo: 'parametros_fiscais_pendentes' };
   }
 
-  // Não solicita aprovação de notas se o médico ainda não confirmou seus dados profissionais
   if (dadosMedico.dadosProfissionaisConfirmados === false) {
     return { ok: false, motivo: 'dados_profissionais_pendentes' };
   }
 
-  // Se já existir uma solicitação ativa aguardando aprovação ou CPF pelo médico, não atropela
   if (!deps.ehContinuacao) {
     const aguardandoCpf = deps.repositorio.obterAguardandoCpfMedico
       ? await deps.repositorio.obterAguardandoCpfMedico(medicoId)
@@ -99,11 +99,9 @@ export async function varrerESolicitarAprovacao(
     }
   }
 
-  // Janela padrão de faturamento de 15 dias para o gatilho de emissão
   const DIAS_JANELA_FATURAMENTO = 15;
   const dataCortePagamento = deps.dataCorte || new Date(Date.now() - DIAS_JANELA_FATURAMENTO * 24 * 60 * 60 * 1000);
 
-  // 1. Buscar histórico de conversas ativas no período
   const conversas = await deps.repositorio.buscarConversasComHistorico(medicoId, dataCortePagamento);
   if (conversas.length === 0) {
     return {
@@ -113,42 +111,11 @@ export async function varrerESolicitarAprovacao(
     };
   }
 
-  // 2. Analisar comprovantes pendentes via Visão Computacional e correlacionar consultas e pagamentos
   let candidatoEleito: CandidatoNotaFiscal | null = null;
+  const instanciaMidia = deps.instanciaClinicaNome || deps.instanciaNome;
 
   for (const conv of conversas) {
-    if (deps.comprovanteClient && deps.evolutionClient) {
-      for (const m of conv.mensagens) {
-        if (
-          m.direcao === 'recebida' &&
-          (m.tipo === 'imagem' || m.tipo === 'documento') &&
-          !m.payloadBruto?.comprovante
-        ) {
-          let b64 =
-            (m.payloadBruto as any)?.message?.imageMessage?.base64 ||
-            (m.payloadBruto as any)?.base64;
-          if (!b64) {
-            const media = await deps.evolutionClient.obterBase64MensagemMidia(deps.instanciaNome, m.id);
-            b64 = media?.base64;
-          }
-          if (b64) {
-            try {
-              const resComp = await deps.comprovanteClient.analisarImagem(b64);
-              if (m.payloadBruto) {
-                m.payloadBruto.comprovante = resComp;
-              } else {
-                m.payloadBruto = { comprovante: resComp };
-              }
-              if (deps.repositorio.salvarAnaliseComprovante) {
-                await deps.repositorio.salvarAnaliseComprovante(m.id, resComp);
-              }
-            } catch (e) {
-              console.warn('[varrerESolicitarAprovacao] Falha ao analisar comprovante:', e);
-            }
-          }
-        }
-      }
-    }
+    await enriquecerMidiasConversa(conv.mensagens, instanciaMidia, deps);
 
     const candidatos = correlacionarConsultaPagamento(
       conv.mensagens,
@@ -160,7 +127,6 @@ export async function varrerESolicitarAprovacao(
     );
 
     for (const cand of candidatos) {
-      // 3. Verificar se já possui nota emitida ou pendente
       const jaTemNota = await deps.repositorio.verificarSeJaPossuiNota(
         medicoId,
         cand.pacienteTelefone,
@@ -168,6 +134,7 @@ export async function varrerESolicitarAprovacao(
       );
 
       if (!jaTemNota) {
+        await resolverAmbiguidadeDataSeNecessario(cand, conv.mensagens, deps.geminiClient);
         candidatoEleito = cand;
         break;
       }
@@ -175,6 +142,7 @@ export async function varrerESolicitarAprovacao(
 
     if (candidatoEleito) break;
   }
+
 
   if (!candidatoEleito) {
     return {
@@ -220,3 +188,79 @@ export async function varrerESolicitarAprovacao(
     destinatarioTelefone: telefoneDestino
   };
 }
+
+async function enriquecerMidiasConversa(
+  mensagens: MensagemContextoConversa[],
+  instanciaMidia: string,
+  deps: VarrerESolicitarAprovacaoDeps
+): Promise<void> {
+  if (!deps.evolutionClient || (!deps.geminiClient && !deps.comprovanteClient)) return;
+  let pdfsEnviadosAnalisados = 0;
+
+  for (const m of mensagens) {
+    if (m.tipo !== 'imagem' && m.tipo !== 'documento') continue;
+    const pb = m.payloadBruto as Record<string, any> | undefined;
+    if (pb?.comprovante !== undefined) continue;
+    if (m.direcao === 'enviada') {
+      if (m.tipo !== 'documento' || pdfsEnviadosAnalisados >= 2) continue;
+      if (! deps.geminiClient) continue;
+      pdfsEnviadosAnalisados += 1;
+    }
+    await analisarMidiaMensagem(m, instanciaMidia, deps);
+  }
+}
+
+async function analisarMidiaMensagem(
+  m: MensagemContextoConversa,
+  instanciaMidia: string,
+  deps: VarrerESolicitarAprovacaoDeps
+): Promise<void> {
+  const pb = (m.payloadBruto || {}) as Record<string, any>;
+  const keyId = pb.key?.id;
+  if (!keyId || !deps.evolutionClient) return;
+  try {
+    const midia = await deps.evolutionClient.obterBase64MensagemMidia(instanciaMidia, keyId);
+    if (!midia?.base64) return;
+    const mime = midia.mimetype || (m.tipo === 'documento' ? 'application/pdf' : 'image/jpeg');
+    const analise = deps.geminiClient
+      ? await deps.geminiClient.analisarMidia({ base64: midia.base64, mimeType: mime })
+      : await deps.comprovanteClient!.analisarImagem(midia.base64, mime === 'image/png' ? 'image/png' : 'image/jpeg');
+    m.payloadBruto = { ...pb, comprovante: analise };
+    if (deps.repositorio.salvarAnaliseComprovante) {
+      await deps.repositorio.salvarAnaliseComprovante(m.id, analise);
+    }
+  } catch {
+    // Falha transitória de rede/VLM não interrompe a varredura
+  }
+}
+
+async function resolverAmbiguidadeDataSeNecessario(
+  cand: CandidatoNotaFiscal,
+  mensagens: MensagemContextoConversa[],
+  geminiClient?: GeminiComprovanteClient
+): Promise<void> {
+  if (!cand.dataAmbigua || !geminiClient) return;
+  try {
+    const dataPagamentoIso = cand.dataConsultaIso.slice(0, 10);
+    const historico = mensagens
+      .filter(m => Boolean(m.conteudo?.trim()))
+      .slice(-20)
+      .map(m => ({
+        direcao: m.direcao,
+        texto: m.conteudo!.trim(),
+        criadoEmIso: (m.criadoEm instanceof Date ? m.criadoEm : new Date(m.criadoEm)).toISOString()
+      }));
+    const inferida = await geminiClient.inferirDataConsultaConversa({
+      mensagens: historico,
+      dataPagamentoIso
+    });
+    if (inferida) {
+      cand.dataConsulta = inferida.dataConsultaBr;
+      cand.dataConsultaIso = new Date(`${inferida.dataConsultaIso}T12:00:00Z`).toISOString();
+      cand.dataAmbigua = false;
+    }
+  } catch {
+    // Mantém heurística determinística em caso de erro
+  }
+}
+

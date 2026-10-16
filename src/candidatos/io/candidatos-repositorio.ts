@@ -23,6 +23,15 @@ export interface MedicoDadosBasicos {
   telefone: string | null;
 }
 
+export interface MensagemConversaRegistro {
+  id: string;
+  direcao: 'enviada' | 'recebida';
+  tipo: 'texto' | 'imagem' | 'documento' | 'outro';
+  conteudo?: string | null;
+  criadoEm: Date;
+  payloadBruto?: Record<string, unknown> | null;
+}
+
 export interface CandidatosRepositorio {
   salvarCandidato(params: CriarCandidatoParams): Promise<CandidatoEmissao>;
   buscarCandidatoPorMensagem(medicoId: string, mensagemId: string): Promise<CandidatoEmissao | null>;
@@ -36,6 +45,7 @@ export interface CandidatosRepositorio {
   marcarNotificado(id: string): Promise<void>;
   buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteDadosBasicos | null>;
   salvarCpfPaciente(medicoId: string, pacienteId: string, cpfLimpo: string): Promise<void>;
+  buscarMensagensConversa?(conversaId: string): Promise<MensagemConversaRegistro[]>;
   jaExisteFaturamento(
     medicoId: string,
     params: {
@@ -47,3 +57,4 @@ export interface CandidatosRepositorio {
   ): Promise<boolean>;
   obterDadosMedico(medicoId: string): Promise<MedicoDadosBasicos | null>;
 }
+

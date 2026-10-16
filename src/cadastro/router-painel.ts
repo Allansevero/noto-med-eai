@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 import type { PostgresCadastro } from './postgres-cadastro.js';
 import { aprovacaoPainelSchema, pesquisaPainelSchema, ErroRevisaoCadastro } from './revisao-painel.js';
 
-export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadastro;autenticar:(token:string)=>Promise<string|null>;aoAprovarProfissional?:(medicoId:string)=>void}){
+export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadastro;autenticar:(token:string)=>Promise<string|null>;aoAprovarProfissional?:(medicoId:string)=>void;processarPendentes?:()=>Promise<void>}){
  const router=Router();
  router.use(async(req,res,next)=>{
   res.setHeader('Cache-Control','no-store');
@@ -18,11 +18,26 @@ export function criarRouterCadastroPainel(deps:{pool:pg.Pool;repo:PostgresCadast
   }catch{res.status(503).json({ok:false,detalhe:'Não foi possível verificar a sessão.'});}
  });
  router.get('/',async(_req,res)=>{
-  try{res.json({ok:true,revisao:await deps.repo.revisaoPainel(res.locals.medicoId)});}
+  try{
+   let revisao=await deps.repo.revisaoPainel(res.locals.medicoId);
+   if(deps.processarPendentes && (revisao.estado==='pendente' || revisao.pesquisaCrm==='indisponivel' || revisao.pesquisaCrm==='pendente')){
+    await deps.processarPendentes().catch(()=>{});
+    revisao=await deps.repo.revisaoPainel(res.locals.medicoId);
+   }
+   res.json({ok:true,revisao});
+  }
   catch{res.status(503).json({ok:false,detalhe:'Não foi possível consultar seus dados profissionais.'});}
  });
  router.post('/pesquisar',async(req,res)=>{
-  try{const dados=pesquisaPainelSchema.parse(req.body);res.json({ok:true,revisao:await deps.repo.pesquisarPainel(res.locals.medicoId,dados)});}
+  try{
+   const dados=pesquisaPainelSchema.parse(req.body);
+   let revisao=await deps.repo.pesquisarPainel(res.locals.medicoId,dados);
+   if(deps.processarPendentes){
+    await deps.processarPendentes().catch(()=>{});
+    revisao=await deps.repo.revisaoPainel(res.locals.medicoId);
+   }
+   res.json({ok:true,revisao});
+  }
   catch(e){
    if(e instanceof ZodError){res.status(400).json({ok:false,detalhe:e.issues[0]?.message});return;}
    if(e instanceof ErroRevisaoCadastro){res.status(e.status).json({ok:false,detalhe:e.message});return;}
