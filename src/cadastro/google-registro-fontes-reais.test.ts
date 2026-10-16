@@ -19,7 +19,7 @@ test('consulta igual à pesquisa fornecida e aceita os formatos reais de CRM sem
   let pesquisas = 0;
   const cliente = new GoogleConsultaRegistro({ serperApiKey: 'fixture', nvidiaApiKey: 'fixture',
     requisitar: (async (_url, init) => {
-      pesquisas++;assert.deepEqual(JSON.parse(String(init?.body)), { q: 'CRM Bruna Botter', gl: 'br', hl: 'pt-br', num: 10 });
+      pesquisas++;assert.deepEqual(JSON.parse(String(init?.body)), { q: 'CRM Bruna Botter', gl: 'br', hl: 'pt-br' });
       return Response.json({ organic });
     }) as typeof fetch,
     completar: async () => JSON.stringify({ registros: [1, 2, 3].map(fonte => ({ nomeCompleto: 'Bruna Botter', crm: '30858', uf: 'SC',

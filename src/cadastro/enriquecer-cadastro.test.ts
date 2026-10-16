@@ -63,3 +63,19 @@ test('pesquisa explícita indisponível mantém dados confirmados e código de e
  assert.equal(r.estado,'retentar');assert.equal(r.dados.pesquisaProfissional?.codigo,'SERPER_HTTP_429');
  assert.equal(r.crm,undefined);assert.equal(r.rqe,undefined);
 });
+
+test('créditos Serper esgotados permitem revisão manual sem retentativa automática',async()=>{
+ let chamadas=0;const diagnostico=[{etapa:'serper_http' as const,status:400,motivo:'CREDITOS_INSUFICIENTES' as const}];
+ const fonte={buscar:async()=>{chamadas++;return{estado:'indisponivel' as const,codigo:'SERPER_HTTP_400',diagnostico};}};
+ const entrada={documento:null,perfil:{nome:'Maria Silva',nomeConfirmado:true,crm:null},dados:{nomeConfirmado:'Maria Silva'}};
+ const r=await enriquecerCadastro(entrada,empresa,fonte);assert.equal(r.estado,'aguardando_confirmacao');
+ assert.equal(r.dados.pendencia?.tipo,'crm');assert.equal(chamadas,1);
+ const repetida=await enriquecerCadastro({...entrada,dados:r.dados},empresa,fonte);
+ assert.equal(repetida.estado,'aguardando_confirmacao');assert.equal(chamadas,1);
+});
+test('falta de créditos antes de confirmar responsável também mantém pesquisa em cache',async()=>{
+ let chamadas=0;const fonte={buscar:async()=>{chamadas++;return{estado:'indisponivel' as const,codigo:'SERPER_HTTP_400',diagnostico:[{etapa:'serper_http' as const,status:400,motivo:'CREDITOS_INSUFICIENTES' as const}]};}};
+ const entrada={documento:'11222333000181',perfil:{nome:'Cadastro provisório',nomeConfirmado:false,crm:null},dados:{}};
+ const r=await enriquecerCadastro(entrada,empresa,fonte);assert.equal(r.estado,'aguardando_confirmacao');
+ await enriquecerCadastro({...entrada,dados:r.dados},empresa,fonte);assert.equal(chamadas,1);
+});

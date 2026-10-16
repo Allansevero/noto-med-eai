@@ -1,0 +1,20 @@
+# Desenvolvimento local. No Easypanel, siga docs/openserp-easypanel.md.
+services:
+  openserp:
+    image: karust/openserp:0.8.12
+    init: true
+    restart: unless-stopped
+    command: ["serve", "-a", "0.0.0.0", "-p", "7000"]
+    shm_size: 2gb
+    ports:
+      - "127.0.0.1:7000:7000"
+    environment:
+      OPENSERP_SERVER_INSECURE: "false"
+      OPENSERP_APP_MAX_PROCESSES: "2"
+      OPENSERP_APP_TIMEOUT: "15"
+      OPENSERP_RESILIENCE_MAX_RETRIES: "1"
+      OPENSERP_RESILIENCE_ALLOW_ENDPOINT_FALLBACK: "false"
+      OPENSERP_PROXIES_ALLOW_REQUEST_PROXY_URL: "false"
+      OPENSERP_EXTRACT_ENABLED: "false"
+      OPENSERP_GOOGLE_RATE_REQUESTS: "6"
+      OPENSERP_GOOGLE_RATE_BURST: "1"

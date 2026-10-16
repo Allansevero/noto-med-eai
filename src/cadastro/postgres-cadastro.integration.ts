@@ -13,7 +13,7 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
  const admin=new pg.Pool({connectionString:url});const schema='cadastro_'+Date.now();let pool:pg.Pool|undefined;
  try{
   await admin.query(`create schema ${schema}`);pool=new pg.Pool({connectionString:url,options:`-c search_path=${schema},public`});
-  await pool.query(`create table medicos(id uuid primary key,nome_completo text,crm text,usuario_id uuid,atualizado_em timestamptz);
+  await pool.query(`create table medicos(id uuid primary key,nome_completo text,crm text,usuario_id uuid,atualizado_em timestamptz,rqe text);
    create table usuarios(id uuid primary key,nome text,telefone text,ativo boolean);
    create table medico_certificados(id uuid primary key,medico_id uuid references medicos(id),status text,criado_em timestamptz default now());
    create table noto_assistente_sessoes(medico_id uuid,estado jsonb);
@@ -21,7 +21,7 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
   const sql=await readFile(new URL('../../scripts/migrations/20261009-cadastro-certificado.sql',import.meta.url),'utf8');await pool.query(sql);await pool.query(sql);
   const repo=new PostgresCadastro(pool);const mid=randomUUID(),uid=randomUUID(),cid=randomUUID();
   await pool.query('insert into usuarios values($1,$2,$3,true)',[uid,'Emmy','5551999999999']);
-  await pool.query("insert into medicos values($1,'Médico X',null,$2,now())",[mid,uid]);
+  await pool.query("insert into medicos(id,nome_completo,crm,usuario_id,atualizado_em) values($1,'Médico X',null,$2,now())",[mid,uid]);
   await pool.query("insert into medico_certificados(id,medico_id,status) values($1,$2,'ativo')",[cid,mid]);
   await t.test('agendamento duplicado e reserva concorrente',async()=>{
    await Promise.all([repo.agendar({medicoId:mid,certificadoId:cid,documentoTitular:'11222333000181'}),repo.agendar({medicoId:mid,certificadoId:cid,documentoTitular:'11222333000181'})]);
@@ -103,9 +103,8 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await repo.agendarAtivos();await repo.agendarAtivos();assert.equal((await pool!.query('select * from cadastro_certificado_trabalhos where certificado_id=$1',[novo])).rows.length,1);
    const r=(await repo.reservar())!;assert.equal(r.perfil.nomeConfirmado,true);
   });
-  await t.test('aprovação exige WhatsApp conectado, valida versão e preserva secretária',async()=>{
+  await t.test('aprovação antecede WhatsApp, valida versão e preserva secretária',async()=>{
    const revisar=(repo as any).revisaoPainel;assert.equal(typeof revisar,'function');
-   await pool!.query('alter table medicos add column rqe text');
    const medico=randomUUID(),usuario=randomUUID(),certificado=randomUUID();
    await pool!.query('insert into usuarios values($1,$2,$3,true)',[usuario,'Secretária Emmy','5551999998888']);
    await pool!.query("insert into medicos(id,nome_completo,usuario_id,atualizado_em) values($1,'Médico 6133',$2,now())",[medico,usuario]);
@@ -123,13 +122,12 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    assert.equal(migrado.trabalho.id,r.trabalho.id);assert.ok(migrado.trabalho.dados.empresa);
    await repo.aplicar(migrado,{estado:'aguardando_confirmacao',dados:{...migrado.trabalho.dados,pesquisaProfissional:{nome:'Ana de Souza',estado:'indisponivel',registros:[],codigo:'INFOSIMPLES_API_600'}}});
    await pool!.query('update cadastro_certificado_trabalhos set tentativas=3 where id=$1',[r.trabalho.id]);
-   await repo.agendarPesquisaProfissional();const recuperado=(await repo.reservar())!;
-   assert.equal(recuperado.trabalho.id,r.trabalho.id);assert.equal(recuperado.trabalho.tentativas,1,'reinicia o orçamento de tentativas');
-   assert.ok(recuperado.trabalho.dados.empresa,'reutiliza a consulta CNPJ já feita no Hub');
-   assert.equal(recuperado.trabalho.dados.pesquisaProfissional,undefined,'remove o resultado antigo antes da pesquisa nova');
-   await repo.aplicar(recuperado,{estado:'aguardando_confirmacao',dados:{...recuperado.trabalho.dados,pesquisaProfissional:{nome:'Ana de Souza',estado:'nao_encontrado',registros:[],codigo:'SERPER_NAO_ENCONTRADO'}}});
-   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null,'não repete a pesquisa Serper após resultado vazio');
-   await pool!.query("update cadastro_certificado_trabalhos set dados=jsonb_set(dados,'{pesquisaProfissional,registros}', '[{\"nomeCompleto\":\"Ana de Souza\",\"crm\":\"12345\",\"uf\":\"RS\",\"origem\":\"Infosimples / CFM\"}]'::jsonb),tentativas=3 where id=$1",[r.trabalho.id]);
+   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null,'não reinicia o orçamento de tentativas esgotado');
+   const esgotado=(await pool!.query('select * from cadastro_certificado_trabalhos where id=$1',[r.trabalho.id])).rows[0];
+   assert.equal(esgotado.tentativas,3);assert.ok(esgotado.dados.empresa,'conserva a consulta CNPJ para aprovação manual');
+   await pool!.query("update cadastro_certificado_trabalhos set tentativas=0,dados=jsonb_set(dados,'{pesquisaProfissional,codigo}','\"SERPER_NAO_ENCONTRADO\"'::jsonb) where id=$1",[r.trabalho.id]);
+   await repo.agendarPesquisaProfissional();assert.equal(await repo.reservar(),null,'não repete a pesquisa Serper após resultado vazio, mesmo com orçamento disponível');
+   await pool!.query("update cadastro_certificado_trabalhos set dados=jsonb_set(dados,'{pesquisaProfissional,registros}', '[{\"nomeCompleto\":\"Ana de Souza\",\"crm\":\"12345\",\"uf\":\"RS\",\"origem\":\"Infosimples / CFM\"}]'::jsonb),tentativas=0 where id=$1",[r.trabalho.id]);
    await repo.agendarPesquisaProfissional();const resultadoAntigo=(await repo.reservar())!;
    assert.equal(resultadoAntigo.trabalho.id,r.trabalho.id,'também migra resultado antigo da Infosimples');
    assert.equal(resultadoAntigo.trabalho.tentativas,1);
@@ -140,12 +138,21 @@ test('cadastro persistente: idempotência, concorrência, retentativas e altera�
    await assert.rejects(()=>(repo as any).aprovarPainel(medico,{...body,versao:'antiga'}));
    await assert.rejects(()=>(repo as any).aprovarPainel(medico,{...body,crm:'sim'}));
    await assert.rejects(()=>(repo as any).aprovarPainel(mid,body));
-   await assert.rejects(()=>(repo as any).aprovarPainel(medico,body),/Conecte seu WhatsApp/);
-   await pool!.query("insert into whatsapp_instancias values($1,false,'conectado')",[medico]);
    const aprovado=await (repo as any).aprovarPainel(medico,body);assert.equal(aprovado.aprovado,true);
    assert.deepEqual((await pool!.query('select nome_completo,crm from medicos where id=$1',[medico])).rows[0],{nome_completo:'Ana de Souza',crm:'37341/RS'});
    assert.equal((await pool!.query('select nome from usuarios where id=$1',[usuario])).rows[0].nome,'Secretária Emmy');
    assert.equal(await repo.pendencia(medico),null);
+   assert.equal((await pool!.query('select count(*) from whatsapp_instancias where medico_id=$1',[medico])).rows[0].count,'0');
+   // A reserva em andamento perde autoridade quando o usuário aprova manualmente.
+   await pool!.query("update cadastro_certificado_trabalhos set estado='pendente',reserva=null,proxima_tentativa_em=now() where id=$1",[revisao.trabalhoId]);
+   const consultaAntiga=(await repo.reservar())!;
+   const revisaoConsultando=await repo.revisaoPainel(medico);
+   assert.equal(revisaoConsultando.estado,'consultando');
+   await repo.aprovarPainel(medico,{...body,versao:revisaoConsultando.versao,rqe:'456'});
+   await repo.aplicar(consultaAntiga,{estado:'aguardando_confirmacao',nome:'Outro Médico',crm:'999/RS',dados:{}});
+   assert.deepEqual((await pool!.query('select nome_completo,crm,rqe from medicos where id=$1',[medico])).rows[0],{nome_completo:'Ana de Souza',crm:'37341/RS',rqe:'456'});
+   assert.equal((await repo.revisaoPainel(medico)).aprovado,true);
+
    const pid=randomUUID();const resposta=(await pool!.query("insert into cadastro_certificado_respostas(trabalho_id,pendencia_id,instancia,mensagem_id,texto) values($1,$2,'assistente','concorrente','Sim') returning id",[revisao.trabalhoId,pid])).rows[0];
    const segurador=await pool!.connect();let aprovando:Promise<unknown>|undefined;
    try{

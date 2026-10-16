@@ -4,7 +4,7 @@ import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/c
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
-import { GoogleConsultaRegistro } from './cadastro/google-registro.js';
+import { OpenSerpConsultaRegistro } from './cadastro/openserp-registro.js';
 import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
 import { criarRouterNfse } from './api/nfse/nfse-router.js';
@@ -123,19 +123,19 @@ export function criarAppExpress() {
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
-  const pesquisaCrmConfigurada=!!config.serperApiKey&&!!config.nvidiaApiKey;
+  const pesquisaCrmConfigurada=!!config.openserpBaseUrl&&!!config.nvidiaApiKey;
   const consultaRegistro = pesquisaCrmConfigurada
-    ? new GoogleConsultaRegistro({serperApiKey:config.serperApiKey,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaModel,incluirDiagnostico:true})
+    ? new OpenSerpConsultaRegistro({baseUrl:config.openserpBaseUrl,nvidiaApiKey:config.nvidiaApiKey,modelo:config.nvidiaModel,incluirDiagnostico:true})
     : new PesquisaRegistroIndisponivel();
   const cadastroCertificado = new CadastroCertificado(new PostgresCadastro(pool), criarConsultaEmpresa(config.hubDesenvolvedorToken), consultaRegistro,
     async (medicoId, certificadoId) => {
       const cert = await carregarCertificadoMedico(pool, authAdminService.supabaseClient, medicoId);
       if (!cert || cert.id !== certificadoId) return undefined;
       return extrairChavesCertificado(cert.pfxBuffer, cert.senhaCertificado).documentoTitular;
-    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada);
+    }, hubCpfClient ? cpf => hubCpfClient.consultar(cpf) : undefined, pesquisaCrmConfigurada, 'openserp');
   if (process.env.NODE_ENV !== 'test') {
     const timer = setInterval(() => {
-      // Enriquecimento automático de dados (Google/CFM) sem envio de perguntas no WhatsApp.
+      // Enriquecimento automático via OpenSerp sem envio de perguntas no WhatsApp.
       void cadastroCertificado.recuperar().catch(() => console.warn('[Cadastro automático]', {codigo:'RECUPERACAO_FALHOU',acao:'verificar migrate:cadastro'}));
     }, 5000);
     timer.unref();
@@ -189,10 +189,11 @@ export function criarAppExpress() {
   const dispararOnboardingFiscal = (medicoId: string) => {
     void (async () => {
       const res = await pool.query(
-        "SELECT nome_personalizado FROM whatsapp_instancias WHERE medico_id = $1 AND oficial = false AND status = 'conectado' LIMIT 1",
+        "SELECT nome_instancia FROM whatsapp_instancias WHERE medico_id = $1 AND oficial = false AND status = 'conectado' LIMIT 1",
         [medicoId]
       );
-      const nomeInstancia = res.rows[0]?.nome_personalizado || '';
+      const nomeInstancia = res.rows[0]?.nome_instancia || '';
+      if (!nomeInstancia) return;
       await iniciarOnboardingPosConexao({
         medicoId,
         nomeInstancia,
@@ -670,6 +671,10 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
+      const revisaoProfissional = await cadastroCertificado.repo.revisaoPainel(medicoId);
+      if (!revisaoProfissional.aprovado) return res.status(409).json({ ok: false,
+        codigo: 'DADOS_PROFISSIONAIS_PENDENTES', detalhe: 'Revise e aprove seus dados profissionais antes de conectar o WhatsApp.' });
+
       const appUrl = config.host === '0.0.0.0'
         ? 'https://notomed-web.6t32my.easypanel.host'
         : `http://${config.host}:${config.porta}`;

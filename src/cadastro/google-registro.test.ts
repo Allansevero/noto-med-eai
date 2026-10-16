@@ -120,7 +120,7 @@ test('consulta Serper com o contrato exigido e passa resultados orgânicos à NV
   const headers = new Headers(requisicao?.init?.headers);
   assert.equal(headers.get('X-API-KEY'), 'serper-fixture');
   assert.equal(headers.get('Content-Type'), 'application/json');
-  assert.deepEqual(JSON.parse(String(requisicao?.init?.body)), { q: 'CRM Bruna Botter', gl: 'br', hl: 'pt-br', num: 10 });
+  assert.deepEqual(JSON.parse(String(requisicao?.init?.body)), { q: 'CRM Bruna Botter', gl: 'br', hl: 'pt-br' });
   assert.match(JSON.stringify(mensagens), /não confiável/iu);
 });
 

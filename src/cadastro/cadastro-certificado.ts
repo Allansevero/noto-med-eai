@@ -4,13 +4,13 @@ import type { PostgresCadastro } from './postgres-cadastro.js';
 export class CadastroCertificado {
  private executando=false;
  constructor(readonly repo:PostgresCadastro,private empresa:ConsultaEmpresa,private registro:ConsultaRegistro,
-  private identificarTitular:(medicoId:string,certificadoId:string)=>Promise<string|undefined>,private consultarCpf?:(cpf:string)=>Promise<{nome:string}|null>,private pesquisaOnlineConfigurada=false){}
+  private identificarTitular:(medicoId:string,certificadoId:string)=>Promise<string|undefined>,private consultarCpf?:(cpf:string)=>Promise<{nome:string}|null>,private pesquisaOnlineConfigurada=false,private provedorPesquisa?:'openserp'){}
  agendar(entrada:{medicoId:string;certificadoId:string;documentoTitular?:string}):Promise<void>{return this.repo.agendar(entrada);}
  async recuperar():Promise<void>{
   if(this.executando)return;this.executando=true;
   try{
    await this.repo.agendarAtivos();
-   if(this.pesquisaOnlineConfigurada)await this.repo.agendarPesquisaProfissional();
+   if(this.pesquisaOnlineConfigurada)await this.repo.agendarPesquisaProfissional(this.provedorPesquisa);
    for(let i=0;i<5;i++){
     const r=await this.repo.reservar();if(!r)break;
    console.info('[Cadastro automático]',{etapa:'processamento_iniciado',trabalhoId:r.trabalho.id,medicoId:r.trabalho.medico_id,tentativa:r.trabalho.tentativas});

@@ -24,7 +24,7 @@ export interface AppConfig {
   evolutionAssistantWebhookSecret: string;
   resendApiKey?: string;
   devEmailAlerta?: string;
-  serperApiKey?: string;
+  openserpBaseUrl?: string;
   nvidiaApiKey?: string;
   nvidiaModel?: string;
   nvidiaVisionModel?: string;
@@ -82,7 +82,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     evolutionAssistantWebhookSecret: env['EVOLUTION_ASSISTANT_WEBHOOK_SECRET'] || env['EVOLUTION_WEBHOOK_SECRET'] || '',
     resendApiKey: env['RESEND_API_KEY'],
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
-    serperApiKey: env['SERPER_API_KEY']?.trim() || undefined,
+    openserpBaseUrl: env['OPENSERP_BASE_URL']?.trim() || undefined,
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
     nvidiaModel: (env['NVIDIA_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
     nvidiaVisionModel: (env['NVIDIA_VISION_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_VISION_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',

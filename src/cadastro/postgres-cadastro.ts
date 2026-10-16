@@ -11,17 +11,20 @@ export interface AvisoCadastro { id:string; trabalho_id:string; chave:string; pe
 export interface RespostaCadastro { id:string; trabalho_id:string; pendencia_id:string; texto:string; reserva:string; tentativas:number; trabalho:TrabalhoCadastro }
 export class PostgresCadastro {
  constructor(readonly pool:pg.Pool){}
- async agendarPesquisaProfissional():Promise<void>{
+ async agendarPesquisaProfissional(provedor?:'openserp'):Promise<void>{
   await this.pool.query(`update cadastro_certificado_trabalhos t set estado='pendente',proxima_tentativa_em=now(),reserva=null,reservado_em=null,
-   diagnostico=null,dados=dados-'pesquisaProfissional',atualizado_em=now()
-   where estado='aguardando_confirmacao' and tentativas<3 and (
+   diagnostico=null,dados=dados-'pesquisaProfissional',atualizado_em=now(),
+   tentativas=case when $1='openserp' and left(dados->'pesquisaProfissional'->>'codigo',7)='SERPER_' then 0 else tentativas end
+   where estado='aguardando_confirmacao' and dados #>> '{aprovacaoPainel,confirmadoEm}' is null
+   and (tentativas<3 or ($1='openserp' and left(dados->'pesquisaProfissional'->>'codigo',7)='SERPER_')) and (
     dados->'pesquisaProfissional'->>'codigo'='CRM_FONTE_NAO_CONFIGURADA'
     or left(dados->'pesquisaProfissional'->>'codigo',4)='CFM_'
     or left(dados->'pesquisaProfissional'->>'codigo',12)='INFOSIMPLES_'
+    or ($1='openserp' and left(dados->'pesquisaProfissional'->>'codigo',7)='SERPER_')
     or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(dados #> '{pesquisaProfissional,registros}')='array'
      then dados #> '{pesquisaProfissional,registros}' else '[]'::jsonb end) as r(registro) where r.registro->>'origem' ilike '%Infosimples%')
    )
-   and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`);
+   and (jsonb_array_length(coalesce(dados->'empresa'->'candidatos','[]'::jsonb))=1 or dados->>'nomeConfirmado' is not null)`,[provedor??null]);
  }
  async revisaoPainel(medicoId:string){
   const r=(await this.pool.query(`select m.nome_completo as nome,m.crm,m.rqe,to_jsonb(t) as trabalho,${versaoRevisaoSql} as versao
@@ -58,11 +61,9 @@ export class PostgresCadastro {
    const m=(await c.query('select nome_completo,crm,rqe from medicos where id=$1 for update',[medicoId])).rows[0];
    const cert=(await c.query("select id from medico_certificados where medico_id=$1 and status='ativo' order by criado_em desc,id desc limit 1 for update",[medicoId])).rows[0];
    const ativo=(await c.query('select u.ativo from usuarios u join medicos m on m.usuario_id=u.id where m.id=$1',[medicoId])).rows[0]?.ativo;
-   if(!ativo||cert?.id!==t.certificado_id||!['aguardando_confirmacao','concluido'].includes(t.estado))throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de confirmar.');
+   if(!ativo||cert?.id!==t.certificado_id||!['pendente','consultando','aguardando_confirmacao','concluido'].includes(t.estado))throw new ErroRevisaoCadastro(409,'A consulta ou o certificado mudou. Atualize os dados antes de confirmar.');
    const anterior=t.dados.aprovacaoPainel;
-   const conectado=(await c.query("select 1 from whatsapp_instancias where medico_id=$1 and oficial=false and status='conectado' for share",[medicoId])).rowCount;
-   if(!conectado)throw new ErroRevisaoCadastro(409,'Conecte seu WhatsApp antes de confirmar os dados profissionais.');
-   if(t.estado==='concluido'&&anterior?.nome===e.nome&&anterior.crm===e.crm&&anterior.rqe===e.rqe&&m.nome_completo===e.nome&&m.crm===e.crm&&m.rqe===e.rqe)return;
+   if(t.estado==='concluido'&&anterior?.confirmadoEm&&anterior.nome===e.nome&&anterior.crm===e.crm&&anterior.rqe===e.rqe&&m.nome_completo===e.nome&&m.crm===e.crm&&m.rqe===e.rqe)return;
    const versao=(await c.query(`select ${versaoRevisaoSql} as versao from cadastro_certificado_trabalhos t join medicos m on m.id=t.medico_id where t.id=$1`,[t.id])).rows[0].versao;
    if(versao!==e.versao)throw new ErroRevisaoCadastro(409,'Os dados foram atualizados. Revise novamente antes de confirmar.');
    await c.query('update medicos set nome_completo=$2,crm=$3,rqe=$4,atualizado_em=now() where id=$1',[medicoId,e.nome,e.crm,e.rqe]);

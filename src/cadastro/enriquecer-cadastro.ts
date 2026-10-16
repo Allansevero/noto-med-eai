@@ -10,6 +10,7 @@ export interface PerfilCadastro { nome:string; crm:string|null; rqe?:string|null
 export interface ResultadoEnriquecimento { estado:'aguardando_confirmacao'|'concluido'|'retentar'; dados:DadosCadastro; nome?:string; crm?:string; rqe?:string|null; codigo?:string }
 export function criarPendencia(tipo:PendenciaCadastro['tipo'],candidatos:CandidatoCadastro[]=[]):PendenciaCadastro{return {id:randomUUID(),tipo,candidatos,perguntaConfirmada:null};}
 const normal=(s:string)=>s.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().trim();
+const semCreditos=(r:{diagnostico?:DiagnosticoPesquisaRegistro[]})=>r.diagnostico?.some(d=>d.etapa==='serper_http'&&d.motivo==='CREDITOS_INSUFICIENTES')??false;
 export async function enriquecerCadastro(entrada:{documento:string|null;perfil:PerfilCadastro;dados:DadosCadastro},empresa:ConsultaEmpresa,registro:ConsultaRegistro,consultarCpf?:(cpf:string)=>Promise<{nome:string}|null>):Promise<ResultadoEnriquecimento>{
  const dados:DadosCadastro={...entrada.dados};delete dados.pendencia;
  const nome=dados.nomeConfirmado || (entrada.perfil.nomeConfirmado?entrada.perfil.nome:undefined);
@@ -26,10 +27,10 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
    if(!pessoa || !nomeProfissionalValido(pessoa.nome))return {estado:'retentar',dados,codigo:'CPF_CONSULTA_INDISPONIVEL'};
    candidatos=[{id:randomUUID(),nome:pessoa.nome,origem:'Hub do Desenvolvedor / CPF do titular'}];
   }
-  if(!dados.cadastroIndisponivel && candidatos.length===1 && (dados.pesquisaProfissional?.nome!==candidatos[0].nome || dados.pesquisaProfissional?.estado==='indisponivel')){
+  if(!dados.cadastroIndisponivel && candidatos.length===1 && (dados.pesquisaProfissional?.nome!==candidatos[0].nome || (dados.pesquisaProfissional?.estado==='indisponivel' && !semCreditos(dados.pesquisaProfissional)))){
    const pesquisado=await registro.buscar(candidatos[0].nome);
    dados.pesquisaProfissional={nome:candidatos[0].nome,estado:pesquisado.estado,registros:pesquisado.estado==='consultado'?pesquisado.dados:[],...(pesquisado.estado!=='consultado'?{codigo:pesquisado.codigo}:{}),...(pesquisado.diagnostico?{diagnostico:pesquisado.diagnostico}:{})};
-   if(pesquisado.estado==='indisponivel' && pesquisado.codigo!=='CRM_FONTE_NAO_CONFIGURADA'){
+   if(pesquisado.estado==='indisponivel' && pesquisado.codigo!=='CRM_FONTE_NAO_CONFIGURADA' && !semCreditos(pesquisado)){
     return {estado:'retentar',dados,codigo:pesquisado.codigo};
    }
   }
@@ -46,13 +47,13 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
  // Uma pesquisa explícita também atualiza sugestões para perfis já completos.
  if(crmExistente && mesmoNome && !dados.pesquisaSolicitadaPainel
   && (entrada.perfil.rqe || pesquisa?.nome===nome && pesquisa.estado!=='indisponivel'))return {estado:'concluido',dados};
- const r=pesquisa?.nome===nome && (pesquisa.estado!=='indisponivel' || pesquisa.codigo==='CRM_FONTE_NAO_CONFIGURADA')
+ const r=pesquisa?.nome===nome && (pesquisa.estado!=='indisponivel' || pesquisa.codigo==='CRM_FONTE_NAO_CONFIGURADA' || semCreditos(pesquisa))
   ? pesquisa.estado==='consultado'?{estado:'consultado' as const,dados:pesquisa.registros,diagnostico:pesquisa.diagnostico}:{estado:pesquisa.estado,codigo:pesquisa.codigo||'CRM_CONSULTA_INDISPONIVEL',diagnostico:pesquisa.diagnostico}
   :await registro.buscar(nome);
  dados.pesquisaProfissional={nome,estado:r.estado,registros:r.estado==='consultado'?r.dados:[],...(r.estado!=='consultado'?{codigo:r.codigo}:{}),...(r.diagnostico?{diagnostico:r.diagnostico}:{})};
  if(r.estado!=='indisponivel' || r.codigo==='CRM_FONTE_NAO_CONFIGURADA')delete dados.pesquisaSolicitadaPainel;
  if(crmExistente && mesmoNome){
-  if(r.estado==='indisponivel' && r.codigo!=='CRM_FONTE_NAO_CONFIGURADA')return {estado:'retentar',dados,codigo:r.codigo};
+  if(r.estado==='indisponivel' && r.codigo!=='CRM_FONTE_NAO_CONFIGURADA' && !semCreditos(r))return {estado:'retentar',dados,codigo:r.codigo};
   // RQE e outros registros continuam sugestões; só a revisão do painel os confirma.
   return {estado:'concluido',dados};
  }
@@ -61,7 +62,7 @@ export async function enriquecerCadastro(entrada:{documento:string|null;perfil:P
   const unicos=[...new Map(validos.map(c=>[normalizarCrm(`${c.crm}/${c.uf}`)!,c])).values()];
   if(!crmExistente && unicos.length===1 && r.dados.length===1 && unicos[0].verificado!==false){dados.crmOrigem='Consulta profissional oficial';return {estado:'concluido',dados,crm:normalizarCrm(`${unicos[0].crm}/${unicos[0].uf}`)!};}
   candidatos=unicos.map(c=>({id:randomUUID(),nome:c.nomeCompleto,crm:c.crm,uf:c.uf,origem:c.origem??'Consulta profissional oficial'}));
- }else if(r.estado==='indisponivel' && r.codigo!=='CRM_FONTE_NAO_CONFIGURADA')return {estado:'retentar',dados,codigo:r.codigo};
+ }else if(r.estado==='indisponivel' && r.codigo!=='CRM_FONTE_NAO_CONFIGURADA' && !semCreditos(r))return {estado:'retentar',dados,codigo:r.codigo};
  dados.pendencia=criarPendencia('crm',candidatos);
  return {estado:'aguardando_confirmacao',dados};
 }

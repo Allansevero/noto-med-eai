@@ -15,7 +15,12 @@ interface Evidencia { fonte: number; trecho?: string; trechos?: string[] }
 interface ExtracaoRqe { numero: string; uf?: string | null; evidencia: Evidencia }
 interface ExtracaoRegistro { nomeCompleto: string; crm: string; uf: string; evidenciaCrm: Evidencia; rqes?: ExtracaoRqe[] }
 type Diagnosticar = (evento: DiagnosticoPesquisaRegistro) => void;
-interface OpcoesGoogleRegistro {
+export interface FontePesquisaRegistro {
+  configurada: boolean;
+  pesquisar(nome: string, diagnosticar: Diagnosticar): Promise<ResultadoConsulta<ResultadoOrganicoGoogle[]>>;
+  origem: string;
+}
+export interface OpcoesGoogleRegistro {
   serperApiKey?: string;
   nvidiaApiKey?: string;
   modelo?: string;
@@ -23,15 +28,53 @@ interface OpcoesGoogleRegistro {
   completar?: (mensagens: MensagemNvidia[]) => Promise<string>;
   diagnosticar?: Diagnosticar;
   incluirDiagnostico?: boolean;
+  fontePesquisa?: FontePesquisaRegistro;
 }
 type RegistroValidado = { crm: string; uf: string };
 
 const ENDPOINT_SERPER = 'https://google.serper.dev/search';
 const LIMITE_TEXTO_FONTE = 2500;
 const normalizarTexto = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt-BR');
-const falha = (codigo: string): ResultadoConsulta<DadosMedicoOnline[]> => ({ estado: 'indisponivel', codigo });
+const falha = (codigo: string): { estado: 'indisponivel'; codigo: string } => ({ estado: 'indisponivel', codigo });
 
-function lerFonte(valor: unknown, indice: number): ResultadoOrganicoGoogle | null {
+/** Lê no máximo 4 KiB/1 s; somente categorias estáticas podem sair do corpo externo. */
+async function classificarErroSerper(resposta: Response): Promise<Extract<DiagnosticoPesquisaRegistro, { etapa: 'serper_http' }>['motivo']> {
+  let leitor: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    leitor = resposta.body?.getReader();
+    if (!leitor) return 'CORPO_NAO_JSON';
+    const prazo = new Promise<never>((_, rejeitar) => { temporizador = setTimeout(() => rejeitar(Error('PRAZO')), 1000); });
+    const decodificar = new TextDecoder();
+    let total = 0, texto = '';
+    while (true) {
+      const parte = await Promise.race([leitor.read(), prazo]);
+      if (parte.done) break;
+      total += parte.value.byteLength;
+      if (total > 4096) return 'CORPO_LIMITE_EXCEDIDO';
+      texto += decodificar.decode(parte.value, { stream: true });
+    }
+    texto += decodificar.decode();
+    let corpo: unknown;
+    try { corpo = JSON.parse(texto); } catch { return 'CORPO_NAO_JSON'; }
+    if (!corpo || typeof corpo !== 'object' || !('message' in corpo) || typeof corpo.message !== 'string') return 'ERRO_NAO_CLASSIFICADO';
+    switch (corpo.message.trim().toLowerCase()) {
+      case 'missing query': return 'CONSULTA_AUSENTE';
+      case 'invalid api key': return 'CREDENCIAL_RECUSADA';
+      case 'not enough credits': return 'CREDITOS_INSUFICIENTES';
+      case 'too many requests': return 'LIMITE_REQUISICOES';
+      case 'invalid parameters': return 'PARAMETROS_RECUSADOS';
+      default: return 'ERRO_NAO_CLASSIFICADO';
+    }
+  } catch { return 'CORPO_INDISPONIVEL'; }
+  finally {
+    clearTimeout(temporizador);
+    // Não aguardar cancelamento: streams externos podem nunca encerrá-lo.
+    void leitor?.cancel().catch(() => {});
+  }
+}
+
+export function lerFonteRegistro(valor: unknown, indice: number): ResultadoOrganicoGoogle | null {
   if (!valor || typeof valor !== 'object') return null;
   const item = valor as Record<string, unknown>;
   if (typeof item.title !== 'string' || typeof item.snippet !== 'string' || typeof item.link !== 'string') return null;
@@ -243,8 +286,8 @@ Regras estritas:
   return [{ role: 'system', content: sistema }, { role: 'user', content: usuario }];
 }
 
-/** Pesquisa paga sem retries HTTP internos; o trabalho do cadastro já limita as retentativas a três. */
-export class GoogleConsultaRegistro implements ConsultaRegistro {
+/** Validação compartilhada: trocar o buscador preserva a comprovação literal de CRM/RQE. */
+export class PesquisaRegistroProfissional implements ConsultaRegistro {
   private readonly requisitar: typeof fetch;
   private readonly completar: (mensagens: MensagemNvidia[]) => Promise<string>;
   private readonly modelo: string;
@@ -262,29 +305,12 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
   }
 
   private async pesquisar(nome: string, diagnosticar: Diagnosticar): Promise<ResultadoConsulta<DadosMedicoOnline[]>> {
-    const chaveSerper = this.opcoes.serperApiKey?.trim();
     const chaveNvidia = this.opcoes.nvidiaApiKey?.trim();
-    if (!chaveSerper || !chaveNvidia) return falha('CRM_FONTE_NAO_CONFIGURADA');
-    if (!nomeProfissionalValido(nome)) return falha('SERPER_PARAMETRO_INVALIDO');
-    let resposta: Response;
-    try {
-      resposta = await this.requisitar(ENDPOINT_SERPER, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12_000),
-        headers: { 'X-API-KEY': chaveSerper, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ q: `CRM ${nome.trim()}`, gl: 'br', hl: 'pt-br', num: 10 })
-      });
-    } catch { return falha('SERPER_CONSULTA_INDISPONIVEL'); }
-    if (!resposta.ok) {
-      await resposta.body?.cancel().catch(() => {});
-      return falha(`SERPER_HTTP_${resposta.status}`);
-    }
-    let corpo: unknown;
-    try { corpo = await resposta.json(); } catch { return falha('SERPER_RESPOSTA_INVALIDA'); }
-    if (!corpo || typeof corpo !== 'object' || !Array.isArray((corpo as { organic?: unknown }).organic)) return falha('SERPER_RESPOSTA_INVALIDA');
-    const fontes = (corpo as { organic: unknown[] }).organic.slice(0, 10).map(lerFonte).filter((f): f is ResultadoOrganicoGoogle => !!f);
-    diagnosticar({ etapa: 'serper', resultados: (corpo as { organic: unknown[] }).organic.length, fontesUtilizaveis: fontes.length,
-      fontesComMencaoRqe: fontes.filter(f => /\bRQE\b/iu.test(`${f.titulo}\n${f.trecho}`)).length });
-    if (!fontes.length) return { estado: 'nao_encontrado', codigo: 'SERPER_SEM_RESULTADOS_UTILIZAVEIS' };
+    if (!(this.opcoes.fontePesquisa?.configurada ?? !!this.opcoes.serperApiKey?.trim()) || !chaveNvidia) return falha('CRM_FONTE_NAO_CONFIGURADA');
+    if (!nomeProfissionalValido(nome)) return falha(this.opcoes.fontePesquisa ? 'CRM_PARAMETRO_INVALIDO' : 'SERPER_PARAMETRO_INVALIDO');
+    const pesquisa = await (this.opcoes.fontePesquisa?.pesquisar(nome, diagnosticar) ?? this.pesquisarSerper(nome, diagnosticar));
+    if (pesquisa.estado !== 'consultado') return pesquisa;
+    const fontes = pesquisa.dados;
     let extracao: string;
     try { extracao = await this.completar(mensagensExtracao(nome.trim(), fontes)); }
     catch (erro) { return falha(erro instanceof ErroNvidiaChat ? erro.codigo : 'NVIDIA_CONSULTA_INDISPONIVEL'); }
@@ -293,6 +319,33 @@ export class GoogleConsultaRegistro implements ConsultaRegistro {
     diagnosticar({ etapa: 'nvidia', candidatos: resultado.registros.length });
     if (!resultado.registros.length) return { estado: 'nao_encontrado', codigo: 'NVIDIA_SEM_REGISTROS' };
     const registros = validarRegistrosGoogle({ nome: nome.trim(), fontes, registros: resultado.registros }, diagnosticar);
+    if (this.opcoes.fontePesquisa) for (const registro of registros) registro.origem = this.opcoes.fontePesquisa.origem;
     return registros.length ? { estado: 'consultado', dados: registros } : { estado: 'nao_encontrado', codigo: 'CRM_EVIDENCIA_NAO_CONFIRMADA' };
   }
+
+  private async pesquisarSerper(nome: string, diagnosticar: Diagnosticar): Promise<ResultadoConsulta<ResultadoOrganicoGoogle[]>> {
+    let resposta: Response;
+    try {
+      resposta = await this.requisitar(ENDPOINT_SERPER, {
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(12_000),
+        headers: { 'X-API-KEY': this.opcoes.serperApiKey!.trim(), 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ q: `CRM ${nome.trim()}`, gl: 'br', hl: 'pt-br' })
+      });
+    } catch { return falha('SERPER_CONSULTA_INDISPONIVEL'); }
+    if (!resposta.ok) {
+      diagnosticar({ etapa: 'serper_http', status: resposta.status, motivo: await classificarErroSerper(resposta) });
+      return falha(`SERPER_HTTP_${resposta.status}`);
+    }
+    let corpo: unknown;
+    try { corpo = await resposta.json(); } catch { return falha('SERPER_RESPOSTA_INVALIDA'); }
+    if (!corpo || typeof corpo !== 'object' || !Array.isArray((corpo as { organic?: unknown }).organic)) return falha('SERPER_RESPOSTA_INVALIDA');
+    const fontes = (corpo as { organic: unknown[] }).organic.slice(0, 10).map(lerFonteRegistro).filter((f): f is ResultadoOrganicoGoogle => !!f);
+    diagnosticar({ etapa: 'serper', resultados: (corpo as { organic: unknown[] }).organic.length, fontesUtilizaveis: fontes.length,
+      fontesComMencaoRqe: fontes.filter(f => /\bRQE\b/iu.test(`${f.titulo}\n${f.trecho}`)).length });
+    if (!fontes.length) return { estado: 'nao_encontrado', codigo: 'SERPER_SEM_RESULTADOS_UTILIZAVEIS' };
+    return { estado: 'consultado', dados: fontes };
+  }
 }
+
+// Compatibilidade para consumidores do adaptador Serper anterior.
+export { PesquisaRegistroProfissional as GoogleConsultaRegistro };

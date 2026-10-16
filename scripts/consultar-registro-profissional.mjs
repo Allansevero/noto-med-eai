@@ -1,5 +1,5 @@
 import { config } from '../src/config.js';
-import { GoogleConsultaRegistro } from '../src/cadastro/google-registro.js';
+import { OpenSerpConsultaRegistro } from '../src/cadastro/openserp-registro.js';
 
 const args = process.argv.slice(2);
 const exibirDiagnostico = args.includes('--diagnostico');
@@ -11,10 +11,10 @@ if (!nome || args.includes('--help')) {
   console.error('Informe somente o nome completo. O adaptador acrescenta CRM à pesquisa automaticamente.');
   process.exitCode = 2;
 } else {
-  console.error('A consulta Google/Serper pode consumir créditos. O comando não grava no banco.');
+  console.error('A consulta usa seu serviço OpenSerp e a extração NVIDIA. O comando não grava no banco.');
   const diagnostico = [];
-  const consulta = new GoogleConsultaRegistro({
-    serperApiKey: config.serperApiKey,
+  const consulta = new OpenSerpConsultaRegistro({
+    baseUrl: config.openserpBaseUrl,
     nvidiaApiKey: config.nvidiaApiKey,
     modelo: config.nvidiaModel,
     ...(exibirDiagnostico ? { diagnosticar: evento => diagnostico.push(evento) } : {})

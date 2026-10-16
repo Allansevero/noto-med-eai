@@ -17,6 +17,10 @@ export class ErroRevisaoCadastro extends Error {
 }
 type TrabalhoRevisao={id:string;estado:string;dados:DadosCadastro;versao?:string;diagnostico?:string|null;atualizado_em?:unknown};
 type PerfilRevisao={nome:string;crm:string|null;rqe:string|null};
+export function temAprovacaoProfissional(t:TrabalhoRevisao|null,perfil:PerfilRevisao):boolean {
+ const aprovacao=t?.dados.aprovacaoPainel;
+ return t?.estado==='concluido'&&!!aprovacao?.confirmadoEm&&aprovacao.nome===perfil.nome&&aprovacao.crm===perfil.crm&&aprovacao.rqe===perfil.rqe;
+}
 const normal=(s:string)=>s.normalize('NFD').replace(/\p{M}/gu,'').trim().toLocaleLowerCase('pt-BR');
 export function montarRevisao(t:TrabalhoRevisao|null,perfil:PerfilRevisao){
  const dados=t?.dados??{};
@@ -27,7 +31,7 @@ export function montarRevisao(t:TrabalhoRevisao|null,perfil:PerfilRevisao){
  const crm=(normal(nome)===normal(perfil.nome)?normalizarCrm(perfil.crm):null)||(unicos.length===1?normalizarCrm(`${unicos[0].crm}/${unicos[0].uf}`):null);
  const registroEscolhido=unicos.find(r=>normalizarCrm(`${r.crm}/${r.uf}`)===crm);
  return {trabalhoId:t?.id??null,versao:t?.versao??null,estado:t?.estado??'sem_certificado',
-  aprovado:t?.estado==='concluido'&&!!dados.aprovacaoPainel&&dados.aprovacaoPainel.nome===perfil.nome&&dados.aprovacaoPainel.crm===perfil.crm&&dados.aprovacaoPainel.rqe===perfil.rqe,
+  aprovado:temAprovacaoProfissional(t,perfil),
   nome,crm:crm??'',rqe:(normal(nome)===normal(perfil.nome)?perfil.rqe:null)??registroEscolhido?.rqe??'',candidatos,registros:unicos,
   pesquisaCrm:dados.pesquisaProfissional?.estado??'pendente',
   pesquisaCodigo:dados.pesquisaProfissional?.codigo??t?.diagnostico??null,
