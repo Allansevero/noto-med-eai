@@ -296,6 +296,10 @@ export function criarAppExpress() {
   app.get('/docs', (_req: Request, res: Response) => {
     res.sendFile(join(__dirname, 'ui', 'docs.html'));
   });
+  app.get('/llms.txt', (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.sendFile(join(__dirname, 'ui', 'llms.txt'));
+  });
 
   // Verificação de propriedade do domínio no Google Search Console
   app.get('/google7e12f4f1b60db1c4.html', (_req: Request, res: Response) => {

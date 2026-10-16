@@ -1,0 +1,88 @@
+# Noto — Contexto de Arquitetura e APIs para LLMs e Agentes
+
+> Este arquivo é formatado conforme o padrão llms.txt para consumo direto por Modelos de Linguagem (LLMs) como Claude, ChatGPT, Gemini, DeepSeek, Cursor e Copilot.
+
+## 1. Visão Geral do Sistema
+O Noto é um SaaS de emissão autônoma de NFS-e (Nota Fiscal de Serviços Eletrônica) para médicos, operado diretamente pelo WhatsApp.
+O repositório é um monorepo dividido em 3 serviços desacoplados e independentes:
+
+1. **/noto (Porta 3000):** App principal e gateway WhatsApp (Evolution API).
+   - Gerencia autenticação (WhatsApp + OTP de 6 dígitos) e multi-tenant.
+   - Orquestra onboarding, busca profissional (CRM, RQE e especialidade via OpenSerp/Hub).
+   - Não acessa nem armazena o certificado A1 em disco ou banco.
+
+2. **/fiscal (Porta 3001):** Serviço fiscal isolado.
+   - Detentor exclusivo do Certificado Digital A1 e suas chaves criptográficas.
+   - Emite NFS-e Nacional via Serpro/DPS com idempotência estrita (Idempotency-Key = pedidoId).
+   - Calcula Simples Nacional, alíquotas de ISS e Reforma Tributária (IBS/CBS - RTC 2026).
+   - Gera o PDF oficial do DANFSE em A4 via pdf-lib.
+
+3. **/ia (Porta 3002):** Serviço de inteligência artificial.
+   - Lê conversas do WhatsApp para detectar comprovantes de pagamento (imagem ou PDF).
+   - Infere a data da consulta anterior ao pagamento (80% regra determinística, 20% IA).
+   - Formula a pergunta exata que o Noto enviará ao médico no WhatsApp.
+   - Autocorreção autônoma (Self-Healing): investiga e corrige erros de rejeição SEFIN (ex: MEI vs ME) sem intervenção humana.
+   - Regra de ouro: A IA decide, o Noto fala. A IA nunca envia mensagens diretamente no WhatsApp.
+
+---
+
+## 2. Regras de Comunicação Inter-Serviços
+- Toda comunicação é HTTP REST interna via rede do Easypanel (nunca URLs públicas).
+- Header de autenticação interna obrigatório: `X-Internal-Token: <SECRET>`.
+- Proibido import cruzado de código entre pastas (`zero cross-import`).
+- Contratos canônicos centralizados em `/contratos` (OpenAPI 3.1 e tipos TypeScript).
+
+---
+
+## 3. Catálogo Completo de Endpoints
+
+### Serviço Fiscal (/fiscal — http://fiscal:3001)
+- `POST /v1/onboarding/certificado`
+  - Header: `X-Internal-Token`
+  - Body: `{ medicoId: string, arquivoBase64: string, senha: string }`
+  - Retorno: `{ sucesso: true, titular: { nome, tipo, cnpj, cpf, validadeAte }, parametrosFiscaisSugeridos: { regimeTributario, aliquotaIss, codigoTributacaoNacional, descricaoServicoPadrao } }`
+- `POST /v1/notas/emitir`
+  - Headers: `X-Internal-Token`, `Idempotency-Key: <pedidoId>`
+  - Body: `{ pedidoId: string, medicoId: string, tomador: { cpfCnpj, nome, telefone }, servico: { valorCentavos, dataCompetencia, discriminacao } }`
+  - Retorno: `{ sucesso: true, pedidoId, status: "autorizada", chaveAcesso, numeroNota, linkDanfsePdf }`
+- `GET /v1/notas/:pedidoId`
+  - Retorna o status e dados da nota fiscal emitida.
+- `GET /v1/notas/:pedidoId/pdf`
+  - Retorna o buffer binário do PDF do DANFSE (`Content-Type: application/pdf`).
+- `GET /v1/parametros-fiscais/:medicoId`
+  - Retorna os parâmetros tributários consolidados do médico.
+- `PUT /v1/parametros-fiscais/:medicoId`
+  - Atualiza alíquotas ou enquadramento (usado na autocorreção fiscal).
+- `GET /health`
+  - Healthcheck desprotegido para Easypanel (`{ servico: "fiscal", status: "ok" }`).
+
+### Serviço de IA (/ia — http://ia:3002)
+- `POST /v1/analise/detectar-candidatos`
+  - Header: `X-Internal-Token`
+  - Body: `{ medicoId: string, dadosMedico: { nome, cpfCnpj, valorPadraoCentavos }, conversa: { conversaId, contatoTelefone, mensagens: [...] } }`
+  - Retorno: `{ sucesso: true, candidatoDetectado: boolean, confianca: number, perguntaSugeridaMedico: string, dadosFaltantes: string[], perguntaDadosFaltantes: string | null }`
+- `POST /v1/analise/autocorrigir-falha`
+  - Header: `X-Internal-Token`
+  - Body: `{ medicoId: string, pedidoId: string, erroSefin: { codigo, mensagem }, dadosNota: {}, parametrosAtuais: {} }`
+  - Retorno: `{ sucesso: true, diagnostico: string, podeCorrigirAutonomamente: boolean, acaoRecomendada: { tipo: "atualizar_parametro_fiscal_e_reemitir", alteracoesParametros: {} } }`
+- `GET /health`
+  - Healthcheck desprotegido (`{ servico: "ia", status: "ok" }`).
+
+### App Principal (/noto — http://noto:3000)
+- `POST /api/auth/otp/solicitar`: Disparo de OTP via WhatsApp.
+- `POST /api/auth/otp/verificar`: Verificação de código OTP e geração de JWT.
+- `POST /webhook/evolution`: Webhook receptor de mensagens do WhatsApp.
+- `GET /api/whatsapp/status`: Estado do pareamento da clínica.
+- `GET /docs`: Interface interativa de documentação.
+- `GET /llms.txt`: Este arquivo estruturado para LLMs.
+- `GET /health`: Healthcheck (`{ status: "ok" }`).
+
+---
+
+## 4. Onde Encontrar os Contratos no Repositório
+- `/contratos/openapi-fiscal.yaml`: Especificação OpenAPI 3.1 do fiscal.
+- `/contratos/openapi-ia.yaml`: Especificação OpenAPI 3.1 da IA.
+- `/contratos/tipos-fiscal.ts`: DTOs TypeScript do fiscal.
+- `/contratos/tipos-ia.ts`: DTOs TypeScript da IA.
+- `/contratos/codigos-erro.ts`: Catálogo de códigos de erro.
+- `/agent.md`: Regras de conduta para agentes de IA no monorepo.

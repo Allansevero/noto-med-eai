@@ -40,5 +40,27 @@ describe('Página de Documentação Técnica /docs', () => {
     assert.ok(conteudo.includes('http://fiscal:3001'));
     assert.ok(conteudo.includes('http://ia:3002'));
     assert.ok(conteudo.includes('X-Internal-Token'));
+
+    // Seções para LLMs e Agentes
+    assert.ok(conteudo.includes('id="contexto-llms"'));
+    assert.ok(conteudo.includes('id="dicionario-endpoints"'));
+    assert.ok(conteudo.includes('Prompt Mestre para Agentes de IA'));
+    assert.ok(conteudo.includes('/v1/onboarding/certificado'));
+    assert.ok(conteudo.includes('/v1/notas/emitir'));
+    assert.ok(conteudo.includes('/v1/analise/detectar-candidatos'));
+    assert.ok(conteudo.includes('/v1/analise/autocorrigir-falha'));
+  });
+
+  it('deve existir o arquivo llms.txt estruturado para consumo por outras LLMs', () => {
+    const caminhoLlmsTxt = join(__dirname, 'llms.txt');
+    assert.equal(existsSync(caminhoLlmsTxt), true);
+
+    const conteudoLlms = readFileSync(caminhoLlmsTxt, 'utf-8');
+    assert.ok(conteudoLlms.includes('X-Internal-Token'));
+    assert.ok(conteudoLlms.includes('http://fiscal:3001'));
+    assert.ok(conteudoLlms.includes('http://ia:3002'));
+    assert.ok(conteudoLlms.includes('/v1/notas/emitir'));
+    assert.ok(conteudoLlms.includes('/v1/analise/detectar-candidatos'));
+    assert.ok(conteudoLlms.includes('/v1/analise/autocorrigir-falha'));
   });
 });

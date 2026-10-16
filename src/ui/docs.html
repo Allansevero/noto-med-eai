@@ -534,6 +534,24 @@
           </li>
         </ul>
       </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Para LLMs & Agentes</div>
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a class="nav-link" data-target="contexto-llms">
+              Contexto para LLMs
+              <span class="nav-pill">Prompt & IA</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" data-target="dicionario-endpoints">
+              Matriz de Endpoints
+              <span class="nav-pill">Todos</span>
+            </a>
+          </li>
+        </ul>
+      </div>
     </aside>
 
     <!-- Conteúdo Dinâmico -->
@@ -858,6 +876,204 @@ app.get('/docs', (_req: Request, res: Response) => {
             <li><strong>Qualidade de Código:</strong> Teto de ~300 linhas por arquivo, funções curtas (&lt; 25 linhas), guard clauses e testes unitários <code>node:test</code> ao lado de cada módulo.</li>
           </ul>
         </div>
+      </section>
+
+      <!-- 10. Contexto para LLMs & Agentes de IA -->
+      <section id="contexto-llms" class="section-content">
+        <h1>Contexto de Arquitetura para LLMs e Agentes</h1>
+        <p class="lead">Especificação concisa e estruturada para que qualquer Modelo de Linguagem (Claude, ChatGPT, Gemini, Cursor, Copilot) compreenda o sistema e como os serviços se comunicam.</p>
+
+        <div class="callout callout-success">
+          <strong>Prompt Mestre para Agentes de IA:</strong> Copie o bloco abaixo e forneça no início de qualquer sessão com uma LLM para que ela compreenda 100% da arquitetura e das regras do Noto sem alucinações.
+        </div>
+
+        <div class="code-container">
+          <button class="btn-copy" onclick="copiarCodigo(this)">Copiar Prompt</button>
+          <pre><code>Você está trabalhando no Noto, um SaaS de emissão autônoma de NFS-e para médicos via WhatsApp.
+O projeto é um monorepo dividido em 3 serviços estritamente isolados:
+1. /noto (Porta 3000): Gateway do WhatsApp (Evolution API), login OTP, busca de CRM/RQE, painel do médico e orquestração. Não toca no certificado A1.
+2. /fiscal (Porta 3001): Único com acesso ao Certificado Digital A1. Emite NFS-e Nacional (Serpro/DPS), calcula Simples Nacional, IBS/CBS (RTC 2026), e gera o PDF do DANFSE. É estritamente idempotente via pedidoId/Idempotency-Key.
+3. /ia (Porta 3002): Detecção de comprovantes bancários e data de consulta no histórico do WhatsApp (80% regra, 20% IA). Autocorreção autônoma de erros SEFIN (ex: MEI vs ME). A IA decide, o Noto fala (a IA nunca envia mensagens diretamente no WhatsApp).
+
+REGRAS DE COMUNICAÇÃO ENTRE SERVIÇOS:
+- Zero cross-import em TypeScript entre /noto, /fiscal e /ia. Toda comunicação é HTTP REST interna com header 'X-Internal-Token'.
+- Todos os contratos de dados e esquemas OpenAPI estão centralizados e imutáveis em /contratos.
+- Banco de dados: PostgreSQL (Supabase) com roles e permissões isoladas por serviço.</code></pre>
+        </div>
+
+        <h2>Como o Sistema se Comunica (Fluxo Inter-Serviços)</h2>
+        <p>A comunicação entre os componentes segue dois fluxos principais orquestrados pelo Noto:</p>
+
+        <h3>Fluxo A: Detecção e Emissão Autônoma</h3>
+        <ol>
+          <li><strong>WhatsApp ➔ Noto:</strong> O paciente envia comprovante de pagamento no chat da clínica (webhook Evolution API <code>POST /webhook/evolution</code>).</li>
+          <li><strong>Noto ➔ IA:</strong> O Noto dispara <code>POST http://ia:3002/v1/analise/detectar-candidatos</code> com o histórico da conversa e dados do médico.</li>
+          <li><strong>IA ➔ Noto:</strong> A IA valida o comprovante, infere a data da consulta anterior e devolve a pergunta pronta: <em>"Identifiquei um pagamento de R$ 450 de Mariana Silva para a consulta de 14/10. Posso emitir a nota fiscal?"</em>.</li>
+          <li><strong>Noto ➔ WhatsApp:</strong> O Noto envia a pergunta para o médico no WhatsApp oficial do assistente.</li>
+          <li><strong>WhatsApp ➔ Noto:</strong> O médico responde <em>"Sim"</em> ou <em>"Pode emitir"</em>.</li>
+          <li><strong>Noto ➔ Fiscal:</strong> O Noto envia <code>POST http://fiscal:3001/v1/notas/emitir</code> com <code>Idempotency-Key: pedidoId</code>.</li>
+          <li><strong>Fiscal ➔ SEFIN:</strong> O serviço fiscal assina a DPS com o certificado A1 do médico e transmite ao Serpro Nacional. Retorna status <code>autorizada</code> e link do PDF.</li>
+          <li><strong>Noto ➔ Paciente:</strong> O Noto baixa o DANFSE PDF via <code>GET http://fiscal:3001/v1/notas/:pedidoId/pdf</code> e envia diretamente no WhatsApp do paciente.</li>
+        </ol>
+
+        <h3>Fluxo B: Autocorreção Autônoma de Erro Fiscal (Self-Healing)</h3>
+        <ol>
+          <li><strong>SEFIN ➔ Fiscal:</strong> O Serpro rejeita uma nota (ex.: código <code>E172</code> - divergência MEI x Optante Simples).</li>
+          <li><strong>Fiscal ➔ Noto:</strong> O fiscal retorna status <code>rejeitada</code> com o código do erro.</li>
+          <li><strong>Noto ➔ IA:</strong> O Noto envia <code>POST http://ia:3002/v1/analise/autocorrigir-falha</code>.</li>
+          <li><strong>IA ➔ Noto:</strong> A IA identifica a falha autonomamente e prescreve a ação: <code>atualizar_parametro_fiscal_e_reemitir</code> ajustando o regime para Simples Nacional.</li>
+          <li><strong>Noto ➔ Fiscal:</strong> O Noto atualiza o parâmetro em <code>PUT http://fiscal:3001/v1/parametros-fiscais/:medicoId</code> e solicita nova emissão com novo <code>pedidoId</code> sem incomodar o médico.</li>
+        </ol>
+      </section>
+
+      <!-- 11. Dicionário e Matriz Completa de Endpoints -->
+      <section id="dicionario-endpoints" class="section-content">
+        <h1>Dicionário & Matriz Completa de Endpoints</h1>
+        <p class="lead">Catálogo exaustivo com todos os endpoints do monorepo, métodos HTTP, portas, cabeçalhos e finalidades.</p>
+
+        <h2>1. Serviço Fiscal (/fiscal — Porta 3001)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Método</th>
+              <th>Endpoint</th>
+              <th>Header Obrigatório</th>
+              <th>Descrição & Retorno</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/v1/onboarding/certificado</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Recebe A1 em Base64 + senha. Descriptografa, valida e devolve dados do titular e parâmetros fiscais.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/v1/notas/emitir</code></td>
+              <td><code>X-Internal-Token</code><br><code>Idempotency-Key</code></td>
+              <td>Assina a DPS com o A1 e transmite ao Serpro. Idempotente: retentativas com mesmo pedidoId não duplicam.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/v1/notas/:pedidoId</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Consulta o status (autorizada, processando, rejeitada) e dados da nota fiscal.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/v1/notas/:pedidoId/pdf</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Retorna o stream binário do DANFSE em formato PDF (Content-Type: application/pdf).</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/v1/parametros-fiscais/:medicoId</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Retorna alíquotas de ISS, enquadramento do Simples Nacional e descrição de serviço padrão.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-put">PUT</span></td>
+              <td><code>/v1/parametros-fiscais/:medicoId</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Atualiza parâmetros tributários do médico (utilizado na autocorreção fiscal).</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/health</code></td>
+              <td><em>Nenhum (Público)</em></td>
+              <td>Healthcheck para orquestração no Easypanel. Retorna <code>{ servico: "fiscal", status: "ok" }</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>2. Serviço de IA (/ia — Porta 3002)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Método</th>
+              <th>Endpoint</th>
+              <th>Header Obrigatório</th>
+              <th>Descrição & Retorno</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/v1/analise/detectar-candidatos</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Lê mensagens/mídias (80% regra, 20% IA) e formula a pergunta exata a ser enviada ao médico pelo WhatsApp.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/v1/analise/autocorrigir-falha</code></td>
+              <td><code>X-Internal-Token</code></td>
+              <td>Analisa rejeições SEFIN (ex: conflito MEI) e prescreve o ajuste tributário para reemissão autônoma.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/health</code></td>
+              <td><em>Nenhum (Público)</em></td>
+              <td>Healthcheck para orquestração no Easypanel. Retorna <code>{ servico: "ia", status: "ok" }</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>3. App Principal (/noto — Porta 3000)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Método</th>
+              <th>Endpoint</th>
+              <th>Autenticação</th>
+              <th>Descrição</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/api/auth/otp/solicitar</code></td>
+              <td>Rate limit celular</td>
+              <td>Gera e envia código OTP de 6 dígitos no WhatsApp oficial para login ou cadastro.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/api/auth/otp/verificar</code></td>
+              <td>Hash HMAC Pepper</td>
+              <td>Valida código OTP em tempo constante e autentica a sessão do médico no Supabase.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-post">POST</span></td>
+              <td><code>/webhook/evolution</code></td>
+              <td>Webhook Secret Evolution</td>
+              <td>Recebe eventos da Evolution API: mensagens recebidas, envio de mídias e status da conexão.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/api/whatsapp/status</code></td>
+              <td>Token Supabase</td>
+              <td>Consulta o estado de conexão do WhatsApp do consultório em tempo real.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/docs</code></td>
+              <td><em>Público</em></td>
+              <td>Página interativa oficial de documentação da arquitetura e contratos.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/llms.txt</code></td>
+              <td><em>Público</em></td>
+              <td>Documentação estruturada em texto puro otimizada para ingestão direta por LLMs.</td>
+            </tr>
+            <tr>
+              <td><span class="method-badge method-get">GET</span></td>
+              <td><code>/health</code></td>
+              <td><em>Público</em></td>
+              <td>Healthcheck do Easypanel para o app principal.</td>
+            </tr>
+          </tbody>
+        </table>
       </section>
 
     </main>
