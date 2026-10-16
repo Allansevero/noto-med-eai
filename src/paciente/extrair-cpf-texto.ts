@@ -40,6 +40,7 @@ export function extrairCpfTexto(
 export interface MensagemDirecionadaCpf {
   direcao: 'recebida' | 'enviada';
   texto?: string | null;
+  conteudo?: string | null;
 }
 
 const REGEX_CONTEXTO_PIX_CLINICA = /\b(?:chave\s*pix|nosso\s*pix|pix\s*(?:da\s*cl[ií]nica|da\s*dra|do\s*dr|é|e|:)|dados\s*banc[aá]rios|favorecido|conta\s*corrente)\b/i;
@@ -52,8 +53,9 @@ export function extrairCpfConversaSegura(
 
   const ignorados = new Set(cpfsIgnorados.map(c => c.replace(/\D/g, '')).filter(Boolean));
   for (const m of mensagens) {
-    if (m.direcao === 'enviada' && m.texto && REGEX_CONTEXTO_PIX_CLINICA.test(m.texto)) {
-      for (const cpfPix of extrairTodosCpfsTexto(m.texto)) {
+    const texto = m.texto ?? m.conteudo;
+    if (m.direcao === 'enviada' && texto && REGEX_CONTEXTO_PIX_CLINICA.test(texto)) {
+      for (const cpfPix of extrairTodosCpfsTexto(texto)) {
         ignorados.add(cpfPix);
       }
     }
@@ -62,15 +64,17 @@ export function extrairCpfConversaSegura(
   const listaIgnorados = Array.from(ignorados);
 
   for (const m of mensagens) {
-    if (m.direcao !== 'recebida' || !m.texto) continue;
-    const cpf = extrairCpfTexto(m.texto, listaIgnorados);
+    const texto = m.texto ?? m.conteudo;
+    if (m.direcao !== 'recebida' || !texto) continue;
+    const cpf = extrairCpfTexto(texto, listaIgnorados);
     if (cpf) return cpf;
   }
 
   for (const m of mensagens) {
-    if (m.direcao !== 'enviada' || !m.texto) continue;
-    if (REGEX_CONTEXTO_PIX_CLINICA.test(m.texto)) continue;
-    const cpf = extrairCpfTexto(m.texto, listaIgnorados);
+    const texto = m.texto ?? m.conteudo;
+    if (m.direcao !== 'enviada' || !texto) continue;
+    if (REGEX_CONTEXTO_PIX_CLINICA.test(texto)) continue;
+    const cpf = extrairCpfTexto(texto, listaIgnorados);
     if (cpf) return cpf;
   }
 

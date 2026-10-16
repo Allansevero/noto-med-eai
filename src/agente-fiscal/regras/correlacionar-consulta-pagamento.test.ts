@@ -74,10 +74,10 @@ test('extrai CPF do paciente a partir do histórico do WhatsApp', () => {
     id: 'cpf-1',
     direcao: 'recebida',
     tipo: 'texto',
-    conteudo: 'Meu CPF para a nota é 123.456.789-09',
+    conteudo: 'Meu CPF para a nota é 529.982.247-25',
     criadoEm: '2026-10-11T12:00:00Z'
   };
   const [c] = buscar([consulta, cpfMensagem, pagamento()]);
   assert.ok(c);
-  assert.equal(c.pacienteCpf, '12345678909');
+  assert.equal(c.pacienteCpf, '52998224725');
 });
