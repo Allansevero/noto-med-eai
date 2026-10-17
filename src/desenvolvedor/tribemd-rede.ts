@@ -7,7 +7,8 @@ export interface ChamadaRedeLoginTribemd {
  categoria:'autenticacao'|'outra';
  metodo:string;
  tipo:'document'|'xhr'|'fetch';
- fase:'pagina_login'|'envio_login';
+ fase:'pagina_login'|'envio_login'|'leitura_agenda'|'leitura_pacientes';
+ reutilizada?:boolean;
  statusHttp?:number;
  aguardandoResposta?:boolean;
  falha?:'dns'|'tls'|'conexao'|'tempo_esgotado'|'cancelada'|'bloqueada_politica'|'bloqueada_cliente'|'outro';
@@ -28,14 +29,19 @@ export class ObservadorRedeLoginTribemd {
  private registros=new WeakMap<Request,ChamadaRedeLoginTribemd>();
  private pendentes=new Set<Promise<void>>();
  private bloqueadas=new WeakSet<Request>();
- private fase:ChamadaRedeLoginTribemd['fase']='pagina_login';
+ private fase:ChamadaRedeLoginTribemd['fase'];
  private ordem=0;
  private limitado=false;
  private conclusao?:Promise<DiagnosticoRedeLoginTribemd>;
- constructor(private page:Page){
+ constructor(private page:Page,fase:ChamadaRedeLoginTribemd['fase']='pagina_login'){
+  this.fase=fase;
   page.on('request',this.requisicao);
   page.on('response',this.resposta);
   page.on('requestfailed',this.falha);
+ }
+ incluirExistente(request:Request,response?:Response){
+  if(this.registros.has(request))return;this.requisicao(request);const c=this.registros.get(request);if(c)c.reutilizada=true;
+  if(response)this.resposta(response);else if(request.failure())this.falha(request);
  }
  marcarEnvioLogin(){this.fase='envio_login';}
  marcarBloqueio(request:Request){this.bloqueadas.add(request);const c=this.registros.get(request);if(c)c.falha='bloqueada_politica';}

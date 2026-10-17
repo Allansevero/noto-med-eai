@@ -124,9 +124,28 @@ Referer é removido. Nenhum outro arquivo ou domínio de CDN foi liberado.
 Não se contornam bloqueios de borda. MFA e layouts de desafio não reconhecidos
 podem exigir parar o teste; não há resolvedor automático nem controle genérico.
 
-A extração lê somente colunas reconhecidas de nome, data e situação, em até
-cem linhas visíveis por tabela, no máximo cinco tabelas. Campos clínicos, CPF,
-telefone e observações não são coletados. O resultado fica só na sessão protegida.
+Nas tabelas, a extração lê somente colunas reconhecidas de nome, data e situação,
+em até cem linhas visíveis por tabela, no máximo cinco tabelas.
+
+Na agenda em calendário, o leitor observa o GET exato `/api/atendimentos/agenda`
+feito pelo próprio portal no navegador autenticado. Não dispara um cliente de API
+separado nem abre cartões. Apenas ao clicar **Abrir agenda e ler**, lê a resposta
+JSON transitória e seleciona `pacientes.nome`, situação e data dos primeiros cem
+atendimentos. Situações `8` (atendido) e `10` (finalizado) foram confirmadas no
+modelo JavaScript público. Datas futuras ou inválidas são descartadas.
+O resultado informa intervalo do GET, total e eventual corte de cem registros.
+CPF, telefone, observações e outros campos presentes na resposta são ignorados
+pelo extrator e não aparecem no resultado, no perfil ou no diagnóstico.
+
+O corpo bruto fica transitoriamente na memória do processo/navegador. Há limite
+de 2 MiB para aceitar o JSON, verificado pelo tamanho declarado e pelo buffer
+recebido; não é um limite de download por streaming. O buffer é sobrescrito após
+a leitura, sem garantia de apagar cópias internas ou strings do runtime.
+Somente o resultado mínimo é reutilizado na sessão, até nova consulta, navegação
+ou encerramento. Nada é enviado à IA, ao banco ou a logs.
+A data é a parte de calendário fornecida pelo portal; não se infere fuso horário.
+`origemData` distingue `datahora_atendimento` de `datahora_marcada` quando esta
+última for usada como alternativa em um registro concluído.
 
 Uma coluna explícita de “última consulta” é identificada como tal. Uma data de
 consulta com status realizado é marcada como **consulta realizada observada**;
@@ -134,12 +153,14 @@ não comprova ser a última de todo o histórico. Nesse caso, `ultimaConsulta`
 fica nula e a data aparece apenas em `dataConsultaObservada`. Agendado, cancelado, data futura
 ou inválida não viram consulta realizada. Homônimos não são mesclados.
 
-O bundle público indica uma **agenda em calendário**. O adaptador conservador
-atual reconhece tabelas, não confirma a leitura dos cartões desse calendário.
-Sem uma tabela reconhecida, retorna `LEITURA_LAYOUT_NAO_RECONHECIDO`; não tenta
-abrir cartões de atendimento nem inventa dados. A captura permite confirmar o
-layout com a clínica antes de ampliar seletores. A identificação da última
-consulta real de um paciente permanece pendente de validação autenticada.
+A agenda é lida pelo intervalo já carregado pelo portal, sem percorrer o histórico.
+A página atual é reaproveitada no caminho bem-sucedido. Após uma falha, um novo
+clique de leitura recarrega explicitamente o destino, sem reenviar a senha.
+Trocas de filtro substituem a resposta anterior, inclusive durante espera por
+cabeçalhos/corpo. Não se abre ficha individual nem se mesclam homônimos.
+A identificação da última consulta real de todo o histórico permanece pendente
+de validação autenticada. O formato do calendário real também precisa ser
+confirmado após reimplantar; os testes locais usam respostas controladas.
 
 ## Diagnóstico: como ler
 
@@ -174,7 +195,7 @@ próprios durante a execução; Playwright os remove no fechamento normal.
 | Login e última consulta reais | Não confirmados: confiança TLS do navegador e credenciais da clínica ainda necessários. |
 | Publicação no Easypanel | Não realizada; não há sessão administrativa autenticada nesta tarefa. |
 
-**Validação direcionada:** trinta e um testes passaram, sem falhas ou testes pulados,
+**Validação direcionada:** quarenta e um testes passaram, sem falhas ou testes pulados,
 incluindo painel no prefixo integrado, captura, reabertura do perfil,
 criptografia, diagnóstico, configuração incompleta e isolamento do parser.
 O teste de prefixo falhou antes da correção e passou depois.
@@ -268,3 +289,29 @@ O fluxo permanece com um único envio de senha. O botão **Confirmar login /
 verificação concluída** reavalia a tela atual sem reenviar credenciais. A
 correção foi verificada com fixtures; o resultado da conta real ainda deve
 ser confirmado após reimplantar o branch e abrir uma nova sessão.
+
+
+## CONTROLE_INDISPONIVEL depois de abrir a agenda
+
+O relatório do usuário chegou à etapa `leitura_agenda`, iniciada apenas após
+confirmar login. O leitor anterior procurava tabela, apesar de a agenda usar
+calendário, e ainda reutilizava o diagnóstico de rede do login. O painel tratava
+qualquer falha como intervenção de login e permitia clicar na imagem/Confirmar;
+o navegador já autenticado recusava essas ações com `CONTROLE_INDISPONIVEL`.
+
+Agora a API publica `autenticado` a partir do navegador. Uma falha de leitura com
+sessão autenticada fica em `falha_leitura`: leitura pode ser repetida e controles
+de login ficam desativados. Erros de ações são exibidos separadamente, preservando
+o erro e diagnóstico principal. HTTP401 na agenda invalida a autenticação;
+HTTP403/503 não a invalidam por si só. Encerrar e reabrir continua disponível.
+O diagnóstico de leitura tem fases `leitura_agenda` ou `leitura_pacientes`;
+`reutilizada:true` indica a chamada já iniciada/carregada pelo portal antes do
+clique de leitura. Parâmetros e corpo não aparecem nesse diagnóstico.
+
+Testes Chromium/Xvfb cobrem calendário sem tabela, ausência de reload no sucesso,
+HTTP401/403/503, retry503→200 sem novo envio de senha, desativação dos controles
+e manutenção do diagnóstico. Fixtures adicionais cobrem status, datas, campos
+ignorados, formato vazio/desconhecido, limites e substituição/encerramento de
+consulta enquanto cabeçalhos ou corpo anteriores estão pendentes.
+A conta real não foi acessada neste ambiente; o resultado informado pelo usuário
+é a evidência do avanço do login, sem confirmação local do conteúdo da agenda.

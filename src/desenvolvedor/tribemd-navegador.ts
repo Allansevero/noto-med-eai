@@ -2,19 +2,21 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { TelaVirtualTribemd } from './tribemd-display.js';
 import { ObservadorRedeLoginTribemd, type DiagnosticoRedeLoginTribemd } from './tribemd-rede.js';
 import { agendaTribemd, loginTribemd, origemTribemd, permitirRequisicaoTribemd, recursoPublicoTribemd, headersRecursoPublicoTribemd, lerConsultas, type ConsultaTribemd, type TabelaConsulta } from './tribemd-leitura.js';
+import { LeitorAgendaTribemd, ErroAgendaTribemd, type RecorteAgendaTribemd } from './tribemd-agenda.js';
 import { codigoEstadoLoginTribemd, type EstadoTelaLoginTribemd } from './tribemd-login-estado.js';
 import type { EstadoNavegador } from './tribemd-perfil.js';
 export class ErroTribemd extends Error {
  constructor(public codigo:string,public diagnostico?:{etapa:string;statusHttp?:number;rede?:DiagnosticoRedeLoginTribemd;tela?:EstadoTelaLoginTribemd}){super(codigo);}
 }
 export interface ResultadoLeituraTribemd {
- consultas:ConsultaTribemd[]; cobertura:'somente_linhas_visiveis'; pagina:'agenda'|'pacientes';
- historicoCompleto:false; detalhe:string;
+ consultas:ConsultaTribemd[]; cobertura:'somente_linhas_visiveis'|'intervalo_carregado_pelo_portal'; pagina:'agenda'|'pacientes';
+ historicoCompleto:false; detalhe:string; agenda?:Omit<RecorteAgendaTribemd,'consultas'>;
 }
 export class NavegadorTribemd {
  private page?:Page; private autenticando=true; private autenticado=false; private fechado=false;
  private fechamento?:Promise<void>; private observador?:ObservadorRedeLoginTribemd;
  private diagnostico?:DiagnosticoRedeLoginTribemd; private etapa='abrindo_login'; private statusHttp?:number;
+ private agenda?:LeitorAgendaTribemd;private leituraFalhou=false;
  private envioLogin=false;private ultimaTela?:EstadoTelaLoginTribemd;
  private constructor(private context:BrowserContext,private browser:Browser,private display:TelaVirtualTribemd){}
  static async criar(opcoes:{executavel:string;xvfb?:string;estado?:EstadoNavegador;proxy?:string},signal:AbortSignal) {
@@ -55,6 +57,7 @@ export class NavegadorTribemd {
    await route.fallback();
   });
   this.observador=new ObservadorRedeLoginTribemd(page);
+  this.agenda=new LeitorAgendaTribemd(page);
   try{
    this.statusHttp=(await page.goto(loginTribemd,{waitUntil:'domcontentloaded',timeout:30000}))?.status();
    if(this.statusHttp&&this.statusHttp>=400)throw new ErroTribemd('LOGIN_HTTP_ERRO');
@@ -100,12 +103,27 @@ export class NavegadorTribemd {
   else if(c.tipo==='rolar')await p.mouse.wheel(0,c.deltaY);
   else if(c.tecla!=='Enter')await p.keyboard.press(c.tecla);
  }
+ estaAutenticado(){return this.autenticado&&!this.fechado&&this.browser.isConnected();}
  async ler(pagina:'agenda'|'pacientes'):Promise<ResultadoLeituraTribemd> {
   if(!this.autenticado||!this.page)throw new ErroTribemd('LOGIN_NAO_CONFIRMADO');
   const p=this.page;this.etapa='leitura_'+pagina;
+  await this.observador?.concluir();this.diagnostico=undefined;
+  this.observador=new ObservadorRedeLoginTribemd(p,pagina==='agenda'?'leitura_agenda':'leitura_pacientes');
   try{
-   const r=await p.goto(origemTribemd+(pagina==='agenda'?agendaTribemd:'/pacientes'),{waitUntil:'domcontentloaded',timeout:25000});
-   this.statusHttp=r?.status();if(this.statusHttp&&this.statusHttp>=400)throw new ErroTribemd('LEITURA_HTTP_ERRO');
+   const destino=pagina==='agenda'?agendaTribemd:'/pacientes';
+   if(this.leituraFalhou||new URL(p.url()).pathname!==destino){
+    const r=await p.goto(origemTribemd+destino,{waitUntil:'domcontentloaded',timeout:25000});
+    this.statusHttp=r?.status();if(this.statusHttp&&this.statusHttp>=400)throw new ErroTribemd('LEITURA_HTTP_ERRO');
+   }
+   if(new URL(p.url()).pathname==='/login'){this.autenticado=false;throw new ErroTribemd('SESSAO_EXPIRADA');}
+   const hoje=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+   if(pagina==='agenda'&&(this.agenda?.temRequisicao()||!await p.locator('table:visible,[role=table]:visible').count())){
+    this.agenda?.observarExistente(this.observador);
+    const {consultas,...agenda}=await this.agenda!.ler(hoje);
+    this.leituraFalhou=false;this.diagnostico=await this.observador.concluir();await this.observarTela();
+    return {consultas,agenda,cobertura:'intervalo_carregado_pelo_portal',pagina,historicoCompleto:false,
+     detalhe:`Calendário carregado: ${agenda.totalAtendimentos} atendimentos no intervalo consultado pelo portal. ${consultas.length} consultas concluídas com nome e data reconhecidos no recorte. Não comprova a última consulta do histórico.`};
+   }
    await p.locator('table:visible,[role=table]:visible').first().waitFor({timeout:12000});
    // Extrair somente colunas necessárias; não carregar fichas, CPF, telefone ou prontuário.
    const tabelas=await p.evaluate<TabelaConsulta[]>(String.raw`(() => {
@@ -119,10 +137,10 @@ export class NavegadorTribemd {
      });return {colunas:indices.map(i=>cab[i]),linhas};
     });
    })()`);
-   const hoje=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
    const consultas=lerConsultas(tabelas,hoje);
+   this.leituraFalhou=false;this.diagnostico=await this.observador.concluir();await this.observarTela();
    return {consultas,cobertura:'somente_linhas_visiveis',pagina,historicoCompleto:false,detalhe:consultas.length?'Leitura parcial. Consulta realizada observada não comprova que seja a última do histórico.':'Nenhuma data comprovada nas colunas reconhecidas. Isso não significa ausência de consultas; o layout precisa ser confirmado.'};
-  }catch(e){throw await this.erroSeguro(e,'LEITURA_LAYOUT_NAO_RECONHECIDO');}
+  }catch(e){this.leituraFalhou=true;if(new URL(p.url()).pathname==='/login'){this.autenticado=false;e=new ErroTribemd('SESSAO_EXPIRADA');}if(e instanceof ErroAgendaTribemd){if(e.codigo==='SESSAO_EXPIRADA')this.autenticado=false;e=new ErroTribemd(e.codigo);}throw await this.erroSeguro(e,'LEITURA_LAYOUT_NAO_RECONHECIDO');}
  }
  async perfil():Promise<EstadoNavegador|undefined>{
   if(!this.autenticado)return undefined;
@@ -139,11 +157,11 @@ export class NavegadorTribemd {
   await this.observarTela();
   this.diagnostico=await this.observador?.concluir()||this.diagnostico;
   const httpErro=this.diagnostico?.chamadas.some(c=>c.statusHttp&&c.statusHttp>=400);
-  return new ErroTribemd(e instanceof ErroTribemd?e.codigo:httpErro?'LOGIN_HTTP_ERRO':codigo,{etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico,tela:this.ultimaTela});
+  return new ErroTribemd(e instanceof ErroTribemd?e.codigo:httpErro?(this.etapa.startsWith('leitura_')?'LEITURA_HTTP_ERRO':'LOGIN_HTTP_ERRO'):codigo,{etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico,tela:this.ultimaTela});
  }
  diagnosticar(){return {etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico,tela:this.ultimaTela};}
  async encerrar(){
-  if(!this.fechamento){this.fechado=true;this.fechamento=(async()=>{try{await this.observador?.concluir();await this.browser.close();}finally{await this.display.encerrar();}})();}
+  if(!this.fechamento){this.fechado=true;this.agenda?.encerrar();this.fechamento=(async()=>{try{await this.observador?.concluir();await this.browser.close();}finally{await this.display.encerrar();}})();}
   return this.fechamento;
  }
 }

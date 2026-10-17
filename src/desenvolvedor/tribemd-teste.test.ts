@@ -1,12 +1,14 @@
 import express from 'express';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { BrowserContext } from 'playwright-core';
+import type { BrowserContext, Page, Request, Response } from 'playwright-core';
 import { loginTribemd, agendaTribemd, constantesPublicasTribemd, headersRecursoPublicoTribemd, permitirRequisicaoTribemd, lerConsultas } from './tribemd-leitura.js';
+import { extrairAgendaTribemd, ErroAgendaTribemd, LeitorAgendaTribemd } from './tribemd-agenda.js';
 import { PerfisTribemd } from './tribemd-perfil.js';
 import { NavegadorTribemd, ErroTribemd } from './tribemd-navegador.js';
 import { chromium } from 'playwright-core';
@@ -67,7 +69,7 @@ test('área protege HTML/imagem, rejeita CSRF, não expõe credenciais e aceita 
 });
 const executavel=process.env.CHROMIUM_EXECUTABLE_PATH||'/usr/bin/chromium';
 const xvfb=process.env.XVFB_EXECUTABLE_PATH||'Xvfb';
-async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false,layout:{senha?:'oculta'|'visivel';menuComIcone?:boolean;semNavegacao?:boolean;atrasoMenuMs?:number;ocultarMenu?:boolean;tituloPagina?:boolean}={}){
+async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false,layout:{senha?:'oculta'|'visivel';menuComIcone?:boolean;semNavegacao?:boolean;atrasoMenuMs?:number;ocultarMenu?:boolean;tituloPagina?:boolean;calendario?:boolean;agendaStatus?:number;agendaDados?:unknown}={}){
  const context=(n as unknown as {context:BrowserContext}).context;
  const chamadas:{metodo:string;rota:string}[]=[];
  await context.route('https://bipp.nyc3.cdn.digitaloceanspaces.com/bipp/static/constantes.json*',route=>route.fulfill({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'https://app.tribemd.com'},body:'{"catalogoPublico":true}'}));
@@ -81,12 +83,13 @@ async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false,layo
    </script>`});return;
   }
   if(u.pathname==='/api/usuarios/login'){await route.fulfill({contentType:'application/json',headers:{'Set-Cookie':'sessao=apenas-teste; Path=/; HttpOnly; Secure; SameSite=Lax'},body:'{"ok":true}'});return;}
+  if(u.pathname==='/api/atendimentos/agenda'&&layout.calendario){await route.fulfill({status:layout.agendaStatus||200,contentType:'application/json',body:JSON.stringify(layout.agendaDados??{atendimentos:[{status:8,datahora_atendimento:'2026-10-12 09:00:00',pacientes:{nome:'Paciente fictício',cpf:'NAO_EXPORTAR'},observacao:'NAO_EXPORTAR'}]})});return;}
   if(['/atendimentos/agenda','/pacientes'].includes(u.pathname)){
    const menu=layout.semNavegacao?'':layout.menuComIcone?'<nav><a href="/atendimentos/agenda"><i>event</i><span>Agenda</span></a><a href="/pacientes"><i>people</i><span>Pacientes</span></a></nav>':'<nav><a href="/atendimentos/agenda">Agenda</a><a href="/pacientes">Pacientes</a></nav>';
    const senha=layout.senha?`<input type="password" ${layout.senha==='oculta'?'hidden':''}>`:'';
    const menuRenderizado=layout.ocultarMenu?'<div hidden>'+menu+'</div>':menu;
    const navegacao=layout.atrasoMenuMs?`<div id="navegacao"></div><script>setTimeout(()=>document.getElementById('navegacao').innerHTML=${JSON.stringify(menuRenderizado)},${layout.atrasoMenuMs})</script>`:menuRenderizado;
-   await route.fulfill({contentType:'text/html',body:`<meta charset="utf-8">${senha}${navegacao}${layout.tituloPagina?'<h1>Agenda</h1>':''}<table><tr><th>Nome</th><th>Última consulta</th></tr><tr><td>Paciente fictício</td><td>12/10/2026</td></tr></table>`});return;
+   await route.fulfill({contentType:'text/html',body:`<meta charset="utf-8">${senha}${navegacao}${layout.tituloPagina?'<h1>Agenda</h1>':''}${layout.calendario?'<div class="q-calendar"></div><script>fetch("/api/atendimentos/agenda?inicio=2026-10-11&fim=2026-10-17").catch(()=>{})</script>':'<table>'}${layout.calendario?'':'<tr><th>Nome</th><th>Última consulta</th></tr><tr><td>Paciente fictício</td><td>12/10/2026</td></tr></table>'}`});return;
   }
   await route.fulfill({status:404,body:''});
  });return {context,chamadas};
@@ -336,4 +339,96 @@ test('menu recolhido exige evidência visível e aceita título reconhecido da a
   await fixture(n,false,false,{ocultarMenu:true,tituloPagina:true});await n.abrir();await n.entrar('teste@example.invalid','credencial-ficticia');
   assert.equal(n.diagnosticar().tela?.linksProtegidos,0);assert.equal(n.diagnosticar().tela?.titulosVisiveis,1);assert.equal(n.diagnosticar().tela?.confirmado,true);
  }finally{await n.encerrar();}
+});
+
+
+test('lê calendário pelo GET feito pelo navegador, sem tabela nem recarregar a página',async()=>{
+ const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+ try{
+  const f=await fixture(n,false,false,{calendario:true});await n.abrir();await n.entrar('teste@example.invalid','credencial-ficticia');
+  const antes=f.chamadas.filter(c=>c.rota==='/atendimentos/agenda').length;
+  const r=await n.ler('agenda');assert.equal(r.consultas.length,1);assert.equal(r.consultas[0].ultimaConsulta,null);assert.equal(r.consultas[0].dataConsultaObservada,'2026-10-12');
+  assert.equal(JSON.stringify(r).includes('NAO_EXPORTAR'),false);assert.equal(r.historicoCompleto,false);
+  assert.equal(f.chamadas.filter(c=>c.rota==='/atendimentos/agenda').length,antes);
+ }finally{await n.encerrar();}
+});
+
+test('falha de leitura preserva login, desativa controles de login e permite nova leitura',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'tribemd-reler-')),token=randomBytes(32).toString('hex');
+ const app=express(),server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+ const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`,original=NavegadorTribemd.criar;
+ let primeira=true;
+ NavegadorTribemd.criar=async()=>({abrir:async()=>'perfil_reutilizado',estaAutenticado:()=>true,perfil:async()=>undefined,encerrar:async()=>{},tela:async()=>null,
+  ler:async()=>{if(primeira){primeira=false;throw new ErroTribemd('LEITURA_AGENDA_HTTP_ERRO',{etapa:'leitura_agenda',statusHttp:503});}return {consultas:[],cobertura:'intervalo_carregado_pelo_portal',pagina:'agenda',historicoCompleto:false,detalhe:'Fixture: leitura concluída.'};}
+ } as unknown as NavegadorTribemd);
+ const area=montarAreaTesteTribemd(app,{TRIBEMD_TESTE_ATIVO:'true',TRIBEMD_TESTE_TOKEN:token,TRIBEMD_TESTE_CHAVE:randomBytes(32).toString('base64'),TRIBEMD_TESTE_DIRETORIO:dir,TRIBEMD_TESTE_ORIGEM:base});
+ const viewer=await chromium.launch({executablePath:executavel,headless:true,args:['--no-sandbox']});
+ try{
+  const context=await viewer.newContext({httpCredentials:{username:'teste',password:token}}),page=await context.newPage();
+  let controles=0;page.on('request',r=>{if(new URL(r.url()).pathname.endsWith('/controle'))controles++;});
+  await page.goto(base+caminhoTesteTribemd+'/');await page.locator('#abrir input').fill('clinica-fixture');await page.getByRole('button',{name:'Abrir navegador',exact:true}).click();
+  await page.waitForFunction(()=>document.getElementById('estado')?.textContent==='pronto');
+  await page.getByRole('button',{name:'Abrir agenda e ler'}).click();await page.waitForFunction(()=>document.getElementById('estado')?.textContent?.includes('LEITURA_AGENDA_HTTP_ERRO'));
+  assert.equal((await page.locator('#estado').textContent())?.startsWith('falha_leitura'),true);
+  assert.equal(await page.locator('#confirmar').isDisabled(),true);assert.equal(await page.locator('#agenda').isEnabled(),true);
+  await page.locator('#tela').click();assert.equal(controles,0);
+  await page.getByRole('button',{name:'Abrir agenda e ler'}).click();await page.waitForFunction(()=>document.getElementById('estado')?.textContent==='pronto');
+  assert.equal((await page.locator('#dados').textContent())?.includes('leitura concluída'),true);assert.equal(await page.locator('#diagnostico').textContent(),'');
+ }finally{await viewer.close();await area.encerrar();NavegadorTribemd.criar=original;await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
+});
+
+
+test('agenda filtra status, datas e campos privados sem declarar última consulta histórica',()=>{
+ const item={status:8,datahora_atendimento:'2026-10-12 09:00:00',pacientes:{nome:'Exemplo',cpf:'NAO_EXPORTAR'},observacao:'NAO_EXPORTAR'};
+ const itens=[item,{...item,status:10,datahora_atendimento:null,datahora_marcada:'2026-10-13 09:00:00'},...[-2,-1,0,1,2,3,6,7].map(status=>({...item,status})),{...item,datahora_atendimento:'2026-02-31'},{...item,datahora_atendimento:'2027-01-01'}, {...item,pacientes:{nome:''}}];
+ const r=extrairAgendaTribemd({atendimentos:itens},'2026-10-17');assert.equal(r.consultas.length,2);assert.equal(r.consultas[0].ultimaConsulta,null);assert.equal(r.consultas[1].origemData,'datahora_marcada');assert.equal(JSON.stringify(r).includes('NAO_EXPORTAR'),false);
+});
+test('agenda aceita vazio, limita recorte e rejeita formato desconhecido',()=>{
+ assert.deepEqual(extrairAgendaTribemd({atendimentos:[]},'2026-10-17'),{consultas:[],totalAtendimentos:0,limitado:false});
+ const r=extrairAgendaTribemd({data:{atendimentos:Array.from({length:101},()=>({status:'10',datahora_atendimento:'2026-10-12',pacientes:{nome:'Exemplo'}}))}},'2026-10-17');assert.equal(r.consultas.length,100);assert.equal(r.totalAtendimentos,101);assert.equal(r.limitado,true);
+ assert.throws(()=>extrairAgendaTribemd({pacientes:[]},'2026-10-17'),e=>e instanceof ErroAgendaTribemd&&e.codigo==='LEITURA_AGENDA_FORMATO_NAO_RECONHECIDO');
+});
+for(const [status,codigo] of [[401,'SESSAO_EXPIRADA'],[403,'LEITURA_AGENDA_SEM_PERMISSAO'],[503,'LEITURA_AGENDA_HTTP_ERRO']] as const){
+ test('agenda HTTP '+status+' produz diagnóstico da leitura e estado de autenticação correto',async()=>{
+  const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+  try{
+   await fixture(n,false,false,{calendario:true,agendaStatus:status});await n.abrir();await n.entrar('teste@example.invalid','credencial-ficticia');
+   await assert.rejects(n.ler('agenda'),e=>{
+    const erro=e as ErroTribemd;assert.equal(erro.codigo,codigo);assert.equal(erro.diagnostico?.etapa,'leitura_agenda');
+    const chamadas=erro.diagnostico?.rede?.chamadas;assert.ok(chamadas?.length);assert.equal(chamadas.every(c=>c.fase==='leitura_agenda'),true);assert.equal(chamadas.some(c=>c.rota==='/api/usuarios/login'),false);assert.equal(chamadas.find(c=>c.rota==='/api/atendimentos/agenda')?.statusHttp,status);return true;
+   });assert.equal(n.estaAutenticado(),status!==401);
+  }finally{await n.encerrar();}
+ });
+}
+test('nova tentativa depois de HTTP503 recarrega agenda sem reenviar login',async()=>{
+ const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal),layout={calendario:true,agendaStatus:503};
+ try{
+  const f=await fixture(n,false,false,layout);await n.abrir();await n.entrar('teste@example.invalid','credencial-ficticia');await assert.rejects(n.ler('agenda'));
+  layout.agendaStatus=200;const r=await n.ler('agenda');assert.equal(r.consultas.length,1);assert.equal(f.chamadas.filter(c=>c.metodo==='POST').length,1);assert.equal(f.chamadas.filter(c=>c.rota==='/atendimentos/agenda').length,2);
+ }finally{await n.encerrar();}
+});
+
+
+test('troca de filtro não aguarda corpo obsoleto e encerramento interrompe espera',async()=>{
+ const eventos=new EventEmitter(),frame={},page=Object.assign(eventos,{mainFrame:()=>frame}) as unknown as Page;
+ const leitor=new LeitorAgendaTribemd(page);
+ const request=(inicio:string)=>({isNavigationRequest:()=>false,frame:()=>frame,method:()=>'GET',url:()=>`https://app.tribemd.com/api/atendimentos/agenda?inicio=${inicio}&fim=2026-10-17`}) as unknown as Request;
+ const response=(req:Request,body:()=>Promise<Buffer>)=>({request:()=>req,status:()=>200,headerValue:async()=>null,body}) as unknown as Response;
+ let iniciou!:()=>void,terminar!:()=>void;const iniciada=new Promise<void>(r=>{iniciou=r;}),corpoAntigo=new Promise<void>(r=>{terminar=r;});
+ const a=request('2026-10-01');eventos.emit('request',a);eventos.emit('response',response(a,async()=>{iniciou();await corpoAntigo;return Buffer.from('{"atendimentos":[]}');}));
+ const lendo=leitor.ler('2026-10-17',1000);await iniciada;
+ const b=request('2026-10-11');eventos.emit('request',b);eventos.emit('response',response(b,async()=>Buffer.from('{"atendimentos":[]}')));
+ try{const r=await lendo;assert.equal(r.intervalo.inicio,'2026-10-11');}finally{terminar();leitor.encerrar();}
+ const outro=new LeitorAgendaTribemd(page),pendente=outro.ler('2026-10-17',1000);outro.encerrar();await assert.rejects(pendente,e=>e instanceof ErroAgendaTribemd&&e.codigo==='SESSAO_ENCERRADA');
+});
+
+
+test('troca durante cabeçalhos pendentes ignora resposta obsoleta sem ler seu corpo',async()=>{
+ const eventos=new EventEmitter(),frame={},page=Object.assign(eventos,{mainFrame:()=>frame}) as unknown as Page,leitor=new LeitorAgendaTribemd(page);
+ const request=()=>({isNavigationRequest:()=>false,frame:()=>frame,method:()=>'GET',url:()=>'https://app.tribemd.com/api/atendimentos/agenda'}) as unknown as Request;
+ let liberar!:()=>void,iniciar!:()=>void,corpos=0;const barreira=new Promise<null>(r=>{liberar=()=>r(null);}),iniciada=new Promise<void>(r=>{iniciar=r;});
+ const a=request();eventos.emit('request',a);eventos.emit('response',{request:()=>a,status:()=>200,headerValue:()=>{iniciar();return barreira;},body:async()=>{corpos++;return Buffer.from('{}');}} as unknown as Response);
+ const lendo=leitor.ler('2026-10-17',1000);await iniciada;
+ const b=request();eventos.emit('request',b);eventos.emit('response',{request:()=>b,status:()=>200,headerValue:async()=>null,body:async()=>Buffer.from('{"atendimentos":[] }')} as unknown as Response);
+ try{assert.equal((await lendo).totalAtendimentos,0);liberar();await new Promise<void>(r=>setImmediate(r));assert.equal(corpos,0);}finally{liberar();leitor.encerrar();}
 });

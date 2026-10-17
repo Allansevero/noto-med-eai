@@ -39,8 +39,8 @@ export function criarAreaTesteTribemd(config:ConfigTesteTribemd) {
   next();
  });
  app.use(express.json({limit:'16kb'}));
- const resumo=(s:Sessao)=>({ok:true,id:s.id,estado:s.estado,codigo:s.codigo,diagnostico:s.diagnostico,resultado:s.resultado,expiraEm:s.expiraEm,credencialSalva:s.credencialSalva});
- const falhar=(s:Sessao,e:unknown)=>{s.codigo=e instanceof ErroTribemd?e.codigo:'OPERACAO_FALHOU';s.diagnostico=e instanceof ErroTribemd?e.diagnostico:undefined;s.estado='necessita_intervencao';};
+ const resumo=(s:Sessao)=>({ok:true,id:s.id,estado:s.estado,autenticado:s.navegador?.estaAutenticado()??false,codigo:s.codigo,diagnostico:s.diagnostico,resultado:s.resultado,expiraEm:s.expiraEm,credencialSalva:s.credencialSalva});
+ const falhar=(s:Sessao,e:unknown)=>{s.codigo=e instanceof ErroTribemd?e.codigo:'OPERACAO_FALHOU';s.diagnostico=e instanceof ErroTribemd?e.diagnostico:undefined;s.estado=s.estado==='lendo'&&s.navegador?.estaAutenticado()?'falha_leitura':'necessita_intervencao';};
  const persistir=async(s:Sessao)=>{const estado=await s.navegador?.perfil();if(estado){const perfil=await perfis.ler(s.clinica);try{perfil.estado=estado;await perfis.salvar(s.clinica,perfil);}finally{perfil.email='';perfil.senha='';}}};
  const encerrar=(s:Sessao)=>{
   if(!s.encerrando)s.encerrando=(async()=>{
@@ -89,20 +89,20 @@ export function criarAreaTesteTribemd(config:ConfigTesteTribemd) {
  }));
  app.post('/api/sessoes/:id/confirmar',rota(async(req,res)=>{
   apagarCorpo(req);const s=sessao(req,res);if(!s)return;
-  if(ocupado(s)||s.estado==='pronto'){res.status(409).json({ok:false,codigo:'CONTROLE_INDISPONIVEL'});return;}
+  if(ocupado(s)||s.navegador?.estaAutenticado()){res.status(409).json({ok:false,codigo:'CONTROLE_INDISPONIVEL'});return;}
   s.estado='confirmando';trabalhar(s,async()=>{await s.navegador!.confirmar();await persistir(s);s.codigo=undefined;s.diagnostico=undefined;s.estado='pronto';});res.status(202).json(resumo(s));
  }));
  app.post('/api/sessoes/:id/controle',rota(async(req,res)=>{
   let d;try{d=controle.parse(req.body);}finally{apagarCorpo(req);}
   const s=sessao(req,res);if(!s)return;
-  if(ocupado(s)||s.estado==='pronto'){res.status(409).json({ok:false,codigo:'CONTROLE_INDISPONIVEL'});return;}
+  if(ocupado(s)||s.navegador?.estaAutenticado()){res.status(409).json({ok:false,codigo:'CONTROLE_INDISPONIVEL'});return;}
   const anterior=s.estado;s.estado='confirmando';
   try{await s.navegador!.controle(d);res.json({ok:true});}catch{res.status(409).json({ok:false,codigo:'CONTROLE_INDISPONIVEL'});}finally{if(!s.encerrando)s.estado=anterior;}
  }));
  app.post('/api/sessoes/:id/ler',rota(async(req,res)=>{
   let d;try{d=z.object({pagina:z.enum(['agenda','pacientes'])}).strict().parse(req.body);}finally{apagarCorpo(req);}
-  const s=sessao(req,res);if(!s)return;if(s.estado!=='pronto'){res.status(409).json({ok:false,codigo:'LOGIN_OU_LEITURA_PENDENTE'});return;}
-  s.estado='lendo';trabalhar(s,async()=>{s.resultado=await s.navegador!.ler(d.pagina);await persistir(s);s.estado='pronto';});res.status(202).json(resumo(s));
+  const s=sessao(req,res);if(!s)return;if(!['pronto','falha_leitura'].includes(s.estado)||!s.navegador?.estaAutenticado()){res.status(409).json({ok:false,codigo:'LOGIN_OU_LEITURA_PENDENTE'});return;}
+  s.codigo=undefined;s.diagnostico=undefined;s.resultado=undefined;s.estado='lendo';trabalhar(s,async()=>{s.resultado=await s.navegador!.ler(d.pagina);await persistir(s);s.estado='pronto';});res.status(202).json(resumo(s));
  }));
  app.get('/api/sessoes/:id/tela',rota(async(req,res)=>{const s=sessao(req,res);if(!s)return;const png=await s.navegador?.tela();if(!png){res.status(204).end();return;}res.once('finish',()=>png.fill(0));res.once('close',()=>png.fill(0));res.type('png').send(png);}));
  app.get('/api/sessoes/:id',(req,res)=>{const s=sessao(req,res);if(s)res.json(resumo(s));});
