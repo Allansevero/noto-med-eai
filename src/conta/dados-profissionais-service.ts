@@ -1,6 +1,4 @@
-/** Recebe exclusivamente respostas de um médico autenticado no chat oficial. */
+/** Retoma solicitações da API após confirmação dos dados no painel. */
 export interface DadosProfissionaisService {
-  solicitar(medicoId: string): Promise<void>;
-  processarResposta(entrada: { medicoId: string; texto: string; mensagemId: string; mensagemEm?: Date }): Promise<{ tratada: boolean; completo: boolean }>;
   retomar(medicoId: string): Promise<number>;
 }

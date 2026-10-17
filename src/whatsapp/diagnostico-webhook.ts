@@ -16,10 +16,6 @@ export function diagnosticoResultadoWebhook(res:ResultadoProcessarWebhook):Recor
  const d=objeto(res.detalhe);
  const r:Record<string,unknown>={resultado:d.ok===false?'bloqueado':'processado',acao:res.acao};
  if(res.motivoDescarte)r.motivo=res.motivoDescarte;
- if(res.acao==='conversa_assistente'){
-  if(typeof d.estado==='string'&&['pendente','analisando','aplicado','preparado','enviando','concluido','incerto','falha','nao_registrado'].includes(d.estado))r.estadoTurno=d.estado;
-  if(Number.isInteger(d.mensagensConfirmadas))r.mensagensConfirmadas=d.mensagensConfirmadas;
- }
  return r;
 }
 export function diagnosticoErroWebhook(erro:unknown):Record<string,string>{

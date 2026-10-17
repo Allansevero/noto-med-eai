@@ -81,7 +81,6 @@ export function renderizarTributacaoMunicipal(
 ): void {
   const rowH = 16;
   let y = ctx.currentY;
-  const munNome = resolverNomeMunicipio(prestador.municipio, prestador.municipio);
 
   // Linha 1
   desenharCelula(ctx, ctx.marginX, y, 170, rowH, '', 'TRIBUTAÇÃO MUNICIPAL (ISSQN)', true);
@@ -211,7 +210,6 @@ export function renderizarCanhotoCientificacao(
   const h = 22;
   const col1W = 145;
   const col2W = 195;
-  const col3W = ctx.contentWidth - col1W - col2W;
 
   // Caixa externa
   desenharCaixa(ctx, ctx.marginX, yBottom, ctx.contentWidth, h);

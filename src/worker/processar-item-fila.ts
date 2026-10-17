@@ -5,9 +5,6 @@
  */
 
 import type { DadosProfissionaisService } from '../conta/dados-profissionais-service.js';
-import { investigarFalha, type AgenteFiscalDeps } from '../agente-fiscal/investigar-falha.js';
-import { formatarMotivoFalhaEmissao } from './formatar-motivo-falha-emissao.js';
-import type { FalhaEmissao } from '../agente-fiscal/investigacao.js';
 import {
   excedeuTentativasEmissao,
   calcularProximaTentativa
@@ -23,7 +20,6 @@ export interface ProcessarItemFilaDeps {
   enviarPdfDanfse: EnviarPdfDanfse;
   notificadorAlertas: NotificadorAlertas;
   agora?: () => Date;
-  agenteFiscal?: AgenteFiscalDeps;
   dadosProfissionais?: DadosProfissionaisService;
 }
 
@@ -37,8 +33,6 @@ export async function processarItemFila(
 ): Promise<ResultadoProcessarItem> {
   const dataAtual = deps.agora ? deps.agora() : new Date();
   const tentativaAtual = item.tentativas + 1;
-
-  if (deps.agenteFiscal) return processarComAgente(item, deps);
 
   try {
     const emissao = await deps.emissorDps.emitir(item);
@@ -69,15 +63,13 @@ async function tratarSucessoEmissao(item: ItemFilaComTentativas, emissao: any, d
   });
 
   const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
-  if (!contexto && deps.agenteFiscal) throw new Error('Contato para entrega não localizado');
   if (contexto) {
-    const entrega = await deps.enviarPdfDanfse.enviarPdf({
+    await deps.enviarPdfDanfse.enviarPdf({
       instanciaNome: contexto.instanciaNome,
       contatoTelefone: contexto.contatoTelefone,
       pdfPathOuUrl: emissao.pdfStoragePath,
       nomeArquivo: `DANFSe-${emissao.ndps}.pdf`
     });
-    if (deps.agenteFiscal && !entrega.sucesso) throw new Error('Entrega do PDF pendente');
   }
 }
 
@@ -124,59 +116,9 @@ async function tratarExcecaoInesperada(
   return tratarFalhaEmissao(item, tentativaAtual, mensagemErro, dataAtual, deps);
 }
 
-/** Mantém exceções do agente fora do catch que reagenda emissões legadas. */
-async function processarComAgente(item: ItemFilaComTentativas, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
-  let emissao;
-  try {
-    emissao = await deps.emissorDps.emitir(item);
-  } catch {
-    emissao = { sucesso: false as const, erro: 'Falha inesperada; resultado da transmissão desconhecido.' };
-  }
-  if (!emissao.sucesso && emissao.dadosProfissionaisPendentes) return aguardarDadosProfissionais(item, deps);
-  if (!emissao.sucesso) return tratarComAgente(item, emissao, deps);
-  try {
-    await tratarSucessoEmissao(item, emissao, deps);
-    return { ok: true, status: 'emitida', chaveAcesso: emissao.chaveAcesso };
-  } catch {
-    // Nunca converter erro de gravação/entrega após autorização em nova emissão.
-    return tratarComAgente(item, { sucesso: false,
-      erro: 'Autorização recebida; falha na persistência ou entrega. Conciliar sem retransmitir.',
-      contextoTecnico: { chaveAcesso: emissao.chaveAcesso, etapa: 'pos_autorizacao' }
-    }, deps);
-  }
-}
-async function tratarComAgente(item: ItemFilaComTentativas, falha: FalhaEmissao, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
-  const resultado = await investigarFalha({ item, falha }, {
-    ...deps.agenteFiscal!, emissor: deps.emissorDps,
-    concluir: (nota) => tratarSucessoEmissao(item, nota, deps),
-    notificar: async (decisao) => {
-      if (decisao.responsavel === 'desenvolvedor') {
-        await deps.notificadorAlertas.notificarDesenvolvedorEmail({
-          assunto: `[Incidente Fiscal] ${decisao.motivo} (Solicitação ${item.id})`,
-          detalhesErro: `Falha técnica de competência dos desenvolvedores: ${decisao.motivo}\nAção recomendada: ${decisao.acaoSugerida}\nDetalhes do erro: ${formatarMotivoFalhaEmissao(falha)}`,
-          solicitacaoId: item.id,
-          medicoId: item.medicoId
-        });
-        return;
-      }
-      const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
-      if (!contexto) throw new Error('Contato do médico não localizado');
-      await deps.notificadorAlertas.notificarMedicoWhatsApp({
-        telefoneMedico: contexto.telefoneMedico, medicoId: item.medicoId, solicitacaoId: item.id, nomePaciente: contexto.nomePaciente,
-        valorCentavos: item.valorServicoCentavos,
-        motivoErro: formatarMotivoFalhaEmissao(falha),
-        pendenciasFiscais: falha.pendenciasFiscais
-      });
-    }
-  });
-  return resultado ? { ok: true, status: 'emitida', chaveAcesso: resultado.chaveAcesso }
-    : { ok: false, status: 'necessita_intervencao' };
-}
-
 async function aguardarDadosProfissionais(item: ItemFilaComTentativas, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
   if (!deps.filaRepositorio.suspenderPorDadosProfissionais) throw new Error('Controle de dados profissionais indisponível.');
   await deps.filaRepositorio.suspenderPorDadosProfissionais(item.id);
-  await deps.dadosProfissionais?.solicitar(item.medicoId);
   await deps.dadosProfissionais?.retomar(item.medicoId);
   return { ok: false, status: 'aguardando_dados_profissionais' };
 }

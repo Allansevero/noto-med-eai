@@ -1,3 +1,5 @@
+> Base unificada: o leitor e a área protegida foram preservados. As suítes mencionadas abaixo descrevem validações anteriores; seus arquivos foram removidos na limpeza solicitada em 17/10/2026.
+
 # TribeMD: área protegida de teste no Noto
 
 Branch: `fix/tribemd-login-area-teste`. Base do repositório: `bbe97e2`.

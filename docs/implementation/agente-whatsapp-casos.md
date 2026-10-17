@@ -1,3 +1,5 @@
+> Histórico: os motores descritos neste documento foram retirados na base unificada. Consulte `docs/implementation/base-unificada.md`.
+
 # Agente WhatsApp por casos
 
 Base: fcb4488. Desenho autorizado em 14/10/2026.

@@ -1,5 +1,3 @@
-import { criarEnviadorConversasNoto } from '../whatsapp/enviador-conversas-noto.js';
-import { criarServicosIa } from '../ia/criar-servicos-ia.js';
 import { iniciarAvisosPendenciasProfissionais } from './avisar-pendencias-profissionais.js';
 import { PostgresDadosProfissionaisService } from '../io/postgres/postgres-dados-profissionais-service.js';
 /**
@@ -55,12 +53,6 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     config.evolutionAssistantInstanceName,
     config.evolutionOfficialInstanceName
   );
-  const enviarConversas = criarEnviadorConversasNoto({
-    oficialNome: config.evolutionOfficialInstanceName,
-    assistenteNome: config.evolutionAssistantInstanceName,
-    assistente: evolutionAssistantClient,
-    clinicas: evolutionClient
-  });
   const notificadorAlertas: NotificadorAlertas = {
     async notificarMedicoWhatsApp(params) {
       if (!params.medicoId || !params.solicitacaoId) {
@@ -89,14 +81,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     }
   };
 
-  const dadosProfissionais = new PostgresDadosProfissionaisService(
-    pool,
-    enviarConversas,
-    config.evolutionAssistantInstanceName,
-    undefined,
-    config.assistenteContextualAtivo,
-    config.notoCadastroModo
-  );
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool);
   const avisosProfissionais = iniciarAvisosPendenciasProfissionais(dadosProfissionais);
   let ativo = true;
 

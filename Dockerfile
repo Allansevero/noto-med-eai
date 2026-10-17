@@ -3,7 +3,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Navegador do piloto TribemD, iniciado somente na área de desenvolvedor.
-RUN apk add --no-cache poppler-utils imagemagick chromium xvfb nss freetype harfbuzz ca-certificates ttf-freefont
+RUN apk add --no-cache chromium xvfb nss freetype harfbuzz ca-certificates ttf-freefont
 
 # Copia manifestos de dependência
 COPY package*.json ./
@@ -15,7 +15,6 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
-COPY docs/prompts ./docs/prompts
 
 # Porta padrão da aplicação HTTP
 EXPOSE 3000
@@ -23,5 +22,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV NODE_ENV=production
 
-# Comando padrão (API Webhook + UI). Para o worker, use command: ["npm", "run", "worker"]
+# Aplicativo único: painel, webhook, API fiscal e worker embutido.
 CMD ["npm", "start"]

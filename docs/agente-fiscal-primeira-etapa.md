@@ -1,3 +1,5 @@
+> Histórico: os motores descritos neste documento foram retirados na base unificada. Consulte `docs/implementation/base-unificada.md`.
+
 # Agente de exceções de emissão — primeira etapa
 
 ## Arquitetura encontrada

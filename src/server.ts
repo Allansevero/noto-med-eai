@@ -1,7 +1,6 @@
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
-import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
 import { montarAreaTesteTribemd } from './desenvolvedor/tribemd-montar.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
@@ -10,16 +9,6 @@ import { randomUUID } from 'node:crypto';
 import { diagnosticoEntradaWebhook, diagnosticoResultadoWebhook, diagnosticoErroWebhook } from './whatsapp/diagnostico-webhook.js';
 import { criarRouterNfse } from './api/nfse/nfse-router.js';
 import { PostgresEmissaoApiRepositorio } from './io/postgres/postgres-emissao-api-repositorio.js';
-import { PostgresCandidatosNotaRepositorio } from './agente-fiscal/io/postgres-candidatos-nota-repositorio.js';
-import { AgendadorFechamentoFiscal } from './agente-fiscal/agendador/agendador-fechamento-fiscal.js';
-import { PostgresCasosRepositorio } from './agente-fiscal/casos/repositorio.js';
-import { LocalizadorCandidatos } from './agente-fiscal/casos/localizar-candidatos.js';
-import { ServicoEmissaoCasos } from './agente-fiscal/casos/servico-emissao.js';
-import { OrquestradorCasos } from './agente-fiscal/casos/orquestrador.js';
-import { WorkerCasos } from './agente-fiscal/casos/worker.js';
-import { NvidiaInterpretadorCaso } from './io/nvidia/interpretador-caso.js';
-import { processarComandoFiscalMedico } from './agente-fiscal/fluxos/processar-comando-fiscal-medico.js';
-import { iniciarOnboardingPosConexao } from './agente-fiscal/fluxos/iniciar-onboarding-pos-conexao.js';
 /**
  * Servidor HTTP principal da aplicação Notomed Whats.
  * Expõe as rotas de webhook da Evolution API, API de autenticação por OTP
@@ -61,24 +50,11 @@ import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medi
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
-import { criarServicosIa } from './ia/criar-servicos-ia.js';
 import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
-import { PaligemmaComprovanteClient } from './io/nvidia/paligemma-comprovante-client.js';
 import { configurarDesempenhoHttp, OPCOES_ARQUIVOS_ESTATICOS } from './http/configurar-desempenho-http.js';
 import { tratarErrosHttp } from './http/tratar-erros-http.js';
 import { criarEncerramentoGracioso } from './processo/encerrar-gracioso.js';
 import { registrarSinaisDeProcesso } from './processo/registrar-sinais-de-processo.js';
-import { GeminiComprovanteClient } from './candidatos/io/gemini-comprovante-client.js';
-import { PostgresCandidatosRepositorio } from './candidatos/io/postgres-candidatos-repositorio.js';
-import { processarRespostaMedicoCandidato } from './candidatos/fluxos/processar-resposta-medico-candidato.js';
-import { processarSolicitacaoEmissaoApi } from './api/nfse/processar-solicitacao-emissao-api.js';
-import { PostgresPedidosRepositorio } from './pedido-nota/io/postgres-pedidos-repositorio.js';
-import { SupabaseFontePacientes } from './pedido-nota/io/supabase-fonte-pacientes.js';
-import { SheetsFontePacientes } from './pedido-nota/io/sheets-fonte-pacientes.js';
-import { ConversaFontePacientes } from './pedido-nota/io/conversa-fonte-pacientes.js';
-import { GeminiPedidoClient } from './pedido-nota/io/gemini-pedido-client.js';
-import { iniciarPedidoNota } from './pedido-nota/fluxos/iniciar-pedido-nota.js';
-import { responderPedidoNota } from './pedido-nota/fluxos/responder-pedido-nota.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -106,18 +82,7 @@ export function criarAppExpress() {
     config.evolutionGlobalApiKey,
     config.evolutionOfficialInstanceName, config.evolutionOfficialInstanceName
   );
-  const evolutionAssistantClient = new EvolutionApiClient(
-    config.evolutionAssistantUrl,
-    config.evolutionAssistantApiKey,
-    config.evolutionAssistantInstanceName, config.evolutionOfficialInstanceName
-  );
-  const paligemmaClient = new PaligemmaComprovanteClient(
-    config.nvidiaApiKey || '',
-    'https://ai.api.nvidia.com/v1/vlm/google/paligemma'
-  );
-  const ia = criarServicosIa(config);
-  const enviarConversas=criarEnviadorConversasNoto({oficialNome:config.evolutionOfficialInstanceName,assistenteNome:config.evolutionAssistantInstanceName,assistente:evolutionAssistantClient,clinicas:evolutionClient});
-  const dadosProfissionais = new PostgresDadosProfissionaisService(pool, enviarConversas, config.evolutionAssistantInstanceName, undefined, config.assistenteContextualAtivo, config.notoCadastroModo);
+  const dadosProfissionais = new PostgresDadosProfissionaisService(pool);
   const authAdminService = new SupabaseAuthAdminService(
     config.supabaseUrl,
     config.supabaseServiceRoleKey,
@@ -145,40 +110,6 @@ export function criarAppExpress() {
   }
 
   const adnNfseClient = new AdnNfseClient();
-  const candidatosNotaRepo = new PostgresCandidatosNotaRepositorio(pool, config.appPepper, config.encryptionKey);
-  const casosAtivos = process.env['AGENTE_FISCAL_CASOS_ATIVO'] === 'true';
-  const casosRepo = new PostgresCasosRepositorio(pool);
-  const emissaoCasos = new ServicoEmissaoCasos(pool, config.appPepper, config.encryptionKey);
-  const orquestradorCasos = new OrquestradorCasos(casosRepo,
-    new LocalizadorCandidatos(pool, paligemmaClient, evolutionClient, config.encryptionKey), emissaoCasos,
-    new NvidiaInterpretadorCaso(config.nvidiaApiKey || '', config.nvidiaModel));
-  const workerCasos = new WorkerCasos(pool, casosRepo, orquestradorCasos, emissaoCasos,
-    evolutionAssistantClient, config.evolutionAssistantInstanceName);
-  const solicitarVarreduraCasos = async (medicoId: string) => {
-    const medico = await candidatosNotaRepo.obterDadosMedico(medicoId);
-    if (!medico?.telefone || !medico.dadosProfissionaisConfirmados) return;
-    await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
-      mensagemId: `varredura:${medicoId}:${Math.floor(Date.now() / 60000)}`,
-      payload: { tarefa: 'varrer', telefone: medico.telefone } });
-  };
-  const agendadorFechamentoFiscal = new AgendadorFechamentoFiscal({
-    pool,
-    pepper: config.appPepper,
-    chaveCriptografia: config.encryptionKey,
-    repositorio: candidatosNotaRepo,
-    enviarMensagem: evolutionAssistantClient,
-    instanciaNome: config.evolutionAssistantInstanceName,
-    solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
-    horariosTexto: process.env['AGENTE_FISCAL_HORARIOS'] || '12:00,18:00',
-    ativo: Boolean(config.agenteFiscalAtivo),
-    comprovanteClient: paligemmaClient,
-    evolutionClient
-  });
-  if (casosAtivos && process.env['NODE_ENV'] !== 'test') {
-    agendadorFechamentoFiscal.iniciar();
-    workerCasos.iniciar();
-  }
-
   const sincronizarHistoricoInstancia = (nomeInstancia: string) =>
     sincronizarHistoricoEvolutionUmaVez({
       baseUrl: config.evolutionApiUrl,
@@ -189,26 +120,11 @@ export function criarAppExpress() {
       pepper: config.appPepper
     });
 
-  const dispararOnboardingFiscal = (medicoId: string) => {
+  const aoConectarWhatsapp = (medicoId: string) => {
     void (async () => {
-      const res = await pool.query(
-        "SELECT nome_instancia FROM whatsapp_instancias WHERE medico_id = $1 AND oficial = false AND status = 'conectado' LIMIT 1",
-        [medicoId]
-      );
-      const nomeInstancia = res.rows[0]?.nome_instancia || '';
-      if (!nomeInstancia) return;
-      await iniciarOnboardingPosConexao({
-        medicoId,
-        nomeInstancia,
-        repositorio: candidatosNotaRepo,
-        enviarMensagemAssistente: evolutionAssistantClient,
-        instanciaAssistenteNome: config.evolutionAssistantInstanceName,
-        sincronizarHistorico: sincronizarHistoricoInstancia,
-        solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
-        comprovanteClient: paligemmaClient,
-        evolutionClient
-      });
-    })().catch(err => console.error('[Onboarding Fiscal]', err));
+    const { rows } = await pool.query("select nome_instancia from whatsapp_instancias where medico_id=$1 and oficial=false and status='conectado' limit 1", [medicoId]);
+    if(rows[0]?.nome_instancia)await sincronizarHistoricoInstancia(rows[0].nome_instancia);
+    })().catch(() => console.warn('[WhatsApp]', {codigo:'HISTORICO_POS_CONEXAO_FALHOU'}));
   };
 
   // Healthcheck para o Easypanel
@@ -219,52 +135,18 @@ export function criarAppExpress() {
   app.use('/api/conta/cadastro', criarRouterCadastroPainel({
     pool,repo:cadastroCertificado.repo,
     autenticar: async token => { const { data,error } = await authAdminService.supabaseClient.auth.getUser(token);return error?null:data.user?.id??null; },
-    aoAprovarProfissional: dispararOnboardingFiscal
   }));
   app.use('/api/whatsapp', criarRouterStatusWhatsapp({
     pool,
     autenticar: async token => { const { data, error } = await authAdminService.supabaseClient.auth.getUser(token); return error ? null : data.user?.id ?? null; },
     consultar: medicoId => consultarStatusInstanciaWhatsapp(pool, {
       medicoId, evolutionUrl: config.evolutionApiUrl, evolutionApiKey: config.evolutionGlobalApiKey,
-      aoConectar: dispararOnboardingFiscal
+      aoConectar: aoConectarWhatsapp
     })
   }));
 
   // API de Emissão de NFS-e (compatível com Focus NFe + Zero-Config)
   const emissaoApiRepo = new PostgresEmissaoApiRepositorio(pool, config.encryptionKey, config.appPepper);
-  const geminiComprovanteClient = new GeminiComprovanteClient(
-    config.geminiApiKey || '',
-    config.geminiModel
-  );
-  const candidatosRepo = new PostgresCandidatosRepositorio(
-    pool,
-    config.appPepper,
-    config.encryptionKey
-  );
-  const pedidosRepo = new PostgresPedidosRepositorio(
-    pool,
-    config.appPepper,
-    config.encryptionKey
-  );
-  const supabaseFonte = new SupabaseFontePacientes(
-    pool,
-    config.appPepper,
-    config.encryptionKey
-  );
-  const sheetsFonte = new SheetsFontePacientes(
-    pool,
-    config.encryptionKey,
-    config.googleClientId,
-    config.googleClientSecret
-  );
-  const conversaFonte = new ConversaFontePacientes(
-    pool,
-    config.encryptionKey
-  );
-  const geminiPedidoClient = new GeminiPedidoClient(
-    config.geminiApiKey || '',
-    config.geminiModel
-  );
   const routerNfse = criarRouterNfse({
     repositorio: emissaoApiRepo,
     autenticar: async token => {
@@ -378,7 +260,7 @@ export function criarAppExpress() {
           medicoId,
           evolutionUrl: config.evolutionApiUrl,
           evolutionApiKey: config.evolutionGlobalApiKey,
-          aoConectar: dispararOnboardingFiscal
+          aoConectar: aoConectarWhatsapp
         });
         if (conexao.ok && conexao.conectado) {
           status = await consultarStatusOnboarding(pool, medicoId, config.preparacaoFiscalAtiva);
@@ -425,7 +307,6 @@ export function criarAppExpress() {
 
       const perfil = await salvarPerfilProfissional(pool, { medicoId: medicoIdFinal, usuarioId, nome, crm, rqe, email });
       await dadosProfissionais.retomar(medicoIdFinal);
-      dispararOnboardingFiscal(medicoIdFinal);
       return res.json({ ok: true, ...perfil });
     } catch (err: any) {
       if (err instanceof ZodError) return res.status(400).json({ ok: false, detalhe: err.issues[0]?.message });
@@ -603,10 +484,8 @@ export function criarAppExpress() {
         senhaCertificado: senha
       });
 
-      if (config.notoCadastroModo === 'confirmacao') {
-        void cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular}).catch(() =>
-          console.warn('[Cadastro automático]', {codigo:'AGENDAMENTO_FALHOU'}));
-      }
+      void cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular}).catch(() =>
+        console.warn('[Cadastro automático]', {codigo:'AGENDAMENTO_FALHOU'}));
 
       if (consentimentoFiscal === versaoConsentimentoFiscal) {
         await registrarConsentimentoFiscal(pool, medicoId, resultado.certificadoId);
@@ -690,7 +569,7 @@ export function criarAppExpress() {
         evolutionApiKey: config.evolutionGlobalApiKey,
         appWebhookUrl: appUrl,
         webhookSecret: config.evolutionWebhookSecret,
-        aoConectar: dispararOnboardingFiscal
+        aoConectar: aoConectarWhatsapp
       });
 
       if (resultado.diagnostico) {
@@ -717,7 +596,7 @@ export function criarAppExpress() {
         medicoId,
         evolutionUrl: config.evolutionApiUrl,
         evolutionApiKey: config.evolutionGlobalApiKey,
-        aoConectar: dispararOnboardingFiscal
+        aoConectar: aoConectarWhatsapp
       });
 
       return res.json({ ...resultado, medicoId });
@@ -753,110 +632,11 @@ export function criarAppExpress() {
 
       const resultado = await processarMensagemWebhook(req.body, tokenRecebido, {
         repositorio: atendimentoRepo,
-        dadosProfissionais,
-        enviarMensagemPaciente: enviarConversas,
-        iaService: ia.extrator,
-        comprovanteClient: paligemmaClient,
-        evolutionClient,
-        consultaCpfProvider: hubCpfClient,
         segredoConfigurado: segredoEsperado,
         pepper: config.appPepper,
+        consultaCpfProvider: hubCpfClient,
         instanciaOficialNome: config.evolutionOfficialInstanceName,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
-        enviarMensagemAssistente: evolutionAssistantClient,
-        modoCadastro: config.notoCadastroModo,
-        candidatosPipeline: casosAtivos ? undefined : {
-          geminiClient: geminiComprovanteClient,
-          candidatosRepo,
-          enviarMensagemAoMedico: async (tel, texto) => {
-            const res = await evolutionAssistantClient.enviarTexto({
-              instanciaNome: config.evolutionAssistantInstanceName,
-              contatoTelefone: tel,
-              texto
-            });
-            return res.sucesso;
-          }
-        },
-        processarComandoFiscal: async (medicoId, texto, telefone, mensagem) => {
-          if (casosAtivos) {
-            const perfilProfissional = await candidatosNotaRepo.obterDadosMedico(medicoId);
-            if (!perfilProfissional?.dadosProfissionaisConfirmados) return { tratado: true, detalhe: { estado: 'aguardando_confirmacao_profissional' } };
-            if (!mensagem?.id) throw new Error('MENSAGEM_SEM_IDENTIDADE');
-            const casoRecebido = await casosRepo.obterAtivo(medicoId);
-            await casosRepo.enfileirarEvento({ medicoId, instanciaNome: config.evolutionAssistantInstanceName,
-              mensagemId: mensagem.id, payload: { texto, telefone, mensagemCitadaId: mensagem.citadaId, instanteMensagem: mensagem.instante,
-                casoRecebidoId: casoRecebido?.id ?? null,
-                perguntaRecebidaId: casoRecebido?.perguntaPendente?.mensagemId ?? null } });
-            return { tratado: true, detalhe: { estado: 'recebido' } };
-          }
-          const enviarAoMedico = async (tel: string, txt: string) => {
-            const res = await evolutionAssistantClient.enviarTexto({
-              instanciaNome: config.evolutionAssistantInstanceName,
-              contatoTelefone: tel,
-              texto: txt
-            });
-            return res.sucesso;
-          };
-
-          const enviarAoPaciente = async (tel: string, txt: string) => {
-            const res = await enviarConversas.enviarTexto({
-              instanciaNome: config.evolutionOfficialInstanceName,
-              contatoTelefone: tel,
-              texto: txt
-            });
-            return res.sucesso;
-          };
-
-          // 1. Resposta do médico a um pedido de nota ativo
-          const resRespostaPedido = await responderPedidoNota(
-            { medicoId, texto, telefoneMedico: telefone },
-            {
-              repositorio: pedidosRepo,
-              emissaoApiRepo,
-              processarEmissaoApi: processarSolicitacaoEmissaoApi,
-              enviarMensagemAoMedico: enviarAoMedico
-            }
-          );
-          if (resRespostaPedido.tratado) {
-            return { tratado: true, detalhe: resRespostaPedido };
-          }
-
-          // 2. Resposta do médico a um candidato de comprovante pendente
-          const resCandidato = await processarRespostaMedicoCandidato(
-            { medicoId, textoRecebido: texto, telefoneMedico: telefone },
-            {
-              repositorio: candidatosRepo,
-              emissaoApiRepo,
-              processarEmissaoApi: processarSolicitacaoEmissaoApi,
-              enviarMensagemAoMedico: enviarAoMedico,
-              enviarMensagemAoPaciente: enviarAoPaciente
-            }
-          );
-          if (resCandidato.tratado) {
-            return { tratado: true, detalhe: resCandidato };
-          }
-
-          // 3. Novo pedido sob demanda solicitado pelo médico (ex: "emite a nota do Antônio")
-          const resNovoPedido = await iniciarPedidoNota(
-            { medicoId, mensagemId: randomUUID(), texto, telefoneMedico: telefone },
-            {
-              repositorio: pedidosRepo,
-              fontesPacientes: [supabaseFonte, sheetsFonte, conversaFonte],
-              geminiClient: geminiPedidoClient,
-              consultaCpfProvider: hubCpfClient,
-              enviarMensagemAoMedico: enviarAoMedico
-            }
-          );
-          if (resNovoPedido.tratado) {
-            return { tratado: true, detalhe: resNovoPedido };
-          }
-
-          return processarComandoFiscalMedico(medicoId, texto, telefone, {
-            repositorio: candidatosNotaRepo,
-            enviarMensagem: evolutionAssistantClient,
-            instanciaNome: config.evolutionAssistantInstanceName
-          });
-        },
         async aoAtualizarConexao(evento) {
           if (
             evento.instancia === config.evolutionOfficialInstanceName ||
@@ -864,17 +644,7 @@ export function criarAppExpress() {
           ) return;
           const medicoId = await registrarConexaoWhatsapp(pool, evento);
           if (medicoId && evento.state === 'open') {
-            void iniciarOnboardingPosConexao({
-              medicoId,
-              nomeInstancia: evento.instancia,
-              repositorio: candidatosNotaRepo,
-              enviarMensagemAssistente: evolutionAssistantClient,
-              instanciaAssistenteNome: config.evolutionAssistantInstanceName,
-              sincronizarHistorico: sincronizarHistoricoInstancia,
-              solicitarVarredura: casosAtivos ? solicitarVarreduraCasos : undefined,
-              comprovanteClient: paligemmaClient,
-              evolutionClient
-            }).catch(err => console.warn('[Onboarding Pós-Conexão] Falha:', err?.message || err));
+            void sincronizarHistoricoInstancia(evento.instancia).catch(() => console.warn('[WhatsApp]', {codigo:'HISTORICO_POS_CONEXAO_FALHOU'}));
           }
         }
       });
@@ -912,22 +682,6 @@ export function criarAppExpress() {
       return res.json({ ok: true, dados });
     } catch (err: any) {
       return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar CPF' });
-    }
-  });
-
-  // Rota de Extração Inteligente de Dados com NVIDIA
-  app.post('/api/ia/extrair-dados', async (req: Request, res: Response) => {
-    try {
-      const { texto, mensagens, dataReferencia } = req.body || {};
-      const textoConsulta = texto || (Array.isArray(mensagens) ? mensagens.join('\n') : '');
-      if (!textoConsulta) {
-        return res.status(400).json({ ok: false, detalhe: 'Texto ou mensagens são obrigatórios' });
-      }
-      const dataRef = dataReferencia ? new Date(dataReferencia) : new Date();
-      const resultado = await ia.extrator.extrairDados(textoConsulta, dataRef);
-      return res.json({ ok: true, dados: resultado });
-    } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro na extração de IA' });
     }
   });
 
@@ -989,9 +743,6 @@ export function criarAppExpress() {
           try {
             const resultado = await sincronizarHistoricoInstancia(row.nome_instancia);
             console.info('[Evolution] Histórico recuperado ao iniciar:', resultado);
-            if (casosAtivos && row.medico_id) {
-              await solicitarVarreduraCasos(row.medico_id);
-            }
           } catch (erro: any) {
             console.warn('[Evolution] Histórico não recuperado ao iniciar:', erro?.message || erro);
           }

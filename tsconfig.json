@@ -8,7 +8,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "noUnusedLocals": true
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

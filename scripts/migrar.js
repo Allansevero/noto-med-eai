@@ -9,12 +9,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.gvriqdvahxhsqjtqkcqk:XwQcWvFJKHu8P1gr@aws-0-sa-east-1.pooler.supabase.com:5432/postgres';
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error('DATABASE_URL não configurada.');
 
 async function main() {
   const client = new pg.Client({
-    connectionString,
-    ssl: { rejectUnauthorized: false }
+    connectionString
   });
 
   console.log('Conectando ao PostgreSQL do Supabase...');

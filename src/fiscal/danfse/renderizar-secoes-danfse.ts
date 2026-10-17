@@ -4,7 +4,7 @@
  * emitido pelo Portal Nacional da NFS-e (Receita Federal do Brasil / SEFIN).
  */
 
-import { rgb, degrees, type PDFPage, type PDFFont, type Color } from 'pdf-lib';
+import { rgb, type PDFPage, type PDFFont, type Color } from 'pdf-lib';
 
 export interface ContextoRenderizacaoDanfse {
   page: PDFPage;

@@ -6,7 +6,6 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { EmissaoApiRepositorio } from './emissao-api-repositorio.js';
-import { validarPayloadEmissao } from './validar-payload-emissao.js';
 import { processarSolicitacaoEmissaoApi } from './processar-solicitacao-emissao-api.js';
 import { consultarSolicitacaoPorRef } from './consultar-solicitacao-por-ref.js';
 import type { RespostaEmissaoApi } from './nfse-api-types.js';

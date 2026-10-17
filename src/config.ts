@@ -26,44 +26,17 @@ export interface AppConfig {
   devEmailAlerta?: string;
   openserpBaseUrl?: string;
   nvidiaApiKey?: string;
-  nvidiaModel?: string;
   nvidiaRegistroModel?: string;
-  nvidiaVisionModel?: string;
-  notoCadastroModo?: 'conversacional' | 'confirmacao';
-  assistenteContextualAtivo?: boolean;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
-  treinoOnboardingAtivo?: boolean;
   comparacaoFiscalAtiva?: boolean;
-  desenvolvedorFiscalAtivo?: boolean;
-  desenvolvedorFiscalToken?: string;
-  chromiumExecutablePath?: string;
-  googleClientId?: string;
-  googleClientSecret?: string;
-  googleRedirectUri?: string;
-  googleApiKey?: string;
-  googleAppId?: string;
-  geminiApiKey?: string;
-  geminiModel?: string;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
-  stripeSecretKey?: string;
-  stripePublishableKey?: string;
-  stripePriceId?: string;
-  stripeWebhookSecret?: string;
 }
 
 export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  if (env['NOTO_CADASTRO_MODO'] && !['conversacional', 'confirmacao'].includes(env['NOTO_CADASTRO_MODO'])) {
-    throw new Error('NOTO_CADASTRO_MODO deve ser confirmacao ou conversacional.');
-  }
   if (env['PREPARACAO_FISCAL_ATIVA'] === 'true' && env['AGENTE_FISCAL_ATIVO'] !== 'true') {
     throw new Error('PREPARACAO_FISCAL_ATIVA requer AGENTE_FISCAL_ATIVO para tratar pendências sem retentativas cegas.');
-  }
-  if (env['DESENVOLVEDOR_FISCAL_ATIVO'] === 'true' && (!env['DESENVOLVEDOR_FISCAL_TOKEN'] ||
-      env['DESENVOLVEDOR_FISCAL_TOKEN'].trim() !== env['DESENVOLVEDOR_FISCAL_TOKEN'] ||
-      env['DESENVOLVEDOR_FISCAL_TOKEN'].length < 32 || env['DESENVOLVEDOR_FISCAL_TOKEN'].length > 256)) {
-    throw new Error('DESENVOLVEDOR_FISCAL_TOKEN de 32 a 256 caracteres é obrigatório para ativar a área de teste.');
   }
   return {
     porta: Number.parseInt(env['PORT'] || '3000', 10),
@@ -85,31 +58,12 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     devEmailAlerta: env['DEV_EMAIL_ALERTA'],
     openserpBaseUrl: env['OPENSERP_BASE_URL']?.trim() || undefined,
     nvidiaApiKey: env['NVIDIA_API_KEY']?.trim() || undefined,
-    nvidiaModel: (env['NVIDIA_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
     nvidiaRegistroModel: env['NVIDIA_REGISTRO_MODEL']?.trim() || 'meta/llama-3.2-90b-vision-instruct',
-    nvidiaVisionModel: (env['NVIDIA_VISION_MODEL']?.trim() === 'moonshotai/kimi-k3' ? 'meta/llama-3.2-90b-vision-instruct' : env['NVIDIA_VISION_MODEL']?.trim()) || 'meta/llama-3.2-90b-vision-instruct',
-    notoCadastroModo: env['NOTO_CADASTRO_MODO'] === 'conversacional' ? 'conversacional' : 'confirmacao',
-    assistenteContextualAtivo: env['ASSISTENTE_CONTEXTUAL_ATIVO'] === 'true',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
-    treinoOnboardingAtivo: env['TREINO_ONBOARDING_ATIVO'] === 'true',
     comparacaoFiscalAtiva: env['COMPARACAO_FISCAL_ATIVA'] === 'true',
-    desenvolvedorFiscalAtivo: env['DESENVOLVEDOR_FISCAL_ATIVO'] === 'true',
-    desenvolvedorFiscalToken: env['DESENVOLVEDOR_FISCAL_TOKEN'],
-    chromiumExecutablePath: env['CHROMIUM_EXECUTABLE_PATH'] || '/usr/bin/chromium-browser',
-    googleClientId: env['GOOGLE_CLIENT_ID'],
-    googleClientSecret: env['GOOGLE_CLIENT_SECRET'],
-    googleRedirectUri: env['GOOGLE_REDIRECT_URI'],
-    googleApiKey: env['GOOGLE_API_KEY'],
-    googleAppId: env['GOOGLE_APP_ID'],
-    geminiApiKey: env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'],
-    geminiModel: env['GEMINI_MODEL'] || 'gemini-3.5-flash',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
-    stripeSecretKey: env['STRIPE_SECRET_KEY'],
-    stripePublishableKey: env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'],
-    stripePriceId: env['STRIPE_PRICE_ID'] || 'price_1UFaloBMqkVPUWioDTWXIPv6',
-    stripeWebhookSecret: env['STRIPE_WEBHOOK_SECRET']
   };
 }
 

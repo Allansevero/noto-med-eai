@@ -21,6 +21,7 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         select id
         from solicitacoes_nota
         where fila = 'pronta'
+          and origem = 'api'
           and not aguardando_dados_profissionais
           and not aguardando_confirmacao_medico
           and not aguardando_cpf_medico

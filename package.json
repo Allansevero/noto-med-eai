@@ -7,25 +7,15 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "start": "node --import tsx src/server.ts",
-    "worker": "node --import tsx src/worker-runner.ts",
     "migrate:agente": "node scripts/migrar-investigacoes-emissao.mjs",
-    "check:agente": "node scripts/verificar-agente-fiscal.mjs",
     "migrate:preparacao": "node scripts/migrar-preparacao-fiscal.mjs",
     "migrate:comparacao": "node scripts/migrar-comparacao-fiscal.mjs",
-    "migrate:treino": "node scripts/migrar-treino-onboarding.mjs",
-    "check:treino": "node scripts/verificar-treino-onboarding.mjs",
     "migrate:perfil": "node scripts/migrar-dados-profissionais.mjs",
-    "migrate:planilhas": "node scripts/migrar-google-planilhas.mjs",
     "consultar:registro": "node --import tsx scripts/consultar-registro-profissional.mjs",
     "migrate:cadastro": "node scripts/migrar-cadastro-certificado.mjs",
-    "migrate:candidatos": "node scripts/migrar-candidatos-emissao.mjs",
-    "migrate:pedidos": "node scripts/migrar-pedidos-nota.mjs",
-    "test:cadastro-db": "node --import tsx --test src/cadastro/postgres-cadastro.integration.ts",
-    "retry:nota": "node scripts/reprocessar-nota.mjs",
-    "migrate:casos": "node scripts/migrar-casos-agente.mjs"
+    "retry:nota": "node scripts/reprocessar-nota.mjs"
   },
   "keywords": [
     "nfse",
@@ -56,7 +46,6 @@
     "pg": "^8.23.0",
     "playwright-core": "1.63.0",
     "qrcode": "^1.5.4",
-    "stripe": "^22.6.2",
     "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "xml-crypto": "^6.3.2",
