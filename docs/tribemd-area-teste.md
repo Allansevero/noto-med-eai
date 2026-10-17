@@ -174,7 +174,7 @@ próprios durante a execução; Playwright os remove no fechamento normal.
 | Login e última consulta reais | Não confirmados: confiança TLS do navegador e credenciais da clínica ainda necessários. |
 | Publicação no Easypanel | Não realizada; não há sessão administrativa autenticada nesta tarefa. |
 
-**Validação direcionada:** vinte e três testes passaram, sem falhas ou testes pulados,
+**Validação direcionada:** trinta e um testes passaram, sem falhas ou testes pulados,
 incluindo painel no prefixo integrado, captura, reabertura do perfil,
 criptografia, diagnóstico, configuração incompleta e isolamento do parser.
 O teste de prefixo falhou antes da correção e passou depois.
@@ -239,3 +239,32 @@ Falhas causadas pelo próprio guard agora aparecem como
 `falha: "bloqueada_politica"`, em vez de `conexao`. Bloqueio pelo cliente sem
 marcação do guard aparece como `bloqueada_cliente`. A existência de
 `infra_cloudflare` sozinha não prova desafio ou recusa de acesso.
+
+## SPA já entrou, mas o piloto retorna LOGIN_NAO_CONFIRMADO
+
+Depois da correção do CDN, o diagnóstico real mostrou `/api/usuarios/me` e
+`/api/usuarios/info` com HTTP200, além do início da leitura da agenda. Isso
+mostra avanço, mas não permite inferir, somente pelos códigos HTTP, qual era
+a estrutura final da tela ou se uma requisição sem status falhou.
+
+Foram reproduzidos três falsos negativos do detector antigo: formulário de
+senha oculto mantido no DOM, ícones junto ao texto de navegação e menus que
+aparecem depois da mudança de rota. A confirmação agora espera uma condição
+única da SPA: origem e rota privadas conhecidas, ausência de senha visível e
+links, controles ou títulos visíveis reconhecidos. Ícones não invalidam um
+link cujo destino privado é conhecido. Menu oculto sozinho não confirma login;
+um título reconhecido e visível pode confirmar a página com menu recolhido.
+Não se aguarda toda a leitura da agenda para reconhecer a autenticação.
+
+Se a confirmação falhar, `diagnostico.tela` informa somente categoria da página,
+booleanos e contagens de senha visível/oculta, links e títulos reconhecidos.
+Não inclui os textos, valores dos campos, nomes ou URLs privadas.
+`rede.chamadas[].aguardandoResposta=true` significa que não havia status HTTP
+nem falha no momento do registro; não é confirmação de erro da chamada.
+A captura de diagnóstico é um retrato daquele momento, não uma consulta de
+rede atualizada depois do encerramento da observação.
+
+O fluxo permanece com um único envio de senha. O botão **Confirmar login /
+verificação concluída** reavalia a tela atual sem reenviar credenciais. A
+correção foi verificada com fixtures; o resultado da conta real ainda deve
+ser confirmado após reimplantar o branch e abrir uma nova sessão.

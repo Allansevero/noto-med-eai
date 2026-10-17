@@ -67,7 +67,7 @@ test('área protege HTML/imagem, rejeita CSRF, não expõe credenciais e aceita 
 });
 const executavel=process.env.CHROMIUM_EXECUTABLE_PATH||'/usr/bin/chromium';
 const xvfb=process.env.XVFB_EXECUTABLE_PATH||'Xvfb';
-async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false){
+async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false,layout:{senha?:'oculta'|'visivel';menuComIcone?:boolean;semNavegacao?:boolean;atrasoMenuMs?:number;ocultarMenu?:boolean;tituloPagina?:boolean}={}){
  const context=(n as unknown as {context:BrowserContext}).context;
  const chamadas:{metodo:string;rota:string}[]=[];
  await context.route('https://bipp.nyc3.cdn.digitaloceanspaces.com/bipp/static/constantes.json*',route=>route.fulfill({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'https://app.tribemd.com'},body:'{"catalogoPublico":true}'}));
@@ -82,7 +82,11 @@ async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false){
   }
   if(u.pathname==='/api/usuarios/login'){await route.fulfill({contentType:'application/json',headers:{'Set-Cookie':'sessao=apenas-teste; Path=/; HttpOnly; Secure; SameSite=Lax'},body:'{"ok":true}'});return;}
   if(['/atendimentos/agenda','/pacientes'].includes(u.pathname)){
-   await route.fulfill({contentType:'text/html',body:`<meta charset="utf-8"><nav><a href="/atendimentos/agenda">Agenda</a><a href="/pacientes">Pacientes</a></nav><table><tr><th>Nome</th><th>Última consulta</th></tr><tr><td>Paciente fictício</td><td>12/10/2026</td></tr></table>`});return;
+   const menu=layout.semNavegacao?'':layout.menuComIcone?'<nav><a href="/atendimentos/agenda"><i>event</i><span>Agenda</span></a><a href="/pacientes"><i>people</i><span>Pacientes</span></a></nav>':'<nav><a href="/atendimentos/agenda">Agenda</a><a href="/pacientes">Pacientes</a></nav>';
+   const senha=layout.senha?`<input type="password" ${layout.senha==='oculta'?'hidden':''}>`:'';
+   const menuRenderizado=layout.ocultarMenu?'<div hidden>'+menu+'</div>':menu;
+   const navegacao=layout.atrasoMenuMs?`<div id="navegacao"></div><script>setTimeout(()=>document.getElementById('navegacao').innerHTML=${JSON.stringify(menuRenderizado)},${layout.atrasoMenuMs})</script>`:menuRenderizado;
+   await route.fulfill({contentType:'text/html',body:`<meta charset="utf-8">${senha}${navegacao}${layout.tituloPagina?'<h1>Agenda</h1>':''}<table><tr><th>Nome</th><th>Última consulta</th></tr><tr><td>Paciente fictício</td><td>12/10/2026</td></tr></table>`});return;
   }
   await route.fulfill({status:404,body:''});
  });return {context,chamadas};
@@ -286,5 +290,50 @@ test('bloqueio do piloto é identificado como política, sem ser confundido com 
   await n.entrar('teste@example.invalid','credencial-ficticia');
   const req=n.diagnosticar().rede?.chamadas.find(c=>c.rota==='/api/pacientes'&&c.metodo==='POST');assert.equal(req?.falha,'bloqueada_politica');assert.equal(req?.statusHttp,undefined);
   assert.equal(f.chamadas.some(c=>c.metodo==='POST'&&c.rota==='/api/pacientes'),false);
+ }finally{await n.encerrar();}
+});
+
+
+for (const layout of [{senha:'oculta' as const},{menuComIcone:true},{atrasoMenuMs:600}]) {
+ test('confirma SPA autenticada com '+('senha' in layout?'campo antigo oculto':'menuComIcone' in layout?'ícones nos menus':'navegação renderizada depois da rota'),async()=>{
+  const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+  try{await fixture(n,false,false,layout);await n.abrir();await n.entrar('teste@example.invalid','credencial-ficticia');assert.equal(n.diagnosticar().etapa,'login_confirmado');assert.ok(await n.perfil());}
+  finally{await n.encerrar();}
+ });
+}
+
+for(const layout of [{senha:'visivel' as const},{semNavegacao:true},{ocultarMenu:true}]){
+ test('não confirma apenas a rota privada: '+('senha' in layout?'senha continua visível':'ocultarMenu' in layout?'navegação apenas oculta':'sem navegação autenticada'),async()=>{
+  const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+  try{
+   const f=await fixture(n,false,false,layout);await n.abrir();await f.context.pages()[0].goto('https://app.tribemd.com/atendimentos/agenda');
+   await assert.rejects(n.confirmar(),e=>{
+    const erro=e as ErroTribemd;assert.equal(erro.codigo,'LOGIN_NAO_CONFIRMADO');assert.equal(erro.diagnostico?.tela?.pagina,'agenda');assert.equal(erro.diagnostico?.tela?.confirmado,false);
+    if('senha' in layout)assert.equal(erro.diagnostico?.tela?.senhasVisiveis,1);else assert.equal(erro.diagnostico?.tela?.linksProtegidos,0);
+    assert.equal(JSON.stringify(erro.diagnostico).includes('Paciente fictício'),false);return true;
+   });
+  }finally{await n.encerrar();}
+ });
+}
+test('diagnóstico distingue chamada ainda aguardando resposta de erro HTTP',async()=>{
+ const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+ let liberar!:()=>void,iniciar!:()=>void;const barreira=new Promise<void>(r=>{liberar=r;}),iniciou=new Promise<void>(r=>{iniciar=r;});
+ try{
+  const f=await fixture(n);
+  await f.context.route('https://app.tribemd.com/api/atendimentos/agenda',async route=>{iniciar();await barreira;await route.fulfill({contentType:'application/json',body:'[]'}).catch(()=>{});});
+  await n.abrir();await f.context.pages()[0].evaluate(()=>{void fetch('/api/atendimentos/agenda').catch(()=>{});});await iniciou;
+  await assert.rejects(n.confirmar(),e=>{
+   const erro=e as ErroTribemd,req=erro.diagnostico?.rede?.chamadas.find(c=>c.rota==='/api/atendimentos/agenda');
+   assert.equal(req?.aguardandoResposta,true);assert.equal(req?.falha,undefined);assert.equal(req?.statusHttp,undefined);return true;
+  });
+ }finally{liberar();await n.encerrar();}
+});
+
+
+test('menu recolhido exige evidência visível e aceita título reconhecido da agenda',async()=>{
+ const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+ try{
+  await fixture(n,false,false,{ocultarMenu:true,tituloPagina:true});await n.abrir();await n.entrar('teste@example.invalid','credencial-ficticia');
+  assert.equal(n.diagnosticar().tela?.linksProtegidos,0);assert.equal(n.diagnosticar().tela?.titulosVisiveis,1);assert.equal(n.diagnosticar().tela?.confirmado,true);
  }finally{await n.encerrar();}
 });

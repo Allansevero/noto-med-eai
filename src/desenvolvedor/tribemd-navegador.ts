@@ -2,9 +2,10 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { TelaVirtualTribemd } from './tribemd-display.js';
 import { ObservadorRedeLoginTribemd, type DiagnosticoRedeLoginTribemd } from './tribemd-rede.js';
 import { agendaTribemd, loginTribemd, origemTribemd, permitirRequisicaoTribemd, recursoPublicoTribemd, headersRecursoPublicoTribemd, lerConsultas, type ConsultaTribemd, type TabelaConsulta } from './tribemd-leitura.js';
+import { codigoEstadoLoginTribemd, type EstadoTelaLoginTribemd } from './tribemd-login-estado.js';
 import type { EstadoNavegador } from './tribemd-perfil.js';
 export class ErroTribemd extends Error {
- constructor(public codigo:string,public diagnostico?:{etapa:string;statusHttp?:number;rede?:DiagnosticoRedeLoginTribemd}){super(codigo);}
+ constructor(public codigo:string,public diagnostico?:{etapa:string;statusHttp?:number;rede?:DiagnosticoRedeLoginTribemd;tela?:EstadoTelaLoginTribemd}){super(codigo);}
 }
 export interface ResultadoLeituraTribemd {
  consultas:ConsultaTribemd[]; cobertura:'somente_linhas_visiveis'; pagina:'agenda'|'pacientes';
@@ -14,7 +15,7 @@ export class NavegadorTribemd {
  private page?:Page; private autenticando=true; private autenticado=false; private fechado=false;
  private fechamento?:Promise<void>; private observador?:ObservadorRedeLoginTribemd;
  private diagnostico?:DiagnosticoRedeLoginTribemd; private etapa='abrindo_login'; private statusHttp?:number;
- private envioLogin=false;
+ private envioLogin=false;private ultimaTela?:EstadoTelaLoginTribemd;
  private constructor(private context:BrowserContext,private browser:Browser,private display:TelaVirtualTribemd){}
  static async criar(opcoes:{executavel:string;xvfb?:string;estado?:EstadoNavegador;proxy?:string},signal:AbortSignal) {
   signal.throwIfAborted();let display:TelaVirtualTribemd;
@@ -59,20 +60,16 @@ export class NavegadorTribemd {
    if(this.statusHttp&&this.statusHttp>=400)throw new ErroTribemd('LOGIN_HTTP_ERRO');
    this.etapa='aguardando_formulario';
    // A hidratação pode redirecionar imediatamente se o perfil já está autenticado.
-   await page.waitForFunction(String.raw`(() => {
-    const vis=e=>e.getClientRects().length>0;
-    return Array.from(document.querySelectorAll('input[type=password]')).some(vis)||(['/atendimentos/agenda','/inicio','/pacientes'].includes(location.pathname)&&Array.from(document.querySelectorAll('a,nav button,aside button')).some(e=>vis(e)&&/agenda|pacientes/i.test(e.textContent||'')));
-   })()`,undefined,{timeout:18000});
+   await page.waitForFunction(`(() => { const s=${codigoEstadoLoginTribemd}; return s.senhasVisiveis>0||s.confirmado; })()`,undefined,{timeout:18000,polling:100});
    if(await this.confirmado()){await this.finalizarLogin();return 'perfil_reutilizado' as const;}
    return 'aguardando_credenciais' as const;
   }catch(e){throw await this.erroSeguro(e,'LOGIN_CARREGAMENTO_FALHOU');}
  }
- private async confirmado() {
-  const p=this.page;if(!p||p.isClosed())return false;
-  const u=new URL(p.url());
-  if(u.origin!==origemTribemd||!['/inicio','/atendimentos/agenda','/pacientes'].includes(u.pathname)||await p.locator('input[type=password]:visible').count())return false;
-  return await p.locator('a:visible,nav button:visible,aside button:visible,[role=navigation] button:visible,[role=tab]:visible').filter({hasText:/^(pacientes|meus pacientes|agenda|agendamentos)$/i}).count()>0;
+ private async observarTela(){
+  if(!this.page||this.page.isClosed()||this.fechado)return undefined;
+  try{this.ultimaTela=await this.page.evaluate<EstadoTelaLoginTribemd>(codigoEstadoLoginTribemd);return this.ultimaTela;}catch{return undefined;}
  }
+ private async confirmado(){return !!(await this.observarTela())?.confirmado;}
  private async finalizarLogin(){this.autenticando=false;this.autenticado=true;this.etapa='login_confirmado';this.diagnostico=await this.observador?.concluir();}
  async entrar(email:string,senha:string) {
   const p=this.page;if(!p||this.fechado)throw new ErroTribemd('SESSAO_ENCERRADA');
@@ -87,14 +84,15 @@ export class NavegadorTribemd {
    if(await e.count()!==1||await s.count()!==1||await b.count()!==1)throw new ErroTribemd('LOGIN_LAYOUT_NAO_RECONHECIDO');
    await e.fill(email);await s.fill(senha);this.etapa='envio_login';this.observador?.marcarEnvioLogin();this.envioLogin=true;
    await b.click();this.etapa='confirmando_login';
-   await p.waitForURL(u=>u.origin===origemTribemd&&['/inicio',agendaTribemd,'/pacientes'].includes(u.pathname),{timeout:20000});
-   await p.waitForFunction(()=>!document.querySelector('input[type=password]'),undefined,{timeout:5000});
+   // SPA: a rota pode mudar antes de menus aparecerem; inputs antigos podem ficar ocultos.
+   // Esperar a condição visual completa, sem aguardar todas as chamadas da agenda.
+   await p.waitForFunction(`(${codigoEstadoLoginTribemd}).confirmado`,undefined,{timeout:20000,polling:100});
    if(!await this.confirmado())throw new ErroTribemd('LOGIN_NAO_CONFIRMADO');
    await this.finalizarLogin();
   }catch(e){throw await this.erroSeguro(e,'LOGIN_NAO_CONFIRMADO');}
   finally{this.envioLogin=false;email='';senha='';}
  }
- async confirmar(){if(!await this.confirmado())throw new ErroTribemd('LOGIN_NAO_CONFIRMADO');await this.finalizarLogin();}
+ async confirmar(){if(!await this.confirmado())throw await this.erroSeguro(new ErroTribemd('LOGIN_NAO_CONFIRMADO'),'LOGIN_NAO_CONFIRMADO');await this.finalizarLogin();}
  async controle(c:{tipo:'clicar';x:number;y:number}|{tipo:'tecla';tecla:'Tab'|'Enter'|'Backspace'|'Escape'}|{tipo:'rolar';deltaY:number}) {
   const p=this.page;if(!p||this.autenticado||!['/login'].includes(new URL(p.url()).pathname))throw new ErroTribemd('CONTROLE_LOGIN_INDISPONIVEL');
   // Somente concluir verificação humana; Enter não reenvia o formulário de senha.
@@ -138,11 +136,12 @@ export class NavegadorTribemd {
   try{return await this.page.screenshot({type:'png',timeout:3000,mask:[this.page.locator('input,textarea,[contenteditable=true]')]});}catch{return null;}
  }
  private async erroSeguro(e:unknown,codigo:string) {
+  await this.observarTela();
   this.diagnostico=await this.observador?.concluir()||this.diagnostico;
   const httpErro=this.diagnostico?.chamadas.some(c=>c.statusHttp&&c.statusHttp>=400);
-  return new ErroTribemd(e instanceof ErroTribemd?e.codigo:httpErro?'LOGIN_HTTP_ERRO':codigo,{etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico});
+  return new ErroTribemd(e instanceof ErroTribemd?e.codigo:httpErro?'LOGIN_HTTP_ERRO':codigo,{etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico,tela:this.ultimaTela});
  }
- diagnosticar(){return {etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico};}
+ diagnosticar(){return {etapa:this.etapa,statusHttp:this.statusHttp,rede:this.diagnostico,tela:this.ultimaTela};}
  async encerrar(){
   if(!this.fechamento){this.fechado=true;this.fechamento=(async()=>{try{await this.observador?.concluir();await this.browser.close();}finally{await this.display.encerrar();}})();}
   return this.fechamento;

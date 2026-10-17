@@ -9,6 +9,7 @@ export interface ChamadaRedeLoginTribemd {
  tipo:'document'|'xhr'|'fetch';
  fase:'pagina_login'|'envio_login';
  statusHttp?:number;
+ aguardandoResposta?:boolean;
  falha?:'dns'|'tls'|'conexao'|'tempo_esgotado'|'cancelada'|'bloqueada_politica'|'bloqueada_cliente'|'outro';
  sinais:string[];
  cookiePresente?:boolean;
@@ -83,7 +84,7 @@ export class ObservadorRedeLoginTribemd {
  concluir():Promise<DiagnosticoRedeLoginTribemd>{
   if(!this.conclusao){
    this.page.off('request',this.requisicao);this.page.off('response',this.resposta);this.page.off('requestfailed',this.falha);
-   this.conclusao=Promise.all([...this.pendentes]).then(()=>({chamadas:structuredClone(this.chamadas),limiteChamadas:40,limitado:this.limitado}));
+   this.conclusao=Promise.all([...this.pendentes]).then(()=>({chamadas:structuredClone(this.chamadas).map(c=>({...c,aguardandoResposta:c.statusHttp===undefined&&!c.falha})),limiteChamadas:40,limitado:this.limitado}));
   }
   return this.conclusao;
  }
