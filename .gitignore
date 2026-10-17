@@ -4,9 +4,8 @@ node_modules/
 
 # Variáveis de ambiente e segredos (NUNCA commitar .env real)
 .env
-.env.local
-.env.production
-.env.staging
+.env.*
+.envrc
 !.env.example
 
 # Repositórios locais de referência/fork
@@ -32,3 +31,17 @@ Thumbs.db
 .idea/
 scratch/
 
+
+# Cofres, certificados e gravações de rede: nunca versionar dados reais
+secrets/
+.secrets/
+dados/
+certificados/
+*.pfx
+*.p12
+*.jks
+*.keystore
+*.key
+*.pem
+*.enc
+*.har
