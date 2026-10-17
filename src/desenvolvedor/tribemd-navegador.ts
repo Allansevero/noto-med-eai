@@ -1,7 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { TelaVirtualTribemd } from './tribemd-display.js';
 import { ObservadorRedeLoginTribemd, type DiagnosticoRedeLoginTribemd } from './tribemd-rede.js';
-import { agendaTribemd, loginTribemd, origemTribemd, permitirRequisicaoTribemd, lerConsultas, type ConsultaTribemd, type TabelaConsulta } from './tribemd-leitura.js';
+import { agendaTribemd, loginTribemd, origemTribemd, permitirRequisicaoTribemd, recursoPublicoTribemd, headersRecursoPublicoTribemd, lerConsultas, type ConsultaTribemd, type TabelaConsulta } from './tribemd-leitura.js';
 import type { EstadoNavegador } from './tribemd-perfil.js';
 export class ErroTribemd extends Error {
  constructor(public codigo:string,public diagnostico?:{etapa:string;statusHttp?:number;rede?:DiagnosticoRedeLoginTribemd}){super(codigo);}
@@ -44,7 +44,13 @@ export class NavegadorTribemd {
     permitido=this.envioLogin&&new URL(r.url()).pathname==='/api/usuarios/login';
     this.envioLogin=false;
    }
-   if(!permitido){await route.abort('blockedbyclient');return;}
+   if(permitido&&recursoPublicoTribemd(r.url())){
+    // O único recurso externo é JSON público; nunca enviar sessão ou chaves a ele.
+    const headers=headersRecursoPublicoTribemd(await r.allHeaders());
+    if(!headers)permitido=false;
+    else{await route.fallback({headers});return;}
+   }
+   if(!permitido){this.observador?.marcarBloqueio(r);await route.abort('blockedbyclient');return;}
    await route.fallback();
   });
   this.observador=new ObservadorRedeLoginTribemd(page);

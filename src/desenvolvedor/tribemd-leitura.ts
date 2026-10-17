@@ -27,8 +27,20 @@ export function lerConsultas(tabelas:TabelaConsulta[],hoje:string):ConsultaTribe
  // Não mesclar homônimos nem chamar o máximo da página de última consulta histórica.
  return resultado;
 }
+export const constantesPublicasTribemd='https://bipp.nyc3.cdn.digitaloceanspaces.com/bipp/static/constantes.json';
+export function recursoPublicoTribemd(url:string) {
+ const u=new URL(url),publica=new URL(constantesPublicasTribemd);
+ return u.origin===publica.origin&&u.pathname===publica.pathname&&!u.username&&!u.password&&!u.hash&&
+  [...u.searchParams.keys()].every(k=>k==='t')&&u.searchParams.getAll('t').length<=1&&
+  (!u.searchParams.has('t')||/^[0-9TZ: ._+-]{1,64}$/.test(u.searchParams.get('t')||''));
+}
+export function headersRecursoPublicoTribemd(headers:Record<string,string>):Record<string,string>|null {
+ if(Object.entries(headers).some(([n,v])=>!!v&&['authorization','cookie','proxy-authorization','x-api-key'].includes(n.toLowerCase())))return null;
+ return Object.fromEntries(Object.entries(headers).filter(([n])=>n.toLowerCase()!=='referer'));
+}
 export function permitirRequisicaoTribemd(url:string,metodo:string,tipo:string,autenticando:boolean) {
  const u=new URL(url);if(!['https:','http:'].includes(u.protocol))return false;
+ if(recursoPublicoTribemd(url))return ['GET','HEAD'].includes(metodo)&&['fetch','xhr'].includes(tipo);
  // Login é a única escrita permitida. Todo o restante fica limitado a GET/HEAD.
  if(!['GET','HEAD','OPTIONS'].includes(metodo))
   return autenticando&&metodo==='POST'&&u.origin===origemTribemd&&u.pathname==='/api/usuarios/login';

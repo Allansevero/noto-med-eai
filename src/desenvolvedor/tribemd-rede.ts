@@ -9,7 +9,7 @@ export interface ChamadaRedeLoginTribemd {
  tipo:'document'|'xhr'|'fetch';
  fase:'pagina_login'|'envio_login';
  statusHttp?:number;
- falha?:'dns'|'tls'|'conexao'|'tempo_esgotado'|'cancelada'|'outro';
+ falha?:'dns'|'tls'|'conexao'|'tempo_esgotado'|'cancelada'|'bloqueada_politica'|'bloqueada_cliente'|'outro';
  sinais:string[];
  cookiePresente?:boolean;
  autorizacaoPresente?:boolean;
@@ -19,13 +19,14 @@ export interface DiagnosticoRedeLoginTribemd {
  limiteChamadas:number;
  limitado:boolean;
 }
-const segmentosPublicos=new Set(['usuarios','atendimentos','agenda','pacientes','inicio','api','auth','login','oauth','oauth2','token','session','sessions','signin','sign-in','authenticate','authentication','access','account','sso','v1','v2','v3','status']);
+const segmentosPublicos=new Set(['bipp','static','constantes.json','constantes','me','info','usuarios','atendimentos','agenda','pacientes','inicio','api','auth','login','oauth','oauth2','token','session','sessions','signin','sign-in','authenticate','authentication','access','account','sso','v1','v2','v3','status']);
 
 // Observação passiva: não lê corpos. Apenas presença booleana de credencial; nunca seu valor.
 export class ObservadorRedeLoginTribemd {
  private chamadas:ChamadaRedeLoginTribemd[]=[];
  private registros=new WeakMap<Request,ChamadaRedeLoginTribemd>();
  private pendentes=new Set<Promise<void>>();
+ private bloqueadas=new WeakSet<Request>();
  private fase:ChamadaRedeLoginTribemd['fase']='pagina_login';
  private ordem=0;
  private limitado=false;
@@ -36,6 +37,7 @@ export class ObservadorRedeLoginTribemd {
   page.on('requestfailed',this.falha);
  }
  marcarEnvioLogin(){this.fase='envio_login';}
+ marcarBloqueio(request:Request){this.bloqueadas.add(request);const c=this.registros.get(request);if(c)c.falha='bloqueada_politica';}
  private requisicao=(request:Request)=>{
   const tipo=request.resourceType();if(tipo!=='document'&&tipo!=='xhr'&&tipo!=='fetch')return;
   let url:URL;try{url=new URL(request.url());}catch{return;}
@@ -76,7 +78,7 @@ export class ObservadorRedeLoginTribemd {
  private falha=(request:Request)=>{
   const chamada=this.registros.get(request);if(!chamada)return;
   const erro=request.failure()?.errorText||'';
-  chamada.falha=/NAME_NOT_RESOLVED/.test(erro)?'dns':/CERT_|SSL_/.test(erro)?'tls':/TIMED_OUT/.test(erro)?'tempo_esgotado':/ABORTED/.test(erro)?'cancelada':/net::ERR_/.test(erro)?'conexao':'outro';
+  chamada.falha=this.bloqueadas.has(request)?'bloqueada_politica':/ERR_BLOCKED_BY_CLIENT/.test(erro)?'bloqueada_cliente':/NAME_NOT_RESOLVED/.test(erro)?'dns':/CERT_|SSL_/.test(erro)?'tls':/TIMED_OUT/.test(erro)?'tempo_esgotado':/ABORTED/.test(erro)?'cancelada':/net::ERR_/.test(erro)?'conexao':'outro';
  };
  concluir():Promise<DiagnosticoRedeLoginTribemd>{
   if(!this.conclusao){

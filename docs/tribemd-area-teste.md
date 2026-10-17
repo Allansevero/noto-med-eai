@@ -114,7 +114,13 @@ intermediário de autenticação, sem extração nessa página. Não são aberto
 edição, criação, exportação ou fichas individuais. GET/HEAD/OPTIONS próprios
 são permitidos; ações reconhecidas em GET são bloqueadas. O único POST permitido
 é um envio explícito de `/api/usuarios/login`, durante autenticação. Depois disso,
-POST/PUT/PATCH/DELETE, WebSockets e terceiros são bloqueados, inclusive trackers.
+POST/PUT/PATCH/DELETE e WebSockets continuam bloqueados. Terceiros são
+bloqueados, inclusive trackers, com uma única exceção de leitura: o JSON público
+`https://bipp.nyc3.cdn.digitaloceanspaces.com/bipp/static/constantes.json`.
+Esse arquivo é necessário para o TribeMD concluir o login. Apenas GET/HEAD
+como fetch/XHR são permitidos, com parâmetro público de cache `t` opcional;
+cookies, Authorization e chaves de API fazem a requisição ser bloqueada.
+Referer é removido. Nenhum outro arquivo ou domínio de CDN foi liberado.
 Não se contornam bloqueios de borda. MFA e layouts de desafio não reconhecidos
 podem exigir parar o teste; não há resolvedor automático nem controle genérico.
 
@@ -168,7 +174,7 @@ próprios durante a execução; Playwright os remove no fechamento normal.
 | Login e última consulta reais | Não confirmados: confiança TLS do navegador e credenciais da clínica ainda necessários. |
 | Publicação no Easypanel | Não realizada; não há sessão administrativa autenticada nesta tarefa. |
 
-**Validação direcionada:** dezenove testes passaram, sem falhas ou testes pulados,
+**Validação direcionada:** vinte e três testes passaram, sem falhas ou testes pulados,
 incluindo painel no prefixo integrado, captura, reabertura do perfil,
 criptografia, diagnóstico, configuração incompleta e isolamento do parser.
 O teste de prefixo falhou antes da correção e passou depois.
@@ -214,3 +220,22 @@ compartilhar o conteúdo de `.env` ou a tela com os valores do ambiente.
 (44 caracteres terminando em `=`). Uma senha de 32 caracteres ou uma chave em
 hexadecimal não tem esse formato. Não substituir uma chave válida já usada
 para criptografar perfis; é necessária para recuperar os cookies existentes.
+
+## Login responde 200, mas permanece em confirmando_login
+
+O diagnóstico real enviado pelo usuário mostrou POST `/api/usuarios/login`
+com HTTP200 e leitura do CDN falhando. O código público do TribeMD mostra que
+o fluxo de login aguarda `atendimento/reloadConstantes`, que lê
+`bipp/static/constantes.json`. A política anterior bloqueava esse domínio.
+HEAD sem autenticação nesse arquivo retornou HTTP200 e application/json.
+
+Foi reproduzido com Chromium/Xvfb em uma fixture que exige esse JSON após o
+login: antes da correção houve timeout mesmo com API200; depois, o fluxo
+concluiu. A correção autoriza apenas esse recurso público, nas condições acima.
+Isso não confirma a conclusão do login da conta real; é preciso reimplantar
+o branch e abrir uma nova sessão para validar no TribeMD.
+
+Falhas causadas pelo próprio guard agora aparecem como
+`falha: "bloqueada_politica"`, em vez de `conexao`. Bloqueio pelo cliente sem
+marcação do guard aparece como `bloqueada_cliente`. A existência de
+`infra_cloudflare` sozinha não prova desafio ou recusa de acesso.

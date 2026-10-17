@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { BrowserContext } from 'playwright-core';
-import { loginTribemd, agendaTribemd, permitirRequisicaoTribemd, lerConsultas } from './tribemd-leitura.js';
+import { loginTribemd, agendaTribemd, constantesPublicasTribemd, headersRecursoPublicoTribemd, permitirRequisicaoTribemd, lerConsultas } from './tribemd-leitura.js';
 import { PerfisTribemd } from './tribemd-perfil.js';
 import { NavegadorTribemd, ErroTribemd } from './tribemd-navegador.js';
 import { chromium } from 'playwright-core';
@@ -67,16 +67,17 @@ test('área protege HTML/imagem, rejeita CSRF, não expõe credenciais e aceita 
 });
 const executavel=process.env.CHROMIUM_EXECUTABLE_PATH||'/usr/bin/chromium';
 const xvfb=process.env.XVFB_EXECUTABLE_PATH||'Xvfb';
-async function fixture(n:NavegadorTribemd,erro=false){
+async function fixture(n:NavegadorTribemd,erro=false,exigirConstantes=false){
  const context=(n as unknown as {context:BrowserContext}).context;
  const chamadas:{metodo:string;rota:string}[]=[];
+ await context.route('https://bipp.nyc3.cdn.digitaloceanspaces.com/bipp/static/constantes.json*',route=>route.fulfill({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'https://app.tribemd.com'},body:'{"catalogoPublico":true}'}));
  await context.route('https://app.tribemd.com/**',async route=>{
   const req=route.request(),u=new URL(req.url());chamadas.push({metodo:req.method(),rota:u.pathname});
   if(u.pathname==='/login'){
    if(erro){await route.fulfill({status:404,headers:{'cf-mitigated':'challenge','x-amzn-waf-action':'challenge'},body:'Erro controlado'});return;}
    await route.fulfill({contentType:'text/html',body:`<label>E-mail ou CPF<input id="email" type="email"></label><label>Senha<input id="senha" type="password"></label><button id="entrar">Entrar</button><script>
    if(localStorage.getItem('bipp-user-token'))location.href='/atendimentos/agenda';
-   document.getElementById('entrar').onclick=async()=>{const r=await fetch('/api/usuarios/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('senha').value})});if(r.ok){localStorage.setItem('bipp-user-token','token-ficticio');location.href='/atendimentos/agenda';}};
+   document.getElementById('entrar').onclick=async()=>{const r=await fetch('/api/usuarios/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('senha').value})});if(r.ok){if(${exigirConstantes})await fetch('https://bipp.nyc3.cdn.digitaloceanspaces.com/bipp/static/constantes.json?t=1').then(r=>r.json());localStorage.setItem('bipp-user-token','token-ficticio');location.href='/atendimentos/agenda';}};
    </script>`});return;
   }
   if(u.pathname==='/api/usuarios/login'){await route.fulfill({contentType:'application/json',headers:{'Set-Cookie':'sessao=apenas-teste; Path=/; HttpOnly; Secure; SameSite=Lax'},body:'{"ok":true}'});return;}
@@ -249,4 +250,41 @@ test('validação distingue chave base64 de senha comum e não divulga valores',
  const ruim=validarConfiguracaoTesteTribemd({TRIBEMD_TESTE_TOKEN:'curto',TRIBEMD_TESTE_CHAVE:segredo,TRIBEMD_TESTE_DIRETORIO:'/dados/tribemd',TRIBEMD_TESTE_ORIGEM:'https://example.com'});
  assert.equal(ruim.ok,false);if(!ruim.ok){assert.deepEqual(ruim.pendencias.map(p=>p.variavel),['TRIBEMD_TESTE_TOKEN','TRIBEMD_TESTE_CHAVE']);assert.equal(JSON.stringify(ruim).includes(segredo),false);assert.equal(JSON.stringify(ruim).includes('curto'),false);}
  const chave=randomBytes(32).toString('base64');assert.equal(validarConfiguracaoTesteTribemd({TRIBEMD_TESTE_TOKEN:randomBytes(32).toString('hex'),TRIBEMD_TESTE_CHAVE:chave,TRIBEMD_TESTE_DIRETORIO:'/dados/tribemd',TRIBEMD_TESTE_ORIGEM:'https://example.com/'}).ok,true);
+});
+
+
+test('login aguarda constantes públicas no CDN após API200 e conclui sem credenciais no CDN',async()=>{
+ const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+ try{
+  await fixture(n,false,true);assert.equal(await n.abrir(),'aguardando_credenciais');
+  await n.entrar('teste@example.invalid','credencial-ficticia');
+  const chamadas=n.diagnosticar().rede?.chamadas||[];
+  const login=chamadas.find(c=>c.rota==='/api/usuarios/login');assert.equal(login?.statusHttp,200);
+  const cdn=chamadas.find(c=>c.servidor==='bipp.nyc3.cdn.digitaloceanspaces.com');assert.equal(cdn?.statusHttp,200);assert.equal(cdn?.cookiePresente,false);assert.equal(cdn?.autorizacaoPresente,false);
+ }finally{await n.encerrar();}
+});
+
+
+test('permite apenas o JSON público de constantes no CDN com cache público e sem escritas',()=>{
+ const u=constantesPublicasTribemd;
+ for(const fase of [true,false])assert.equal(permitirRequisicaoTribemd(u+'?t=2026-10-17%2012:00:00','GET','fetch',fase),true);
+ assert.equal(permitirRequisicaoTribemd(u,'HEAD','xhr',true),true);
+ for(const m of ['POST','PUT','DELETE','PATCH','OPTIONS'])assert.equal(permitirRequisicaoTribemd(u,m,'fetch',true),false);
+ for(const tipo of ['document','script','image','websocket'])assert.equal(permitirRequisicaoTribemd(u,'GET',tipo,true),false);
+ for(const url of [u.replace('https:','http:'),u.replace('constantes.json','outro.json'),u.replace('constantes.json','medicamentos.json'),u+'?token=fixture',u+'?t=1&t=2',u.replace('bipp.nyc3.cdn.digitaloceanspaces.com','outro.invalid')])assert.equal(permitirRequisicaoTribemd(url,'GET','fetch',true),false);
+});
+test('recurso público recusa credenciais e remove Referer sem modificar os demais cabeçalhos',()=>{
+ for(const nome of ['Authorization','cookie','proxy-authorization','x-api-key'])assert.equal(headersRecursoPublicoTribemd({[nome]:'fixture-sensivel'}),null);
+ const original={referer:'https://app.tribemd.com/pacientes/fixture',origin:'https://app.tribemd.com',accept:'application/json'};
+ assert.deepEqual(headersRecursoPublicoTribemd(original),{origin:original.origin,accept:original.accept});assert.equal('referer' in original,true);
+});
+test('bloqueio do piloto é identificado como política, sem ser confundido com conexão',async()=>{
+ const n=await NavegadorTribemd.criar({executavel,xvfb},new AbortController().signal);
+ try{
+  const f=await fixture(n);await n.abrir();
+  const bloqueado=await f.context.pages()[0].evaluate(async()=>{try{await fetch('/api/pacientes',{method:'POST',body:'{}'});return false;}catch{return true;}});assert.equal(bloqueado,true);
+  await n.entrar('teste@example.invalid','credencial-ficticia');
+  const req=n.diagnosticar().rede?.chamadas.find(c=>c.rota==='/api/pacientes'&&c.metodo==='POST');assert.equal(req?.falha,'bloqueada_politica');assert.equal(req?.statusHttp,undefined);
+  assert.equal(f.chamadas.some(c=>c.metodo==='POST'&&c.rota==='/api/pacientes'),false);
+ }finally{await n.encerrar();}
 });
