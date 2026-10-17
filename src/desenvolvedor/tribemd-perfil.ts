@@ -3,7 +3,10 @@ import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import type { BrowserContext } from 'playwright-core';
 export type EstadoNavegador = Awaited<ReturnType<BrowserContext['storageState']>>;
-export interface PerfilTribemd { email?:string; senha?:string; estado?:EstadoNavegador }
+export interface PerfilTribemd {
+ email?:string;senha?:string;estado?:EstadoNavegador;
+ cofre?:{ativo:boolean;estado:'salvo'|'conectado'|'desconectado'|'atencao';consentimentoEm:string;consentimentoVersao?:string;atualizadoEm:string;verificadoEm?:string;codigo?:string};
+}
 // Único conteúdo persistido: envelope autenticado. Nenhum perfil Chromium em disco.
 export class PerfisTribemd {
  private chave:Buffer;

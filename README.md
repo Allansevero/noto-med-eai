@@ -14,6 +14,8 @@ comando ou serviço separado de worker, Noto Fiscal ou Noto IA nesta versão.
 - API de emissão (`/api/v1/nfse`, `/v2/nfse`, `/v2/nfsen`), fila, assinatura,
   transmissão, armazenamento e conversão PDF.
 - Leitor TribeMD validado na área protegida `/desenvolvedor/tribemd/`, no mesmo app.
+- Cofre TribeMD por conta no painel: credenciais e cookies criptografados,
+  conexão, leitura da agenda, reconexão, alteração, desconexão e exclusão.
 
 Os motores antigos de candidatos, pedidos, aprovação conversacional e varredura
 foram removidos. A fila desta base consome apenas solicitações de origem `api`.
@@ -32,10 +34,13 @@ proteções da fila e validação fiscal. Preservar os valores atuais; elas não
 reativam os motores de conversa removidos. As tabelas e migrações existentes
 foram preservadas; esta limpeza de código não executa exclusões no banco.
 
-## Próxima etapa
+## Cofre e próximas integrações
 
-Evoluir o leitor TribeMD para cofres/sessões por usuário e adicionar conectores,
-como iClinic, após inspecionar cada portal. Em seguida integrar extração e regras
+O card TribeMD e a seção **Cofre** substituem Google Planilhas no painel. O acesso
+é vinculado à conta Supabase; o usuário autoriza a leitura ao salvar as credenciais.
+Configuração e limites: [cofre TribeMD](docs/implementation/cofre-tribemd.md).
+
+Adicionar conectores como iClinic após inspecionar cada portal. Em seguida integrar extração e regras
 determinísticas de pagamento/consulta/emissão. iClinic e a nova emissão automática
 não estão implementados nesta base.
 

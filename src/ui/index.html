@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet">
-  <script async defer src="https://apis.google.com/js/api.js"></script>
   <style>
     :root {
       --bg: #F4F4F5;
@@ -865,7 +864,7 @@
       width: 100%;
     }
 
-    /* GOOGLE PLANILHAS NO PAINEL */
+    /* CARDS DE INTEGRAÇÕES */
     .sheets-card {
       background: transparent;
       border: none;
@@ -1061,6 +1060,17 @@
         font-size: max(16px, var(--body-lg-size));
       }
     }
+    .cofre-logo { object-fit:cover; border-radius:10px; flex-shrink:0; }
+    .cofre-provedor { display:flex;align-items:center;gap:12px; }
+    .cofre-provedor h2,.cofre-provedor h3 { margin:0; }
+    .cofre-acoes { display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:18px 0; }
+    .cofre-dialog { box-sizing:border-box;width:min(480px,calc(100vw - 32px));max-height:90vh;overflow:auto;padding:28px;border:0;border-radius:16px;background:var(--bg-card,#fff);color:var(--text);font:inherit;box-shadow:0 12px 60px #0003; }
+    .cofre-dialog::backdrop { background:rgba(18,28,34,.48); }
+    .cofre-dialog form>label:not(.cofre-autorizacao) { display:block;margin:14px 0 6px; }
+    .cofre-dialog input.input-data-field { box-sizing:border-box;width:100%; }
+    .cofre-autorizacao { display:flex;align-items:flex-start;gap:10px;margin-top:18px; }
+    .cofre-autorizacao input { flex-shrink:0;margin-top:4px; }
+    #cofreMensagem,#cofreCardMensagem { color:#b42318; }
   </style>
 </head>
 <body class="onboarding-active">
@@ -1256,7 +1266,7 @@
             </nav>
             <nav class="conta-menu-container" aria-label="Integrações e emissões">
               <button type="button" class="conta-menu-item" id="btnContaEmissoes" data-conta-secao="emissoes">Emissões<span aria-hidden="true">›</span></button>
-              <button type="button" class="conta-menu-item" id="btnContaPlanilhas" data-conta-secao="planilhas">Google Planilhas<span aria-hidden="true">›</span></button>
+              <button type="button" class="conta-menu-item" id="btnContaCofre" data-conta-secao="cofre">Cofre<span aria-hidden="true">›</span></button>
             </nav>
             <nav class="conta-menu-container" aria-label="Faturamento e equipe">
               <button type="button" class="conta-menu-item" id="btnContaFaturamento" data-conta-secao="faturamento">Faturamento<span aria-hidden="true">›</span></button>
@@ -1295,27 +1305,18 @@
             <!-- TÍTULO DA SEÇÃO EM CAIXA ALTA -->
             <div class="secao-titulo-integracoes">INTEGRAÇÕES</div>
 
-            <!-- GOOGLE PLANILHAS: CARD RÁPIDO NO PAINEL -->
-            <div id="cardSheetsRapido" class="sheets-card">
+            <div id="cardCofreTribe" class="sheets-card">
               <div class="sheets-card-main">
                 <div class="sheets-card-left">
-                  <div class="sheets-logo-wrapper" title="Google Planilhas">
-                    <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                      <path d="M29 4H12C9.79 4 8 5.79 8 8V40C8 42.21 9.79 44 12 44H36C38.21 44 40 42.21 40 40V15L29 4Z" fill="#0F9D58"/>
-                      <path d="M29 4V15H40L29 4Z" fill="#87CEAC"/>
-                      <path d="M29 4L40 15H29V4Z" fill="#0B8043" opacity="0.3"/>
-                      <rect x="14" y="21" width="20" height="15" rx="1.5" fill="#FFFFFF"/>
-                      <path d="M14 26H34M14 31H34M21 21V36M27 21V36" stroke="#0F9D58" stroke-width="1.8" stroke-linecap="round"/>
-                    </svg>
-                  </div>
+                  <img class="cofre-logo" src="/assets/tribemd-logo.jpg" alt="Logo TribeMD" width="40" height="40">
                   <div class="sheets-info-wrapper">
-                    <span class="sheets-title">Planilhas google</span>
-                    <span class="sheets-subtitle">Importe seus pacientes facilmente de uma planilha para o noto</span>
+                    <span class="sheets-title">TribeMD</span>
+                    <span class="sheets-subtitle" id="cofreCardDescricao">Conecte sua agenda e os dados dos pacientes para preparar suas notas.</span>
                   </div>
                 </div>
-                <button type="button" class="sheets-btn-conectar" id="btnSheetsRapidoConectar">Conectar</button>
+                <button type="button" class="sheets-btn-conectar" id="btnCofreConectar">Conectar</button>
               </div>
-              <div id="sheetsRapidoStatus" class="sheets-status hidden" role="status" aria-live="polite"></div>
+              <p id="cofreCardMensagem" role="status" aria-live="polite"></p>
             </div>
 
             <!-- SEÇÕES INTERNAS (ABERTAS A PARTIR DO MENU, COM BOTÃO VOLTAR PARA O PAINEL) -->
@@ -1337,27 +1338,19 @@
             </div>
           </section>
 
-          <!-- SEÇÃO: GOOGLE PLANILHAS (VISÃO COMPLETA) -->
-          <section id="contaSecaoPlanilhas" class="conta-secao hidden" aria-labelledby="tituloContaPlanilhas">
-            <h2 class="access-title" id="tituloContaPlanilhas">Google Planilhas</h2>
-            <p class="access-subtitle">Conecte sua planilha para importar pacientes. Você confere a prévia antes de salvar. Nenhuma nota será emitida nesta etapa.</p>
-            <p id="statusPlanilhaGoogle" role="status" aria-live="polite"></p>
-            <button type="button" class="btn-action" id="btnConectarGoogle">Conectar Google</button>
-            <div id="formPlanilhaGoogle" hidden>
-              <button type="button" class="btn-action" id="btnSelecionarGoogle" style="margin-bottom:12px;">Selecionar Planilha no Google</button>
-              <label for="inputPlanilhaGoogle">Ou informe o link da planilha</label>
-              <input id="inputPlanilhaGoogle" class="input-data-field" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" />
-              <button type="button" class="btn-action" id="btnBuscarAbasGoogle">Buscar abas</button>
-              <label for="selectAbaGoogle">Aba com os pacientes</label>
-              <select id="selectAbaGoogle" class="input-data-field"></select>
-              <button type="button" class="btn-action" id="btnLerPlanilhaGoogle">Ler pacientes</button>
-              <div id="tabelaPlanilhaGoogle" hidden style="overflow-x:auto;margin-top:16px;">
-                <table><thead><tr><th>Linha</th><th>Nome</th><th>CPF</th><th>E-mail</th><th>Telefone</th><th>Pendências</th></tr></thead><tbody id="previaPlanilhaGoogle"></tbody></table>
-              </div>
-              <button type="button" class="btn-action" id="btnImportarPlanilhaGoogle" disabled>Confirmar importação</button>
-              <div id="resultadoImportacaoGoogle"></div>
+          <section id="contaSecaoCofre" class="conta-secao hidden" aria-labelledby="tituloContaCofre">
+            <h2 class="access-title" id="tituloContaCofre">Cofre</h2>
+            <p class="access-subtitle">Gerencie os acessos que você autoriza o Noto a usar.</p>
+            <div class="cofre-provedor"><img class="cofre-logo" src="/assets/tribemd-logo.jpg" alt="" width="40" height="40"><h3>TribeMD</h3></div>
+            <p id="cofreEstado" role="status" aria-live="polite">Verificando acesso…</p>
+            <p id="cofreMensagem" role="status" aria-live="polite"></p>
+            <div class="cofre-acoes">
+              <button type="button" class="btn-action" id="btnCofreGerenciarConexao">Conectar</button>
+              <button type="button" class="btn-link" id="btnCofreAlterar" hidden>Alterar e-mail ou senha</button>
+              <button type="button" class="btn-link" id="btnCofreDesconectar" hidden>Desconectar</button>
+              <button type="button" class="btn-link" id="btnCofreExcluir" hidden>Excluir do cofre</button>
             </div>
-            <button type="button" class="btn-link" id="btnDesconectarGoogle" hidden>Desconectar Google</button>
+            <p class="body-sm">Ao desconectar, o Noto interrompe o acesso e apaga a sessão salva. A credencial continua criptografada para você reconectar quando quiser. Ao excluir, o acesso e a credencial salva são apagados.</p>
           </section>
 
           <!-- SEÇÃO: DADOS DA CONTA -->
@@ -1575,6 +1568,24 @@
 
   </div>
 
+  <dialog id="modalCofre" class="cofre-dialog" aria-labelledby="tituloModalCofre">
+    <div class="cofre-provedor"><img class="cofre-logo" src="/assets/tribemd-logo.jpg" alt="" width="40" height="40"><h2 id="tituloModalCofre">Conectar TribeMD</h2></div>
+    <p>Informe seu acesso ao TribeMD. Ao salvar, seu e-mail e sua senha serão criptografados.</p>
+    <p>O Noto poderá ler sua agenda médica e os dados dos pacientes para preparar a emissão das notas fiscais. Esse acesso não altera dados no TribeMD nem emite notas por si só.</p>
+    <form id="formCofre">
+      <label for="cofreEmail">E-mail do TribeMD</label><input id="cofreEmail" name="email" class="input-data-field" type="email" autocomplete="off" maxlength="254" required>
+      <label for="cofreSenha">Senha do TribeMD</label><input id="cofreSenha" name="senha" class="input-data-field" type="password" autocomplete="new-password" maxlength="256" required>
+      <label class="cofre-autorizacao"><input name="autorizacao" type="checkbox" required>Autorizo o Noto a consultar minha agenda e os dados dos pacientes no TribeMD.</label>
+      <p id="cofreModalMensagem" role="status"></p>
+      <div class="cofre-acoes"><button id="cofreSalvar" class="btn-action" type="submit">Salvar e conectar</button><button id="fecharModalCofre" class="btn-link" type="button">Cancelar</button></div>
+    </form>
+  </dialog>
+  <dialog id="modalExcluirCofre" class="cofre-dialog" aria-labelledby="tituloExcluirCofre">
+    <h2 id="tituloExcluirCofre">Excluir TribeMD do cofre?</h2>
+    <p>O acesso será interrompido e o e-mail, a senha e a sessão salvos serão apagados. Para conectar novamente, você precisará informar as credenciais.</p>
+    <div class="cofre-acoes"><button id="confirmarExcluirCofre" class="btn-action" type="button">Excluir acesso</button><button id="cancelarExcluirCofre" class="btn-link" type="button">Cancelar</button></div>
+  </dialog>
+  <script src="/assets/cofre.js"></script>
   <script>
     // Gerenciador de estado local
     let sessaoAtual = null;
@@ -1627,7 +1638,7 @@
       etapaProfissionalAtiva = false;
       localStorage.removeItem('notomed_sessao');
       sessaoAtual = null;
-      limparPreviaGoogle();
+      window.NotoCofre?.limpar();
       pararPollingConexao();
       pararStatusWhatsappPainel();
 
@@ -1927,35 +1938,7 @@
           if (elNome) elNome.textContent = sessaoAtual.usuario.nome;
         }
         carregarStatusBilling();
-        const autoPicker = localStorage.getItem('noto_auto_abrir_picker') === 'true';
-        const urlParamsGoogle = new URLSearchParams(window.location.search);
-        const statusGoogleParam = urlParamsGoogle.get('google_planilhas');
-        if (autoPicker || statusGoogleParam === 'conectado') {
-          localStorage.removeItem('noto_auto_abrir_picker');
-          if (statusGoogleParam) window.history.replaceState?.({}, '', '/');
-          setTimeout(() => {
-            const btn = document.getElementById('btnSheetsRapidoConectar');
-            const statusEl = document.getElementById('sheetsRapidoStatus');
-            const setStatus = (msg, tipo = 'info') => {
-              if (!statusEl) return;
-              statusEl.textContent = msg;
-              statusEl.className = 'sheets-status ' + (tipo === 'loading' ? 'is-loading' : tipo === 'error' ? 'is-error' : tipo === 'success' ? 'is-success' : '');
-              statusEl.classList.remove('hidden');
-            };
-            if (btn) btn.disabled = true;
-            if (typeof abrirPickerEProcessarComIA === 'function') {
-              abrirPickerEProcessarComIA(setStatus, btn);
-            }
-          }, 350);
-        } else if (statusGoogleParam && statusGoogleParam !== 'conectado') {
-          window.history.replaceState?.({}, '', '/');
-          const statusEl = document.getElementById('sheetsRapidoStatus');
-          if (statusEl) {
-            statusEl.textContent = 'A conexão com o Google não foi concluída. Tente novamente.';
-            statusEl.className = 'sheets-status is-error';
-            statusEl.classList.remove('hidden');
-          }
-        }
+        void window.NotoCofre?.atualizar();
       }
     }
 
@@ -2536,9 +2519,9 @@
       }
     }
 
-    const secoesConta = { emissoes: 'Emissoes', dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', planilhas: 'Planilhas', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
+    const secoesConta = { emissoes: 'Emissoes', dados: 'Dados', fiscal: 'Fiscal', preferencias: 'Preferencias', cofre: 'Cofre', faturamento: 'Faturamento', membros: 'Membros', convites: 'Convites', deletar: 'Deletar' };
     function voltarMenuConta() {
-      const cardSheets = document.getElementById('cardSheetsRapido');
+      const cardSheets = document.getElementById('cardCofreTribe');
       if (cardSheets) cardSheets.classList.remove('hidden');
       document.getElementById('cardWhatsappPainel').classList.remove('hidden');
       document.getElementById('contaMenu').classList.remove('hidden');
@@ -2551,7 +2534,7 @@
     }
     function abrirSecaoConta(secao) {
       if (!painelDisponivel || !secoesConta[secao]) return;
-      const cardSheets = document.getElementById('cardSheetsRapido');
+      const cardSheets = document.getElementById('cardCofreTribe');
       if (cardSheets) cardSheets.classList.add('hidden');
       document.getElementById('cardWhatsappPainel').classList.add('hidden');
       document.getElementById('contaMenu').classList.add('hidden');
@@ -2564,7 +2547,7 @@
       if (secao === 'dados' || secao === 'fiscal') atualizarVisualizacaoConta();
       if (secao === 'preferencias') void carregarPreferenciasConta();
       if (secao === 'faturamento') carregarStatusBilling();
-      if (secao === 'planilhas') { limparPreviaGoogle(); void carregarGooglePlanilhas(); }
+      if (secao === 'cofre') void window.NotoCofre?.atualizar();
       document.getElementById('btnVoltarConta').focus();
     }
     for (const [chave, slug] of Object.entries(secoesConta)) {
@@ -2794,11 +2777,6 @@
       await atualizarRevisaoCadastro(true);
     }
 
-    // GOOGLE PLANILHAS (REMOVIDO)
-    let previaGoogleId = null;
-    function limparPreviaGoogle() {}
-    async function carregarGooglePlanilhas() {}
-
     // Configuração de campo editável inline (Nome, CRM, RQE)
     function configurarCampoEditavel(inputId, btnId, campo) {
       const input = document.getElementById(inputId);
@@ -3010,6 +2988,8 @@
     if (btnLogoutConta) {
       btnLogoutConta.addEventListener('click', efetuarLogout);
     }
+
+    window.NotoCofre.configurar(()=>sessaoAtual?.tokenAcesso,()=>abrirSecaoConta('cofre'));
 
     // Auto carregar se logado
     if (sessaoAtual?.usuario) {

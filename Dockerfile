@@ -2,7 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Navegador do piloto TribemD, iniciado somente na área de desenvolvedor.
+# Navegador TribeMD para os cofres por conta e a área administrativa.
 RUN apk add --no-cache chromium xvfb nss freetype harfbuzz ca-certificates ttf-freefont
 
 # Copia manifestos de dependência

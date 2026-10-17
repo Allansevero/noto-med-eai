@@ -1,0 +1,96 @@
+import express, { type Request, type Response } from 'express';
+import type pg from 'pg';
+import { z } from 'zod';
+import { join } from 'node:path';
+import { CofreTribemd, ErroCofre, consentimentoCofre } from './tribemd-cofre.js';
+const credencial = z.object({ email: z.string().trim().email().max(254), senha: z.string().min(1).max(256), consentimento: z.literal(consentimentoCofre) }).strict();
+const vazio = z.object({}).strict();
+const apagar = (req: Request) => { if (Buffer.isBuffer((req as any).rawBody))
+    (req as any).rawBody.fill(0); delete (req as any).rawBody; req.body = {}; };
+export function criarCofreContas(deps: {
+    pool: pg.Pool;
+    autenticar: (token: string) => Promise<string | null>;
+    env?: NodeJS.ProcessEnv;
+}) {
+    const env = deps.env ?? process.env, app = express();
+    app.disable('x-powered-by');
+    app.set('trust proxy', 1);
+    let origem = '', cofre: CofreTribemd | undefined;
+    try {
+        const u = new URL(env.COFRE_ORIGEM || env.TRIBEMD_TESTE_ORIGEM || '');
+        if (u.pathname !== '/' || u.search || u.hash || u.username || u.password || u.protocol !== 'https:' && !(u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname)))
+            throw Error();
+        origem = u.origin;
+        const base = env.COFRE_DIRETORIO || env.TRIBEMD_TESTE_DIRETORIO;
+        if (!base)
+            throw Error();
+        const raiz = join(base, 'cofres-contas-v1');
+        cofre = new CofreTribemd({ diretorio: raiz, chave: env.COFRE_CHAVE || env.TRIBEMD_TESTE_CHAVE || '', chromium: env.CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium-browser', xvfb: env.XVFB_EXECUTABLE_PATH });
+    }
+    catch { /* Configuração indisponível afeta somente o cofre; não publicar valores. */ }
+    app.use(async (req, res, next) => {
+        res.set({ 'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' });
+        try {
+            const h = req.header('authorization') || '', authId = h.startsWith('Bearer ') ? await deps.autenticar(h.slice(7)) : null;
+            if (!authId) {
+                res.status(401).json({ ok: false, codigo: 'SESSAO_INVALIDA' });
+                return;
+            }
+            const dono = (await deps.pool.query('select m.id from medicos m join usuarios u on u.id=m.usuario_id where u.auth_user_id=$1 and u.ativo=true limit 1', [authId])).rows[0];
+            if (!dono || !z.string().uuid().safeParse(dono.id).success) {
+                res.status(403).json({ ok: false, codigo: 'CONTA_INDISPONIVEL' });
+                return;
+            }
+            if (!cofre || !origem) {
+                res.status(503).json({ ok: false, codigo: 'COFRE_INDISPONIVEL' });
+                return;
+            }
+            const url = new URL(origem);
+            if (req.headers.host !== url.host || url.protocol === 'https:' && !req.secure || !['GET', 'HEAD'].includes(req.method) && (req.header('origin') !== origem || req.header('x-noto-cofre') !== '1')) {
+                res.status(403).json({ ok: false, codigo: 'ORIGEM_INVALIDA' });
+                return;
+            }
+            res.locals.dono = dono.id;
+            next();
+        }
+        catch {
+            res.status(503).json({ ok: false, codigo: 'COFRE_INDISPONIVEL' });
+        }
+    });
+    app.use(express.json({ limit: '4kb' }));
+    const rota = (fn: (req: Request, res: Response) => Promise<void>) => async (req: Request, res: Response) => {
+        try {
+            await fn(req, res);
+        }
+        catch (e) {
+            const codigo = e instanceof z.ZodError ? 'ENTRADA_INVALIDA' : e instanceof ErroCofre ? e.codigo : 'COFRE_INDISPONIVEL';
+            res.status(e instanceof z.ZodError ? 400 : e instanceof ErroCofre ? 409 : 503).json({ ok: false, codigo });
+        }
+        finally {
+            apagar(req);
+        }
+    };
+    app.get('/tribemd', rota(async (_req, res) => { res.json({ ok: true, cofre: await cofre!.status(res.locals.dono) }); }));
+    app.post('/tribemd', rota(async (req, res) => {
+        let d: z.infer<typeof credencial> | undefined;
+        try {
+            d = credencial.parse(req.body);
+            apagar(req);
+            res.status(202).json({ ok: true, cofre: await cofre!.iniciar(res.locals.dono, d) });
+        }
+        finally {
+            if (d) {
+                d.email = '';
+                d.senha = '';
+            }
+        }
+    }));
+    app.post('/tribemd/reconectar', rota(async (req, res) => { vazio.parse(req.body); res.status(202).json({ ok: true, cofre: await cofre!.iniciar(res.locals.dono) }); }));
+    app.post('/tribemd/desconectar', rota(async (req, res) => { vazio.parse(req.body); await cofre!.desconectar(res.locals.dono); res.json({ ok: true, cofre: await cofre!.status(res.locals.dono) }); }));
+    app.delete('/tribemd', rota(async (req, res) => { vazio.parse(req.body); await cofre!.excluir(res.locals.dono); res.json({ ok: true, cofre: await cofre!.status(res.locals.dono) }); }));
+    app.post('/tribemd/consultas', rota(async (req, res) => { vazio.parse(req.body); res.status(202).json({ ok: true, cofre: await cofre!.consultar(res.locals.dono) }); }));
+    app.get('/tribemd/consultas', rota(async (_req, res) => { res.json({ ok: true, cofre: await cofre!.status(res.locals.dono), resultado: cofre!.resultado(res.locals.dono) }); }));
+    app.use((_req, res) => res.status(404).json({ ok: false, codigo: 'COFRE_ROTA_INVALIDA' }));
+    app.use((_erro: unknown, req: Request, res: Response, _next: unknown) => { apagar(req); res.status(400).json({ ok: false, codigo: 'ENTRADA_INVALIDA' }); });
+    return { app, encerrar: async () => { await cofre?.encerrar(); } };
+}

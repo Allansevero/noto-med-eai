@@ -1,3 +1,4 @@
+import { criarCofreContas } from './cofre/router.js';
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
@@ -64,15 +65,6 @@ export function criarAppExpress() {
   const testeTribemd = montarAreaTesteTribemd(app);
   app.locals.encerrarTesteTribemd = testeTribemd.encerrar;
   configurarDesempenhoHttp(app);
-  app.use(
-    express.json({
-      limit: '10mb',
-      verify: (req: any, _res, buf) => {
-        req.rawBody = buf;
-      }
-    })
-  );
-  app.use(express.text({ limit: '10mb', type: ['text/*', 'application/xml'] }));
 
   // Instanciação dos adaptadores de infraestrutura
   const otpRepo = new PostgresOtpRepositorio(pool);
@@ -88,6 +80,26 @@ export function criarAppExpress() {
     config.supabaseServiceRoleKey,
     pool
   );
+  const cofres = criarCofreContas({
+    pool,
+    autenticar: async token => {
+      const { data, error } = await authAdminService.supabaseClient.auth.getUser(token);
+      return error ? null : data.user?.id ?? null;
+    }
+  });
+  // Credenciais do cofre não passam pelo parser geral que conserva rawBody.
+  app.use('/api/conta/cofre', cofres.app);
+  app.locals.encerrarCofres = cofres.encerrar;
+  app.use(
+    express.json({
+      limit: '10mb',
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      }
+    })
+  );
+  app.use(express.text({ limit: '10mb', type: ['text/*', 'application/xml'] }));
+
   const hubCpfClient = config.hubDesenvolvedorToken
     ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken)
     : undefined;
@@ -783,7 +795,8 @@ if (process.env['NODE_ENV'] !== 'test') {
           servidor.close(() => resolver());
           servidor.closeIdleConnections();
         }),
-        app.locals.encerrarTesteTribemd()
+        app.locals.encerrarTesteTribemd(),
+        app.locals.encerrarCofres()
       ]);
     },
     pararWorker: () => worker.parar(),
