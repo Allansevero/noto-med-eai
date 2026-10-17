@@ -1,16 +1,19 @@
-# TribeMD: área isolada de teste
+# TribeMD: área protegida de teste no Noto
 
 Branch: `fix/tribemd-login-area-teste`. Base do repositório: `bbe97e2`.
 Referência histórica inspecionada: `b3019f8^`, anterior à remoção do piloto.
 Somente `tribemd-display.ts` e `tribemd-rede.ts` foram recuperados e adaptados;
-o agente antigo e sua ligação com o servidor Noto não foram reativados.
+o agente antigo não foi reativado. A área pode ser montada no servidor Noto
+ou executada pelo comando independente para desenvolvimento.
 
 ## O que foi alterado
 
 - Login: `https://app.tribemd.com/login?continue=/atendimentos/agenda`.
 - Agenda: `/atendimentos/agenda`; pacientes: `/pacientes`.
-- Processo Express independente, sem importar configuração, autenticação,
-  emissão, parâmetros, IA ou banco do Noto.
+- Subapp Express em `/desenvolvedor/tribemd/`, no mesmo processo e porta do
+  Noto. É montado antes dos parsers gerais e tem autenticação própria. Não chama
+  emissão, login, parâmetros, IA ou banco do Noto. O modo independente permanece
+  disponível para desenvolvimento.
 - Página protegida por HTTP Basic, inclusive HTML, JavaScript e capturas.
   Usuário da área: `teste`; senha: `TRIBEMD_TESTE_TOKEN`.
   Essa chave administrativa autoriza todas as clínicas desta área de teste;
@@ -30,40 +33,68 @@ o agente antigo e sua ligação com o servidor Noto não foram reativados.
   Não se usa um diretório Chromium permanente contendo cookies abertos.
 - Botão separado para excluir perfil e credenciais, com a sessão já encerrada.
 
-## Iniciar como serviço separado no Easypanel
+## Ativar no mesmo app no Easypanel
 
-Não substituir o comando do serviço `web` do Noto. Criar um **outro app de teste**
-com este branch, usando o Dockerfile existente, que já instala Chromium e Xvfb.
-Não houve alteração nesse Dockerfile nem em `package.json`.
+Usar o branch `fix/tribemd-login-area-teste` no **app web existente do Noto**
+e reimplantar. Manter o comando normal `npm start`, o domínio e a porta atuais.
+O Dockerfile existente já instala Chromium e Xvfb; não é necessário outro app,
+domínio ou porta. Não houve alteração nas dependências ou no Dockerfile.
 
-Comando do novo app:
+Na seção **Ambiente** do app atual, adicionar:
 
-```sh
-node --import tsx scripts/tribemd-area-teste.mjs
+```dotenv
+TRIBEMD_TESTE_ATIVO=true
+TRIBEMD_TESTE_ORIGEM=https://seu-dominio-do-noto
+TRIBEMD_TESTE_TOKEN=
+TRIBEMD_TESTE_CHAVE=
+TRIBEMD_TESTE_DIRETORIO=/dados/tribemd
 ```
 
-Configuração exclusiva do novo serviço:
+Preencher os dois segredos diretamente no gestor de segredos do Easypanel.
+Adicionar um **volume persistente** em `/dados/tribemd` no mesmo app para que
+os cookies sobrevivam à reimplantação. Depois, abrir:
 
-| Variável | Valor / requisito |
+```text
+https://seu-dominio-do-noto/desenvolvedor/tribemd/
+```
+
+| Variável | Requisito |
 | --- | --- |
-| `TRIBEMD_TESTE_ORIGEM` | Origem HTTPS exata, por exemplo `https://teste-tribemd.seu-dominio.com`, sem caminho ou barra final. |
-| `TRIBEMD_TESTE_TOKEN` | Segredo administrativo aleatório de 32–256 caracteres. Inserir no gestor de segredos, nunca no Git/chat. |
-| `TRIBEMD_TESTE_CHAVE` | Segredo: 32 bytes aleatórios codificados em base64, estável entre implantações. Não reutilizar token administrativo. |
-| `TRIBEMD_TESTE_DIRETORIO` | `/dados/tribemd`, em volume persistente exclusivo. |
-| `TRIBEMD_TESTE_HOST` | `0.0.0.0` dentro do container, somente na rede do proxy. Padrão: loopback. |
-| `TRIBEMD_TESTE_PORTA` | `3100`; configurar destino do domínio nessa porta, sem publicá-la diretamente no host. |
-| `CHROMIUM_EXECUTABLE_PATH` | `/usr/bin/chromium-browser` na imagem Alpine existente. |
+| `TRIBEMD_TESTE_ATIVO` | `true` para ativar. Ausente ou `false`: apenas a área retorna 404, sem criar navegador. |
+| `TRIBEMD_TESTE_ORIGEM` | Origem HTTPS exata do Noto, sem caminho ou barra final. |
+| `TRIBEMD_TESTE_TOKEN` | Segredo administrativo aleatório de 32–256 caracteres; senha do usuário HTTP Basic `teste`. |
+| `TRIBEMD_TESTE_CHAVE` | Segredo: 32 bytes aleatórios codificados em base64, estável entre implantações. Não reutilizar o token. |
+| `TRIBEMD_TESTE_DIRETORIO` | `/dados/tribemd`, em volume persistente. |
+| `CHROMIUM_EXECUTABLE_PATH` | Opcional; `/usr/bin/chromium-browser` é o padrão da imagem Alpine. |
 | `XVFB_EXECUTABLE_PATH` | Opcional; padrão `Xvfb`. |
 
-Não fornecer variáveis NVIDIA, OpenAI, Supabase, certificado A1 ou Evolution.
-A conexão deve passar por **um proxy HTTPS confiável**, que define
-`X-Forwarded-Proto` e preserva o Host. O processo confia em um salto de proxy;
-por isso sua porta não pode ser acessível diretamente pela Internet.
-HTTP sem TLS só é aceito para testes em `localhost`/`127.0.0.1`.
-Desativar qualquer logger externo que capture corpo, Authorization ou respostas;
-não instalar replay/analytics nesta página. O processo não registra requisições.
+Se a configuração estiver ausente ou inválida ao ativar, **somente a área**
+retorna 503 com `TRIBEMD_TESTE_NAO_CONFIGURADO`; o Noto continua iniciando.
+Desativar exige `TRIBEMD_TESTE_ATIVO=false` e reiniciar o app. O navegador só é
+iniciado quando o operador abre uma sessão; o encerramento do Noto também fecha
+Chromium/Xvfb. A área compartilha CPU, memória e disponibilidade com o Noto.
 
-Entrar no domínio, autenticar como `teste`, informar o identificador da clínica
+A proteção HTTP Basic é exclusiva dessa área e não usa o login OTP do Noto.
+Nenhuma credencial de IA, Evolution ou banco é necessária para o teste.
+As configurações existentes dessas integrações permanecem no app para os
+outros recursos do Noto. Não instalar replay/analytics nesta página nem loggers
+que capturem corpo, Authorization ou respostas de `/desenvolvedor/tribemd`.
+
+O proxy HTTPS confiável do Easypanel deve definir `X-Forwarded-Proto` e preservar
+Host. O subapp confia em um salto de proxy, sem alterar essa configuração do
+app principal. Não publicar a porta do processo diretamente na Internet.
+HTTP sem TLS só é aceito para testes em `localhost`/`127.0.0.1`.
+
+### Modo independente opcional
+
+Continua disponível com `node --import tsx scripts/tribemd-area-teste.mjs`.
+Só nesse modo se usam `TRIBEMD_TESTE_HOST` (padrão loopback) e
+`TRIBEMD_TESTE_PORTA` (padrão 3100). Essas variáveis não alteram a porta do Noto.
+
+## Usar a área
+
+No app Noto, abrir `/desenvolvedor/tribemd/` (no modo independente, `/`).
+Autenticar como `teste`, informar o identificador da clínica
 e clicar **Abrir navegador**. Acompanhar a tela antes de enviar credenciais.
 Digitar e-mail/senha TribeMD e clicar **Entrar e salvar criptografado**.
 Depois de entrar, usar **Abrir agenda e ler** ou **Abrir pacientes e ler**.
@@ -137,8 +168,10 @@ próprios durante a execução; Playwright os remove no fechamento normal.
 | Login e última consulta reais | Não confirmados: confiança TLS do navegador e credenciais da clínica ainda necessários. |
 | Publicação no Easypanel | Não realizada; não há sessão administrativa autenticada nesta tarefa. |
 
-**Validação direcionada:** dez testes passaram, sem falhas ou testes pulados,
-incluindo painel, captura, reabertura do perfil, criptografia e diagnóstico.
+**Validação direcionada:** dezesseis testes passaram, sem falhas ou testes pulados,
+incluindo painel no prefixo integrado, captura, reabertura do perfil,
+criptografia, diagnóstico, configuração incompleta e isolamento do parser.
+O teste de prefixo falhou antes da correção e passou depois.
 O script de inicialização também foi executado: 401 sem chave e 200 em HTML,
 JavaScript e API autenticados. `npm run typecheck` passou. A suíte inteira do
 Noto não foi executada.
@@ -158,4 +191,4 @@ Na imagem Alpine, usar os executáveis indicados na tabela de configuração.
 
 As instruções `install_script` e `start_skill` foram salvas como rascunho do
 ambiente cloud. Revisar/salvar nas configurações e publicar o ambiente é uma
-ação separada; não publica a área no Easypanel nem comprova uma restauração nova.
+ação separada; não reimplanta o Noto no Easypanel nem comprova uma restauração nova.

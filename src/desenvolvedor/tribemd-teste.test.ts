@@ -11,6 +11,7 @@ import { PerfisTribemd } from './tribemd-perfil.js';
 import { NavegadorTribemd, ErroTribemd } from './tribemd-navegador.js';
 import { chromium } from 'playwright-core';
 import { criarAreaTesteTribemd } from './tribemd-teste-router.js';
+import { montarAreaTesteTribemd, caminhoTesteTribemd } from './tribemd-montar.js';
 
 test('destinos de login e agenda usam a rota solicitada',()=>{
  assert.equal(loginTribemd,'https://app.tribemd.com/login?continue=/atendimentos/agenda');assert.equal(agendaTribemd,'/atendimentos/agenda');
@@ -117,17 +118,20 @@ test('diagnóstico preserva status e sinais de borda sem divulgar cookies ou cor
 });
 
 
-test('painel funciona de ponta a ponta com captura ao vivo e reabertura do perfil em fixture',async()=>{
+for (const prefixo of ['', caminhoTesteTribemd]) {
+test('painel com captura e reabertura em fixture: '+(prefixo?'integrado no Noto':'independente'),async()=>{
  const dir=await mkdtemp(join(tmpdir(),'tribemd-painel-')),token=randomBytes(32).toString('hex');
  const externo=express(),server=externo.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
  const original=NavegadorTribemd.criar;
  NavegadorTribemd.criar=async(opcoes,signal)=>{const n=await original.call(NavegadorTribemd,opcoes,signal);await fixture(n);return n;};
- const area=criarAreaTesteTribemd({token,chave:randomBytes(32).toString('base64'),diretorio:dir,origem:base,chromium:executavel,xvfb});externo.use(area.app);
+ let area:{encerrar:()=>Promise<void>};
+ if(prefixo){area=montarAreaTesteTribemd(externo,{TRIBEMD_TESTE_ATIVO:'true',TRIBEMD_TESTE_TOKEN:token,TRIBEMD_TESTE_CHAVE:randomBytes(32).toString('base64'),TRIBEMD_TESTE_DIRETORIO:dir,TRIBEMD_TESTE_ORIGEM:base,CHROMIUM_EXECUTABLE_PATH:executavel,XVFB_EXECUTABLE_PATH:xvfb});}
+ else{const independente=criarAreaTesteTribemd({token,chave:randomBytes(32).toString('base64'),diretorio:dir,origem:base,chromium:executavel,xvfb});externo.use(independente.app);area=independente;}
  const viewer=await chromium.launch({executablePath:executavel,headless:true,args:['--no-sandbox']});
  try{
   const context=await viewer.newContext({httpCredentials:{username:'teste',password:token}}),page=await context.newPage();
-  await page.goto(base);await page.locator('#abrir input').fill('clinica-fixture');await page.getByRole('button',{name:'Abrir navegador',exact:true}).click();
+  await page.goto(base+prefixo);await page.locator('#abrir input').fill('clinica-fixture');await page.getByRole('button',{name:'Abrir navegador',exact:true}).click();
   await page.waitForFunction(()=>document.getElementById('estado')?.textContent?.includes('aguardando_login'));
   await page.locator('#login input[name=email]').fill('teste@example.invalid');await page.locator('#login input[name=senha]').fill('credencial-ficticia');
   await page.getByRole('button',{name:'Entrar e salvar criptografado'}).click();
@@ -143,7 +147,7 @@ test('painel funciona de ponta a ponta com captura ao vivo e reabertura do perfi
   await page.getByRole('button',{name:'Abrir navegador',exact:true}).click();await page.waitForFunction(()=>document.getElementById('estado')?.textContent==='pronto');
  }finally{NavegadorTribemd.criar=original;await viewer.close();await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
 });
-
+}
 
 test('shutdown aguarda criação pendente e impede iniciar navegador após encerramento',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'tribemd-shutdown-')),token=randomBytes(32).toString('hex');
@@ -160,4 +164,62 @@ test('shutdown aguarda criação pendente e impede iniciar navegador após encer
   await iniciou;const fim=area.encerrar();liberarBarreira();await fim;
   assert.equal((await pedido).status,409);assert.equal(criacoes,0);assert.equal((await readdir(dir)).length,0);
  }finally{liberarBarreira();PerfisTribemd.prototype.bloquear=originalBloquear;NavegadorTribemd.criar=originalCriar;await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
+});
+
+test('página montada usa script relativo e mantém proteção no prefixo',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'tribemd-prefixo-')),token=randomBytes(32).toString('hex');
+ const externo=express(),server=externo.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+ const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`,prefixo='/desenvolvedor/tribemd';
+ const area=criarAreaTesteTribemd({token,chave:randomBytes(32).toString('base64'),diretorio:dir,origem:base,chromium:executavel,xvfb});externo.use(prefixo,area.app);
+ const headers={Authorization:'Basic '+Buffer.from('teste:'+token).toString('base64')};
+ try{
+  assert.equal((await fetch(base+prefixo+'/')).status,401);
+  const r=await fetch(base+prefixo+'/',{headers}),html=await r.text(),src=html.match(/<script src="([^"]+)"/)?.[1];assert.ok(src);
+  const url=new URL(src,base+prefixo+'/');assert.equal(url.pathname,prefixo+'/teste.js');
+  assert.equal((await fetch(url,{headers})).status,200);
+  const canonica=await fetch(base+prefixo,{headers,redirect:'manual'});assert.equal(canonica.status,308);assert.equal(canonica.headers.get('location'),prefixo+'/');
+ }finally{await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
+});
+
+
+for (const env of [{}, {TRIBEMD_TESTE_ATIVO:'true'}]) {
+ test('integração preserva rotas comuns quando '+(env.TRIBEMD_TESTE_ATIVO?'configuração falta':'teste está desativado'),async()=>{
+  const app=express(),area=montarAreaTesteTribemd(app,env);app.get('/health',(_req,res)=>res.json({ok:true}));
+  const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
+  try{assert.equal((await fetch(base+caminhoTesteTribemd+'/')).status,env.TRIBEMD_TESTE_ATIVO?503:404);assert.equal((await fetch(base+'/health')).status,200);}
+  finally{await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));}
+ });
+}
+test('integração processa credenciais antes do parser geral e mantém Basic/TLS no prefixo',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'tribemd-parser-')),token=randomBytes(32).toString('hex');
+ const app=express(),server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+ const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
+ const area=montarAreaTesteTribemd(app,{TRIBEMD_TESTE_ATIVO:'true',TRIBEMD_TESTE_TOKEN:token,TRIBEMD_TESTE_CHAVE:randomBytes(32).toString('base64'),TRIBEMD_TESTE_DIRETORIO:dir,TRIBEMD_TESTE_ORIGEM:base});
+ let leiturasGerais=0;
+ app.use(express.json({verify:()=>{leiturasGerais++;}}));app.post('/rota-comum',(req,res)=>res.json({ok:req.body.ok}));
+ const headers={Authorization:'Basic '+Buffer.from('teste:'+token).toString('base64'),Origin:base,'X-Tribemd-Teste':'1','Content-Type':'application/json'};
+ try{
+  const r=await fetch(base+caminhoTesteTribemd+'/api/sessoes/inexistente/login',{method:'POST',headers,body:'{"email":"teste@example.invalid","senha":"fixture-descartada"}'});
+  assert.equal(r.status,410);assert.equal(leiturasGerais,0);
+  assert.equal((await fetch(base+'/rota-comum',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ok":true}'})).status,200);assert.equal(leiturasGerais,1);
+  assert.equal((await fetch(base+caminhoTesteTribemd+'/api/sessoes/inexistente/tela')).status,401);
+  const rejeitada=await fetch(base+caminhoTesteTribemd+'/api/sessoes',{method:'POST',headers:{...headers,Origin:'https://outra.invalid'},body:'{}'});assert.equal(rejeitada.status,403);assert.equal(leiturasGerais,1);
+ }finally{await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
+});
+
+test('proxy HTTPS é validado apenas no subapp sem alterar trust proxy do Noto',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'tribemd-tls-')),token=randomBytes(32).toString('hex');
+ const app=express(),server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+ const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`,origem=base.replace('http:','https:');
+ const area=montarAreaTesteTribemd(app,{TRIBEMD_TESTE_ATIVO:'true',TRIBEMD_TESTE_TOKEN:token,TRIBEMD_TESTE_CHAVE:randomBytes(32).toString('base64'),TRIBEMD_TESTE_DIRETORIO:dir,TRIBEMD_TESTE_ORIGEM:origem});
+ app.get('/rota-comum',(req,res)=>res.json({secure:req.secure}));
+ try{
+  const auth={Authorization:'Basic '+Buffer.from('teste:'+token).toString('base64')};
+  assert.equal((await fetch(base+caminhoTesteTribemd+'/',{headers:auth})).status,403);
+  assert.equal((await fetch(base+caminhoTesteTribemd+'/',{headers:{'X-Forwarded-Proto':'https'}})).status,401);
+  assert.equal((await fetch(base+caminhoTesteTribemd+'/',{headers:{...auth,'X-Forwarded-Proto':'https'}})).status,200);
+  assert.equal(app.get('trust proxy'),false);
+  assert.deepEqual(await (await fetch(base+'/rota-comum',{headers:{'X-Forwarded-Proto':'https'}})).json(),{secure:false});
+ }finally{await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
 });

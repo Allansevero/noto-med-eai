@@ -1,9 +1,10 @@
 'use strict';
 const el=id=>document.getElementById(id);
+const caminho=path=>new URL(path.replace(/^\//,''),new URL('./',location.href)).href;
 let sessao,imagemUrl,atualizando=false,fechando=false;
 const mensagens={ORIGEM_INVALIDA:'Origem inválida.',LOGIN_INDISPONIVEL:'Este login já foi tentado. Confira o diagnóstico e encerre para uma nova tentativa.',PERFIL_OCUPADO:'Perfil em uso. Aguarde o encerramento da outra sessão.',NAVEGADOR_OCUPADO:'Já existe um navegador aberto.',CREDENCIAL_AUSENTE:'Informe e-mail e senha.',LOGIN_HTTP_ERRO:'Uma chamada do login retornou erro HTTP. Confira o diagnóstico.',OPERACAO_FALHOU:'Não foi possível concluir. Confira a configuração e o diagnóstico.'};
 async function api(path,method='GET',body){
- const r=await fetch(path,{method,credentials:'same-origin',cache:'no-store',headers:method==='GET'?{}:{'Content-Type':'application/json','X-Tribemd-Teste':'1'},body:body===undefined?undefined:JSON.stringify(body)});
+ const r=await fetch(caminho(path),{method,credentials:'same-origin',cache:'no-store',headers:method==='GET'?{}:{'Content-Type':'application/json','X-Tribemd-Teste':'1'},body:body===undefined?undefined:JSON.stringify(body)});
  const j=await r.json();if(!r.ok)throw Error(mensagens[j.codigo]||j.codigo||'Falha no teste.');return j;
 }
 function mostrar(s){
@@ -31,7 +32,7 @@ async function atualizar(){
  if(atualizando||!sessao||fechando)return;atualizando=true;const id=sessao;
  try{
   const s=await api(`/api/sessoes/${id}`);if(sessao!==id||fechando)return;mostrar(s);
-  const r=await fetch(`/api/sessoes/${id}/tela`,{cache:'no-store'});if(r.status!==200)return;
+  const r=await fetch(caminho(`/api/sessoes/${id}/tela`),{cache:'no-store'});if(r.status!==200)return;
   const blob=await r.blob();if(sessao!==id||fechando)return;
   const anterior=imagemUrl;imagemUrl=URL.createObjectURL(blob);el('tela').src=imagemUrl;if(anterior)URL.revokeObjectURL(anterior);
  }catch{el('estado').textContent='Sessão indisponível. Recarregue para recuperar ou iniciar novamente.';}finally{atualizando=false;}

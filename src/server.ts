@@ -2,6 +2,7 @@ import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
 import { criarEnviadorConversasNoto } from './whatsapp/enviador-conversas-noto.js';
+import { montarAreaTesteTribemd } from './desenvolvedor/tribemd-montar.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
 import { OpenSerpConsultaRegistro } from './cadastro/openserp-registro.js';
@@ -84,6 +85,8 @@ const __dirname = dirname(__filename);
 
 export function criarAppExpress() {
   const app = express();
+  const testeTribemd = montarAreaTesteTribemd(app);
+  app.locals.encerrarTesteTribemd = testeTribemd.encerrar;
   configurarDesempenhoHttp(app);
   app.use(
     express.json({
@@ -1022,10 +1025,16 @@ if (process.env['NODE_ENV'] !== 'test') {
   console.log('[Notomed Whats] Worker de fila NFS-e iniciado com sucesso.');
 
   registrarSinaisDeProcesso(process, criarEncerramentoGracioso({
-    fecharServidor: () => new Promise<void>((resolver) => {
-      servidor.close(() => resolver());
-      servidor.closeIdleConnections();
-    }),
+    fecharServidor: async () => {
+      // Limpeza do navegador não interrompe a drenagem das requisições do Noto.
+      await Promise.allSettled([
+        new Promise<void>((resolver) => {
+          servidor.close(() => resolver());
+          servidor.closeIdleConnections();
+        }),
+        app.locals.encerrarTesteTribemd()
+      ]);
+    },
     pararWorker: () => worker.parar(),
     fecharPool: () => pool.end()
   }, { tempoLimiteMs: 8_000, sair: (codigo) => process.exit(codigo) }));

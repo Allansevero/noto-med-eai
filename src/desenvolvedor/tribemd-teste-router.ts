@@ -52,7 +52,10 @@ export function criarAreaTesteTribemd(config:ConfigTesteTribemd) {
  const sessao=(req:Request,res:Response)=>{const s=sessoes.get(String(req.params.id));if(!s||s.encerrando){res.status(410).json({ok:false,codigo:'SESSAO_ENCERRADA'});return;}return s;};
  const trabalhar=(s:Sessao,acao:()=>Promise<void>)=>{s.trabalho=(async()=>{try{await acao();}catch(e){if(!s.encerrando)falhar(s,e);}finally{}})();};
  const ocupado=(s:Sessao)=>['abrindo','autenticando','lendo','confirmando'].includes(s.estado);
- app.get('/',(_req,res)=>res.sendFile(fileURLToPath(new URL('../ui/tribemd-teste.html',import.meta.url))));
+ app.get('/',(req,res)=>{
+  if(req.baseUrl&&!req.originalUrl.split('?')[0].endsWith('/')){res.redirect(308,req.baseUrl+'/');return;}
+  res.sendFile(fileURLToPath(new URL('../ui/tribemd-teste.html',import.meta.url)));
+ });
  app.get('/teste.js',(_req,res)=>res.sendFile(fileURLToPath(new URL('../ui/tribemd-teste.js',import.meta.url))));
  app.get('/api/sessoes',(_req,res)=>res.json({ok:true,sessoes:[...sessoes.values()].map(resumo)}));
  app.post('/api/sessoes',rota(async(req,res)=>{
