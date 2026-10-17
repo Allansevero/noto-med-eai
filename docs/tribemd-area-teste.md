@@ -61,7 +61,7 @@ https://seu-dominio-do-noto/desenvolvedor/tribemd/
 | Variável | Requisito |
 | --- | --- |
 | `TRIBEMD_TESTE_ATIVO` | `true` para ativar. Ausente ou `false`: apenas a área retorna 404, sem criar navegador. |
-| `TRIBEMD_TESTE_ORIGEM` | Origem HTTPS exata do Noto, sem caminho ou barra final. |
+| `TRIBEMD_TESTE_ORIGEM` | Origem HTTPS do Noto, sem caminho. A barra final é aceita e normalizada. |
 | `TRIBEMD_TESTE_TOKEN` | Segredo administrativo aleatório de 32–256 caracteres; senha do usuário HTTP Basic `teste`. |
 | `TRIBEMD_TESTE_CHAVE` | Segredo: 32 bytes aleatórios codificados em base64, estável entre implantações. Não reutilizar o token. |
 | `TRIBEMD_TESTE_DIRETORIO` | `/dados/tribemd`, em volume persistente. |
@@ -168,7 +168,7 @@ próprios durante a execução; Playwright os remove no fechamento normal.
 | Login e última consulta reais | Não confirmados: confiança TLS do navegador e credenciais da clínica ainda necessários. |
 | Publicação no Easypanel | Não realizada; não há sessão administrativa autenticada nesta tarefa. |
 
-**Validação direcionada:** dezesseis testes passaram, sem falhas ou testes pulados,
+**Validação direcionada:** dezenove testes passaram, sem falhas ou testes pulados,
 incluindo painel no prefixo integrado, captura, reabertura do perfil,
 criptografia, diagnóstico, configuração incompleta e isolamento do parser.
 O teste de prefixo falhou antes da correção e passou depois.
@@ -192,3 +192,25 @@ Na imagem Alpine, usar os executáveis indicados na tabela de configuração.
 As instruções `install_script` e `start_skill` foram salvas como rascunho do
 ambiente cloud. Revisar/salvar nas configurações e publicar o ambiente é uma
 ação separada; não reimplanta o Noto no Easypanel nem comprova uma restauração nova.
+
+## Diagnosticar configuração sem expor segredos
+
+Se aparecer `TRIBEMD_TESTE_NAO_CONFIGURADO`, o JSON agora lista `pendencias` com
+o nome da variável e a regra rejeitada, sem seu valor. URL com barra final é
+normalizada; caminho como `/desenvolvedor/tribemd/` dentro de
+`TRIBEMD_TESTE_ORIGEM` continua inválido: a variável é apenas a origem do Noto.
+
+No terminal do mesmo app web em que adicionou as variáveis, executar:
+
+```sh
+node --import tsx scripts/diagnosticar-tribemd.mjs
+```
+
+Esse comando não inicia o app, banco, navegador ou IA. Mostra somente `ativo`,
+`configuracaoValida` e as pendências. É seguro compartilhar esse JSON; não
+compartilhar o conteúdo de `.env` ou a tela com os valores do ambiente.
+
+`TRIBEMD_TESTE_CHAVE` exige 32 bytes aleatórios codificados em base64 canônico
+(44 caracteres terminando em `=`). Uma senha de 32 caracteres ou uma chave em
+hexadecimal não tem esse formato. Não substituir uma chave válida já usada
+para criptografar perfis; é necessária para recuperar os cookies existentes.

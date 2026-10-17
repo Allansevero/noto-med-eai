@@ -12,6 +12,7 @@ import { NavegadorTribemd, ErroTribemd } from './tribemd-navegador.js';
 import { chromium } from 'playwright-core';
 import { criarAreaTesteTribemd } from './tribemd-teste-router.js';
 import { montarAreaTesteTribemd, caminhoTesteTribemd } from './tribemd-montar.js';
+import { validarConfiguracaoTesteTribemd } from './tribemd-configuracao.js';
 
 test('destinos de login e agenda usam a rota solicitada',()=>{
  assert.equal(loginTribemd,'https://app.tribemd.com/login?continue=/atendimentos/agenda');assert.equal(agendaTribemd,'/atendimentos/agenda');
@@ -222,4 +223,30 @@ test('proxy HTTPS é validado apenas no subapp sem alterar trust proxy do Noto',
   assert.equal(app.get('trust proxy'),false);
   assert.deepEqual(await (await fetch(base+'/rota-comum',{headers:{'X-Forwarded-Proto':'https'}})).json(),{secure:false});
  }finally{await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true});}
+});
+
+test('configuração incompleta informa nomes das variáveis sem valores',async()=>{
+ const app=express(),area=montarAreaTesteTribemd(app,{TRIBEMD_TESTE_ATIVO:'true'});
+ const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+ try{
+  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
+  const r=await fetch(base+caminhoTesteTribemd+'/'),j=await r.json();assert.equal(r.status,503);
+  assert.deepEqual(j.pendencias.map((p:{variavel:string})=>p.variavel).sort(),['TRIBEMD_TESTE_CHAVE','TRIBEMD_TESTE_DIRETORIO','TRIBEMD_TESTE_ORIGEM','TRIBEMD_TESTE_TOKEN']);
+ }finally{await area.encerrar();await new Promise<void>(r=>server.close(()=>r()));}
+});
+
+
+test('origem aceita barra final e normaliza host/porta sem aceitar caminho ou HTTP remoto',()=>{
+ const env={TRIBEMD_TESTE_TOKEN:randomBytes(32).toString('hex'),TRIBEMD_TESTE_CHAVE:randomBytes(32).toString('base64'),TRIBEMD_TESTE_DIRETORIO:'/dados/tribemd',TRIBEMD_TESTE_ORIGEM:' https://EXAMPLE.com:443/ '};
+ const r=validarConfiguracaoTesteTribemd(env);assert.equal(r.ok,true);if(r.ok)assert.equal(r.config.origem,'https://example.com');
+ for(const origem of ['https://example.com/desenvolvedor/tribemd/','http://example.com','https://example.com/?a=1','https://usuario:segredo@example.com/']){
+  const ruim=validarConfiguracaoTesteTribemd({...env,TRIBEMD_TESTE_ORIGEM:origem});assert.equal(ruim.ok,false);
+  if(!ruim.ok){assert.equal(ruim.pendencias[0].variavel,'TRIBEMD_TESTE_ORIGEM');assert.equal(JSON.stringify(ruim).includes('segredo'),false);}
+ }
+});
+test('validação distingue chave base64 de senha comum e não divulga valores',()=>{
+ const segredo='fixture-sem-base64-32-caracteres!';
+ const ruim=validarConfiguracaoTesteTribemd({TRIBEMD_TESTE_TOKEN:'curto',TRIBEMD_TESTE_CHAVE:segredo,TRIBEMD_TESTE_DIRETORIO:'/dados/tribemd',TRIBEMD_TESTE_ORIGEM:'https://example.com'});
+ assert.equal(ruim.ok,false);if(!ruim.ok){assert.deepEqual(ruim.pendencias.map(p=>p.variavel),['TRIBEMD_TESTE_TOKEN','TRIBEMD_TESTE_CHAVE']);assert.equal(JSON.stringify(ruim).includes(segredo),false);assert.equal(JSON.stringify(ruim).includes('curto'),false);}
+ const chave=randomBytes(32).toString('base64');assert.equal(validarConfiguracaoTesteTribemd({TRIBEMD_TESTE_TOKEN:randomBytes(32).toString('hex'),TRIBEMD_TESTE_CHAVE:chave,TRIBEMD_TESTE_DIRETORIO:'/dados/tribemd',TRIBEMD_TESTE_ORIGEM:'https://example.com/'}).ok,true);
 });
