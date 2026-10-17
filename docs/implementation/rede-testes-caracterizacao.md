@@ -162,3 +162,30 @@ Verificados: seção de exclusão contém aviso futuro sem formulário/botão de
 não encontrou uma operação de exclusão de conta. Não há como testar remoção,
 confirmação, revogação Supabase ou limpeza de dados enquanto não houver esse fluxo.
 Isso não se confunde com excluir um perfil/credencial do cofre, que existe.
+
+## Cofre TribeMD
+
+```text
+$ npm test
+> tsc --noEmit -p tsconfig.test.json && vitest run
+RUN v4.1.12
+Test Files  8 passed (8)
+Tests       108 passed (108)
+Duration    1.93s
+[exit 0]
+```
+
+Verificados com AES-GCM e arquivos reais em diretório temporário: roundtrip,
+credenciais/cookies sem texto claro, IV novo, permissões, chave errada, ciphertext
+adulterado, troca de envelope entre contas (AAD), bloqueio por conta e exclusão
+isolada. Captura do console não recebeu mensagens em sucesso/erro exercitados.
+
+Orquestração real com fake somente no navegador do portal: reutiliza cookies,
+reconecta uma vez na sessão expirada, preserva login após erro de leitura, exige
+consentimento versionado, cancela leitura ao desconectar, mantém credencial na
+desconexão e a apaga na exclusão. HTTP real com identidade/banco fake verifica
+sessão, vínculo, origem, ausência de fallback UUID e rejeição de dono injetado.
+
+Não comprova: sigilo em logs do proxy/plataforma, memória/heap, login real no portal,
+MFA/CAPTCHA, expiração real de cookies, timeout, TTL de resultados, máximo global
+de navegadores ou cancelamento entre réplicas. Nenhuma conta real foi usada.
