@@ -99,3 +99,25 @@ aprendida/reutilizada. No canal da clínica, repetir a mesma mensagem chega duas
 vezes à porta de persistência; este teste não prova duplicidade no PostgreSQL,
 cujo tratamento de conflito é uma fronteira não executada aqui. O comentário sobre
 um localizador em segundo plano não corresponde a um acionamento nesse fluxo.
+
+## OTP/login
+
+```text
+$ npm test
+> tsc --noEmit -p tsconfig.test.json && vitest run
+RUN v4.1.12
+Test Files  3 passed (3)
+Tests       48 passed (48)
+Duration    424ms
+[exit 0]
+```
+
+Verificados: seis dígitos e hash real, cinco minutos de TTL, cooldown de 60s,
+cinco tentativas, uso único, normalização do telefone, cadastro versus conta
+existente e sessão separada do cliente administrativo. A identidade retornada
+pelo provedor precisa coincidir com a identidade solicitada.
+
+Achados/limites: o instante exato da expiração ainda é aceito (`>` em vez de
+`>=`); falha no envio mantém o OTP persistido e o cooldown; erro ao gerar sessão
+consome o OTP já validado. Não corrigidos. O teste do adaptador substitui somente
+métodos do SDK externo; não comprova disponibilidade real do Supabase/Evolution.
