@@ -1,3 +1,5 @@
+> **Documento histórico:** este piloto foi removido no commit `b3019f8`. Para o teste isolado atual, consulte [TribeMD: área de teste](tribemd-area-teste.md). As instruções de ativação abaixo não se aplicam ao servidor atual.
+
 # Teste de navegador e coleta no TribemD
 
 ## Ativação no Noto
