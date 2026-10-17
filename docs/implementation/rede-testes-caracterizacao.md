@@ -144,3 +144,21 @@ não emula garantias transacionais ou constraints de PostgreSQL.
 Achado não corrigido: a confirmação pelo caminho legado, sem `parametrosEmissao`,
 encaminha alíquota negativa para persistência sem validar. O schema moderno rejeita
 essa alíquota. Aceitação definitiva pelo banco não foi exercitada.
+
+## Exclusão da conta
+
+```text
+$ npm test
+> tsc --noEmit -p tsconfig.test.json && vitest run
+RUN v4.1.12
+Test Files  5 passed (5)
+Tests       79 passed (79)
+[exit 0]
+```
+
+Aplicativo Express real com banco substituído na borda e chamadas HTTP em loopback.
+Verificados: seção de exclusão contém aviso futuro sem formulário/botão de ação;
+`DELETE /api/conta` e `POST /api/conta/excluir` retornam 404. A inspeção das rotas
+não encontrou uma operação de exclusão de conta. Não há como testar remoção,
+confirmação, revogação Supabase ou limpeza de dados enquanto não houver esse fluxo.
+Isso não se confunde com excluir um perfil/credencial do cofre, que existe.
