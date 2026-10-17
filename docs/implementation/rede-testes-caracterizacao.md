@@ -121,3 +121,26 @@ Achados/limites: o instante exato da expiração ainda é aceito (`>` em vez de
 `>=`); falha no envio mantém o OTP persistido e o cooldown; erro ao gerar sessão
 consome o OTP já validado. Não corrigidos. O teste do adaptador substitui somente
 métodos do SDK externo; não comprova disponibilidade real do Supabase/Evolution.
+
+## Preferências e parâmetros fiscais
+
+```text
+$ npm test
+> tsc --noEmit -p tsconfig.test.json && vitest run
+RUN v4.1.12
+Test Files  4 passed (4)
+Tests       76 passed (76)
+Duration    503ms
+[exit 0]
+```
+
+Verificados: gravação da preferência por médico e falhas de cadastro; schema fiscal
+ME/EPP, limites/retenção ISS, vigência, município, grupo IBS/CBS, consumidor final
+CPF, cálculo PIS/COFINS sobre valor novo, bloqueios da preparação e extração de
+identidade/regime/serviço de referência fictícia. Confirmação solicita transação,
+auditoria e rollback na referência alterada. O fake SQL registra comandos e dados;
+não emula garantias transacionais ou constraints de PostgreSQL.
+
+Achado não corrigido: a confirmação pelo caminho legado, sem `parametrosEmissao`,
+encaminha alíquota negativa para persistência sem validar. O schema moderno rejeita
+essa alíquota. Aceitação definitiva pelo banco não foi exercitada.
