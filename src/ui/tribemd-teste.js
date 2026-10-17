@@ -15,7 +15,7 @@ function mostrar(s){
  permiteControle=!s?.autenticado&&(login||s?.estado==='necessita_intervencao');
  el('entrar').disabled=!login;el('salva').disabled=!login||!s?.credencialSalva;
  for(const id of ['confirmar','tab','escape','rolar'])el(id).disabled=!permiteControle;
- for(const id of ['agenda','pacientes'])el(id).disabled=!pronto;
+ for(const id of ['agenda','pacientes','detalhar'])el(id).disabled=!pronto;
  el('fechar').disabled=!sessao;el('abrir').querySelector('button').disabled=!!sessao;el('esquecer').disabled=!!sessao;
 }
 async function executar(fn){el('mensagem').textContent='';try{await fn();}catch(e){el('mensagem').textContent=e.message;}}
@@ -24,6 +24,7 @@ el('login').onsubmit=e=>{e.preventDefault();const f=e.currentTarget;const d={ema
 el('salva').onclick=()=>void executar(async()=>mostrar(await api(`/api/sessoes/${sessao}/login`,'POST',{})));
 el('confirmar').onclick=()=>void executar(async()=>mostrar(await api(`/api/sessoes/${sessao}/confirmar`,'POST',{})));
 for(const pagina of ['agenda','pacientes'])el(pagina).onclick=()=>void executar(async()=>mostrar(await api(`/api/sessoes/${sessao}/ler`,'POST',{pagina})));
+el('detalhar').onclick=()=>void executar(async()=>mostrar(await api(`/api/sessoes/${sessao}/ler`,'POST',{pagina:'agenda',detalhar:true})));
 el('fechar').onclick=()=>void executar(async()=>{fechando=true;try{await api(`/api/sessoes/${sessao}`,'DELETE',{});mostrar(null);el('tela').removeAttribute('src');if(imagemUrl)URL.revokeObjectURL(imagemUrl);}finally{fechando=false;}});
 el('esquecer').onclick=()=>void executar(async()=>{const clinica=el('abrir').elements.clinica.value.trim();if(!clinica)throw Error('Informe o identificador da clínica.');await api('/api/perfis/'+encodeURIComponent(clinica),'DELETE',{});el('estado').textContent='Perfil e credenciais excluídos.';});
 async function controlar(d){if(sessao&&permiteControle)await api(`/api/sessoes/${sessao}/controle`,'POST',d);}

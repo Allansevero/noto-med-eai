@@ -1,3 +1,4 @@
+import { detalharConsultasTribemd, ErroDetalhesTribemd, type ResumoDetalhesTribemd } from './tribemd-detalhes.js';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { TelaVirtualTribemd } from './tribemd-display.js';
 import { ObservadorRedeLoginTribemd, type DiagnosticoRedeLoginTribemd } from './tribemd-rede.js';
@@ -10,7 +11,7 @@ export class ErroTribemd extends Error {
 }
 export interface ResultadoLeituraTribemd {
  consultas:ConsultaTribemd[]; cobertura:'somente_linhas_visiveis'|'intervalo_carregado_pelo_portal'; pagina:'agenda'|'pacientes';
- historicoCompleto:false; detalhe:string; agenda?:Omit<RecorteAgendaTribemd,'consultas'>;
+ historicoCompleto:false; detalhe:string; detalhes?:ResumoDetalhesTribemd; agenda?:Omit<RecorteAgendaTribemd,'consultas'>;
 }
 export class NavegadorTribemd {
  private page?:Page; private autenticando=true; private autenticado=false; private fechado=false;
@@ -104,7 +105,7 @@ export class NavegadorTribemd {
   else if(c.tecla!=='Enter')await p.keyboard.press(c.tecla);
  }
  estaAutenticado(){return this.autenticado&&!this.fechado&&this.browser.isConnected();}
- async ler(pagina:'agenda'|'pacientes'):Promise<ResultadoLeituraTribemd> {
+ async ler(pagina:'agenda'|'pacientes',detalhar=false):Promise<ResultadoLeituraTribemd> {
   if(!this.autenticado||!this.page)throw new ErroTribemd('LOGIN_NAO_CONFIRMADO');
   const p=this.page;this.etapa='leitura_'+pagina;
   await this.observador?.concluir();this.diagnostico=undefined;
@@ -119,11 +120,19 @@ export class NavegadorTribemd {
    const hoje=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
    if(pagina==='agenda'&&(this.agenda?.temRequisicao()||!await p.locator('table:visible,[role=table]:visible').count())){
     this.agenda?.observarExistente(this.observador);
-    const {consultas,...agenda}=await this.agenda!.ler(hoje);
+    const recorte=await this.agenda!.ler(hoje);
+    let {consultas,...agenda}=recorte;
+    let detalhes:ResumoDetalhesTribemd|undefined;
+    if(detalhar){
+     const headers=await this.agenda!.cabecalhosLeitura(recorte);
+     try{const leitura=await detalharConsultasTribemd(p,consultas,headers,true);consultas=leitura.consultas;detalhes=leitura.resumo;}
+     finally{for(const nome of Object.keys(headers))delete headers[nome];}
+    }
     this.leituraFalhou=false;this.diagnostico=await this.observador.concluir();await this.observarTela();
-    return {consultas,agenda,cobertura:'intervalo_carregado_pelo_portal',pagina,historicoCompleto:false,
-     detalhe:`Calendário carregado: ${agenda.totalAtendimentos} atendimentos no intervalo consultado pelo portal. ${consultas.length} consultas concluídas com nome e data reconhecidos no recorte. Não comprova a última consulta do histórico.`};
+    return {consultas,agenda,detalhes,cobertura:'intervalo_carregado_pelo_portal',pagina,historicoCompleto:false,
+     detalhe:detalhes?`Consultas atendidas e finalizadas: ${detalhes.processadas} de ${detalhes.selecionadas} processadas; ${detalhes.comPendencias} com pendências. Valores não comprovam pagamento. Leitura restrita ao intervalo da agenda.`:`Calendário carregado: ${agenda.totalAtendimentos} atendimentos no intervalo consultado pelo portal. ${consultas.length} consultas concluídas com nome e data reconhecidos no recorte. Não comprova a última consulta do histórico.`};
    }
+   if(detalhar)throw new ErroTribemd('DETALHES_EXIGEM_AGENDA_RECONHECIDA');
    await p.locator('table:visible,[role=table]:visible').first().waitFor({timeout:12000});
    // Extrair somente colunas necessárias; não carregar fichas, CPF, telefone ou prontuário.
    const tabelas=await p.evaluate<TabelaConsulta[]>(String.raw`(() => {
@@ -140,7 +149,7 @@ export class NavegadorTribemd {
    const consultas=lerConsultas(tabelas,hoje);
    this.leituraFalhou=false;this.diagnostico=await this.observador.concluir();await this.observarTela();
    return {consultas,cobertura:'somente_linhas_visiveis',pagina,historicoCompleto:false,detalhe:consultas.length?'Leitura parcial. Consulta realizada observada não comprova que seja a última do histórico.':'Nenhuma data comprovada nas colunas reconhecidas. Isso não significa ausência de consultas; o layout precisa ser confirmado.'};
-  }catch(e){this.leituraFalhou=true;if(new URL(p.url()).pathname==='/login'){this.autenticado=false;e=new ErroTribemd('SESSAO_EXPIRADA');}if(e instanceof ErroAgendaTribemd){if(e.codigo==='SESSAO_EXPIRADA')this.autenticado=false;e=new ErroTribemd(e.codigo);}throw await this.erroSeguro(e,'LEITURA_LAYOUT_NAO_RECONHECIDO');}
+  }catch(e){this.leituraFalhou=true;if(new URL(p.url()).pathname==='/login'){this.autenticado=false;e=new ErroTribemd('SESSAO_EXPIRADA');}if(e instanceof ErroAgendaTribemd||e instanceof ErroDetalhesTribemd){if(e.codigo==='SESSAO_EXPIRADA')this.autenticado=false;e=new ErroTribemd(e.codigo);}throw await this.erroSeguro(e,'LEITURA_LAYOUT_NAO_RECONHECIDO');}
  }
  async perfil():Promise<EstadoNavegador|undefined>{
   if(!this.autenticado)return undefined;

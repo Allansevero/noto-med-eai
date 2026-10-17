@@ -20,7 +20,8 @@ export function extrairAgendaTribemd(dados:unknown,hoje:string):Omit<RecorteAgen
   const campo=typeof item.datahora_atendimento==='string'&&item.datahora_atendimento?'datahora_atendimento':'datahora_marcada';
   const valor=item[campo],data=typeof valor==='string'?dataISOTribemd(valor):null;
   if(!nome||!data||data>hoje)continue;
-  consultas.push({nome,ultimaConsulta:null,dataConsultaObservada:data,evidencia:'consulta_realizada_observada',origemData:campo});
+  const id=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>0?String(v):typeof v==='string'&&/^[1-9]\d{0,15}$/.test(v)?v:undefined;
+  consultas.push({atendimentoId:id(item.id),pacienteId:id(item.paciente_id)??id(paciente?.id),situacao:Number(item.status)===10?'finalizado':'atendido',nome,ultimaConsulta:null,dataConsultaObservada:data,evidencia:'consulta_realizada_observada',origemData:campo});
  }
  return {consultas,totalAtendimentos:corpo.atendimentos.length,limitado:corpo.atendimentos.length>100};
 }
@@ -40,6 +41,15 @@ export class LeitorAgendaTribemd {
  private resposta=(r:Response)=>{if(this.atual?.request===r.request()){this.atual.response=r;this.avisar();}};
  private falha=(r:Request)=>{if(this.atual?.request===r){this.atual.falhou=true;this.avisar();}};
  private avisar(){for(const a of [...this.avisos])a();}
+ async cabecalhosLeitura(recorte:RecorteAgendaTribemd){
+  const atual=this.atual,headers:Record<string,string>={};
+  if(!atual||atual.resultado!==recorte)throw new ErroAgendaTribemd('AGENDA_ATUALIZADA_REPITA_LEITURA');
+  try{
+   for(const nome of ['authorization','x-instituicao','x-timezone','x-version','x-device']){const valor=await atual.request.headerValue(nome);if(valor)headers[nome]=valor;}
+   if(this.fechado||this.atual!==atual)throw new ErroAgendaTribemd('AGENDA_ATUALIZADA_REPITA_LEITURA');
+   return headers;
+  }catch(e){for(const nome of Object.keys(headers))delete headers[nome];throw e;}
+ }
  temRequisicao(){return !!this.atual;}
  observarExistente(obs:ObservadorRedeLoginTribemd){if(this.atual)obs.incluirExistente(this.atual.request,this.atual.response);}
  private esperar(ms:number){return new Promise<void>((resolve,reject)=>{

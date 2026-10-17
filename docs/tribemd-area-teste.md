@@ -127,15 +127,16 @@ podem exigir parar o teste; não há resolvedor automático nem controle genéri
 Nas tabelas, a extração lê somente colunas reconhecidas de nome, data e situação,
 em até cem linhas visíveis por tabela, no máximo cinco tabelas.
 
-Na agenda em calendário, o leitor observa o GET exato `/api/atendimentos/agenda`
+Na leitura simples da agenda em calendário, o leitor observa o GET exato `/api/atendimentos/agenda`
 feito pelo próprio portal no navegador autenticado. Não dispara um cliente de API
 separado nem abre cartões. Apenas ao clicar **Abrir agenda e ler**, lê a resposta
 JSON transitória e seleciona `pacientes.nome`, situação e data dos primeiros cem
 atendimentos. Situações `8` (atendido) e `10` (finalizado) foram confirmadas no
 modelo JavaScript público. Datas futuras ou inválidas são descartadas.
 O resultado informa intervalo do GET, total e eventual corte de cem registros.
-CPF, telefone, observações e outros campos presentes na resposta são ignorados
-pelo extrator e não aparecem no resultado, no perfil ou no diagnóstico.
+Na leitura simples, CPF, telefone, observações e outros campos presentes na
+resposta são ignorados pelo extrator e não aparecem no resultado, no perfil ou
+no diagnóstico. A ação adicional de dados das consultas está descrita ao final.
 
 O corpo bruto fica transitoriamente na memória do processo/navegador. Há limite
 de 2 MiB para aceitar o JSON, verificado pelo tamanho declarado e pelo buffer
@@ -315,3 +316,51 @@ ignorados, formato vazio/desconhecido, limites e substituição/encerramento de
 consulta enquanto cabeçalhos ou corpo anteriores estão pendentes.
 A conta real não foi acessada neste ambiente; o resultado informado pelo usuário
 é a evidência do avanço do login, sem confirmação local do conteúdo da agenda.
+
+
+## Dados das consultas atendidas e finalizadas
+
+A ação **Ler agenda e dados das consultas** primeiro lê o recorte da agenda e,
+para os estados Atendido (`8`) e Finalizado (`10`), consulta os detalhes no mesmo
+navegador autenticado. A leitura simples anterior permanece disponível.
+A coleta usa apenas GET em `/api/atendimentos/{id}` e, quando necessário para
+completar o cadastro, `/api/pacientes/{id}`. Esses caminhos e os nomes dos campos
+foram identificados nos modelos JavaScript públicos do próprio portal, cuja
+função de leitura por ID usa esses endpoints. Ainda não são uma API pública
+contratada nem uma garantia sobre a resposta da conta real.
+
+O vínculo exige ID da consulta e ID do paciente obtidos da agenda; não busca por
+nome nem mescla homônimos. IDs das respostas devem coincidir e o status da
+consulta é revalidado antes de exportar os campos. Registro que mudou para
+outro status ou paciente fica com código de pendência, sem coletar o novo cadastro.
+Nenhum editor, prontuário, histórico clínico ou comando de gravação é aberto.
+
+O objeto `dados` em cada consulta contém:
+
+- `nomeCompleto` e `cpf` (somente dígitos, quando o formato for reconhecido).
+- `contato`: `celular`, `telefone`, `email`, com valores ausentes como `null`.
+- `valorConsulta`: campo `valor` do atendimento, em decimal com duas casas.
+- `valorCobrado`: campo `valor_cobrado`, separado do valor da consulta.
+- `pendencias` e eventual `codigo`, sem mensagens brutas nem conteúdo clínico.
+
+Zero monetário é preservado. CPF com formato reconhecido não implica validação
+cadastral ou de dígitos verificadores. CPF divergente entre as duas fontes é
+omitido e sinalizado. Campos válidos do atendimento são preservados quando o
+cadastro complementar não fornecer substitutos. Valores não comprovam pagamento,
+recebimento, elegibilidade fiscal ou ausência de nota fiscal.
+
+O leitor reaproveita apenas os cabeçalhos necessários da chamada autenticada de
+agenda, na mesma origem fixa; não envia cookies/tokens a outro servidor nem segue
+redirecionamentos. A seleção de campos ocorre dentro do navegador, antes de
+retornar ao processo Noto. Corpos de detalhes têm limite de 2 MiB por leitura,
+verificado durante o streaming; timeout de oito segundos por GET e sessenta
+segundos para o conjunto, limitado aos cem registros do recorte. Pendências e
+registros ainda não processados constam no resumo `detalhes`.
+Os resultados continuam apenas na RAM da sessão, sem IA, banco, arquivos ou logs.
+Encerramento, expiração e nova leitura removem o resultado anterior.
+
+Nesta ampliação foram executadas a checagem de tipos TypeScript e a checagem de
+sintaxe do JavaScript do painel/leitor. Não foram adicionados ou executados testes
+neste turno. Os 41 testes descritos acima correspondem à versão anterior.
+A forma efetiva das respostas dos detalhes na clínica e a completude dos campos
+precisam ser confirmadas pelo operador após reimplantar o branch.

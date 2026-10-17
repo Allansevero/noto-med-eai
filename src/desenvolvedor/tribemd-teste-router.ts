@@ -100,9 +100,9 @@ export function criarAreaTesteTribemd(config:ConfigTesteTribemd) {
   try{await s.navegador!.controle(d);res.json({ok:true});}catch{res.status(409).json({ok:false,codigo:'CONTROLE_INDISPONIVEL'});}finally{if(!s.encerrando)s.estado=anterior;}
  }));
  app.post('/api/sessoes/:id/ler',rota(async(req,res)=>{
-  let d;try{d=z.object({pagina:z.enum(['agenda','pacientes'])}).strict().parse(req.body);}finally{apagarCorpo(req);}
+  let d;try{d=z.object({pagina:z.enum(['agenda','pacientes']),detalhar:z.boolean().optional()}).strict().refine(d=>!d.detalhar||d.pagina==='agenda').parse(req.body);}finally{apagarCorpo(req);}
   const s=sessao(req,res);if(!s)return;if(!['pronto','falha_leitura'].includes(s.estado)||!s.navegador?.estaAutenticado()){res.status(409).json({ok:false,codigo:'LOGIN_OU_LEITURA_PENDENTE'});return;}
-  s.codigo=undefined;s.diagnostico=undefined;s.resultado=undefined;s.estado='lendo';trabalhar(s,async()=>{s.resultado=await s.navegador!.ler(d.pagina);await persistir(s);s.estado='pronto';});res.status(202).json(resumo(s));
+  s.codigo=undefined;s.diagnostico=undefined;s.resultado=undefined;s.estado='lendo';trabalhar(s,async()=>{s.resultado=await s.navegador!.ler(d.pagina,d.detalhar);await persistir(s);s.estado='pronto';});res.status(202).json(resumo(s));
  }));
  app.get('/api/sessoes/:id/tela',rota(async(req,res)=>{const s=sessao(req,res);if(!s)return;const png=await s.navegador?.tela();if(!png){res.status(204).end();return;}res.once('finish',()=>png.fill(0));res.once('close',()=>png.fill(0));res.type('png').send(png);}));
  app.get('/api/sessoes/:id',(req,res)=>{const s=sessao(req,res);if(s)res.json(resumo(s));});
