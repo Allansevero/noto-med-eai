@@ -76,3 +76,26 @@ Achados deste fluxo, não corrigidos:
 - Campo `pagador` não é modelado/processado e não acrescenta observação. A
   discriminação manual é preservada, com CPF do paciente. Não há regra de pacote
   ou comparação com valor de consulta nesta API.
+
+## Webhook/comprovantes
+
+```text
+$ npm test
+> tsc --noEmit -p tsconfig.test.json && vitest run
+RUN v4.1.12
+Test Files  2 passed (2)
+Tests       32 passed (32)
+Duration    267ms
+[exit 0]
+```
+
+Verificado com o orquestrador real: imagem/PDF e legenda são persistidos; nome do
+WhatsApp não vira nome civil; segredo inválido bloqueia; canal oficial é só OTP;
+respostas de aprovação/reprovação no canal assistente são descartadas.
+
+Lacuna confirmada por leitura do código e caminhos exercitados: não há verificador
+ativo de comprovantes, encaminhamento de dúvida, decisão estruturada nem regra
+aprendida/reutilizada. No canal da clínica, repetir a mesma mensagem chega duas
+vezes à porta de persistência; este teste não prova duplicidade no PostgreSQL,
+cujo tratamento de conflito é uma fronteira não executada aqui. O comentário sobre
+um localizador em segundo plano não corresponde a um acionamento nesse fluxo.
