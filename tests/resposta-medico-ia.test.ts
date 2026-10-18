@@ -84,3 +84,10 @@ it.each(['incerto', 'baixa_confianca', 'falha_ia'] as const)('%s não grava e re
   expect(c.logs.filter(l => l.startsWith('enviaria reperguntar'))).toEqual(['enviaria reperguntar: Tem alguma nota para emitir? Desde que dia?']);
   expect(c.logs.join()).not.toContain('RESPOSTA_PRIVADA_FICTICIA');
 });
+
+it.each(['tenho sim desde dia 10 de janeiro', 'sim desde dia 10/01/2026', 'sim desde dia 10.01.2026'])('data explícita não é truncada para mês anterior: %s', texto => {
+  expect(validar({ ...campos, desde: '2026-01-10' }, texto)).toEqual({ temNota: true, desde: '2026-01-10' });
+});
+it('dia numérico impossível não escapa da regra relativa por ter três dígitos', () => {
+  expect(validar({ ...campos, desde: '2026-01-01' }, 'tenho sim desde dia 100')).toBeNull();
+});
