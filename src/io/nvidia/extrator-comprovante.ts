@@ -17,13 +17,14 @@ const resultadoSchema = z.discriminatedUnion('tipo', [
 
 export class ExtratorComprovanteNvidia implements ExtratorComprovante {
   constructor(
-    private readonly apiKey: string,
-    private readonly modelo: string,
+    private readonly apiKey: string | undefined,
+    private readonly modelo: string | undefined,
     private readonly lerMidia: (mensagem: DadosMensagemEvolution) => ReturnType<EvolutionApiClient['obterBase64MensagemMidia']>
   ) {}
 
   async extrair(mensagem: DadosMensagemEvolution): Promise<ResultadoExtracaoComprovante> {
     if (mensagem.message?.documentMessage?.mimetype === 'application/pdf') return { tipo: 'pdf_nao_suportado' };
+    if (!this.apiKey?.trim() || !this.modelo?.trim()) throw new Error('IA_NAO_CONFIGURADA');
     const midia = await this.lerMidia(mensagem);
     // O cliente visual recebe imagem; PDF exige preparação de mídia, sem fingir uma conversão.
     if (!midia?.base64 || !midia.mimetype?.startsWith('image/')) throw new Error('COMPROVANTE_MIDIA_INDISPONIVEL');

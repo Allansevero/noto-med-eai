@@ -29,6 +29,9 @@ import { SupabaseAuthAdminService } from './io/supabase/supabase-auth-admin-serv
 import { solicitarOtp } from './otp/solicitar-otp.js';
 import { autenticarComOtp } from './auth/autenticar-com-otp.js';
 import { processarMensagemWebhook } from './fluxos/processar-mensagem-webhook.js';
+import { orquestrarComprovante } from './fluxos/processar-comprovante.js';
+import { PostgresHistoricoComunicacao } from './io/postgres/postgres-historico-comunicacao.js';
+import { ExtratorComprovanteNvidia } from './io/nvidia/extrator-comprovante.js';
 
 import { processarOnboardingXml } from './onboarding/fluxos/processar-onboarding-xml.js';
 import { ErroAdocaoReferencia } from './onboarding/io/confirmar-politica-emissao.js';
@@ -64,6 +67,7 @@ export function criarAppExpress() {
   // Instanciação dos adaptadores de infraestrutura
   const otpRepo = new PostgresOtpRepositorio(pool);
   const atendimentoRepo = new PostgresAtendimentoRepositorio(pool, config.encryptionKey);
+  const historicoComunicacao = new PostgresHistoricoComunicacao(pool);
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
@@ -630,6 +634,13 @@ export function criarAppExpress() {
         consultaCpfProvider: hubCpfClient,
         instanciaOficialNome: config.evolutionOfficialInstanceName,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
+        aoReceberComprovante: contexto => orquestrarComprovante(contexto, {
+          historico: historicoComunicacao,
+          lerEstado: atendimentoRepo.lerEstado.bind(atendimentoRepo),
+          extrator: new ExtratorComprovanteNvidia(config.nvidiaApiKey, config.nvidiaRegistroModel,
+            mensagem => evolutionClient.obterBase64MensagemMidia(req.body.instance, mensagem.key.id)),
+          log: (nivel, mensagem) => console[nivel === 'info' ? 'info' : 'error'](mensagem)
+        }),
         async aoAtualizarConexao(evento) {
           if (
             evento.instancia === config.evolutionOfficialInstanceName ||
