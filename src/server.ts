@@ -380,7 +380,7 @@ export function criarAppExpress() {
       return res.json({ ...fiscal, medicoId, fonte: 'adn', nsu: consulta.documento.nsu, adocaoFiscal });
     } catch (erro: any) {
       console.warn('[ADN] Busca de referência pendente:', { etapa: 'busca_referencia', codigo: erro?.codigo || 'BUSCA_FALHOU', diagnostico: erro?.diagnostico, mensagem: erro?.message });
-      return res.status(400).json({ ok: false, detalhe: 'Ainda não conseguimos obter sua nota padrão pelo certificado. Você não precisa enviar arquivos. Tente novamente mais tarde; se persistir, a equipe precisa verificar a disponibilidade da nota no sistema de origem.' });
+      return res.status(400).json({ ok: false, detalhe: 'Não foi possível buscar sua nota pelo certificado. Tente novamente ou envie o XML como alternativa.' });
     }
   });
 
@@ -433,7 +433,6 @@ export function criarAppExpress() {
         return res.status(400).json({ ok: false, detalhe: 'medicoId é obrigatório' });
       }
       const medicoId = await resolverMedicoId(pool, medicoIdRaw);
-      if ((usarReferencia === true || parametrosEmissao !== undefined) && !config.preparacaoFiscalAtiva) return res.status(503).json({ ok: false, codigo: 'PREPARACAO_FISCAL_INATIVA', detalhe: 'A validação fiscal automática ainda não está ativada no servidor. A equipe precisa ativá-la para concluir seu cadastro.' });
       await confirmarParametrosFiscais(pool, usarReferencia === true ? { medicoId, referenciaHash, usarReferencia: true } : {
         medicoId,
         razaoSocial,
@@ -447,6 +446,7 @@ export function criarAppExpress() {
         usarReferencia: usarReferencia === true
       });
 
+      await comunicarMedico(medicoId, 'confirmacao_fiscal');
       return res.json({ ok: true, mensagem: 'Parâmetros fiscais confirmados com sucesso', medicoId });
     } catch (err: any) {
       if (req.body?.usarReferencia === true) {
@@ -496,7 +496,7 @@ export function criarAppExpress() {
         senhaCertificado: senha
       });
 
-      void cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular}).catch(() =>
+      await cadastroCertificado.agendar({medicoId, certificadoId:resultado.certificadoId, documentoTitular}).catch(() =>
         console.warn('[Cadastro automático]', {codigo:'AGENDAMENTO_FALHOU'}));
 
       if (consentimentoFiscal === versaoConsentimentoFiscal) {
@@ -544,7 +544,7 @@ export function criarAppExpress() {
             ok: false,
             codigo: err?.codigo || 'IMPORTACAO_FALHOU',
             diagnostico: err?.diagnostico,
-            detalhe: err?.message || 'Nenhuma NFS-e compativel foi encontrada no ADN.'
+            detalhe: 'Não foi possível buscar sua nota pelo certificado. Tente novamente ou envie o XML como alternativa.'
           }
         });
       }

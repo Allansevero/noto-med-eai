@@ -3,7 +3,7 @@ import type pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { nomeProfissionalValido, normalizarCrm } from '../conta/validar-dados-emissao.js';
 import { criarPendencia, type DadosCadastro, type PerfilCadastro, type ResultadoEnriquecimento } from './enriquecer-cadastro.js';
-import { aprovacaoPainelSchema, pesquisaPainelSchema, ErroRevisaoCadastro, montarRevisao } from './revisao-painel.js';
+import { aprovacaoPainelSchema, pesquisaPainelSchema, ErroRevisaoCadastro, montarRevisao, temAprovacaoProfissional } from './revisao-painel.js';
 const versaoRevisaoSql="md5(jsonb_build_array(t.dados,t.snapshot,t.estado,t.atualizado_em,m.nome_completo,m.crm,m.rqe)::text)";
 export interface TrabalhoCadastro { id:string; medico_id:string; certificado_id:string; documento_titular:string|null; estado:string; dados:DadosCadastro; snapshot:{nome:string;crm:string|null}; tentativas:number }
 export interface ReservaCadastro { trabalho:TrabalhoCadastro; token:string; perfil:PerfilCadastro }
@@ -76,9 +76,22 @@ export class PostgresCadastro {
  }
  async transacao<T>(fn:(c:pg.PoolClient)=>Promise<T>):Promise<T>{const c=await this.pool.connect();try{await c.query('begin');const r=await fn(c);await c.query('commit');return r;}catch(e){await c.query('rollback');throw e;}finally{c.release();}}
  async agendar(e:{medicoId:string;certificadoId:string;documentoTitular?:string}):Promise<void>{
-  await this.pool.query(`insert into cadastro_certificado_trabalhos(medico_id,certificado_id,documento_titular,snapshot)
-   select m.id,c.id,$3,jsonb_build_object('nome',m.nome_completo,'crm',m.crm) from medicos m join medico_certificados c on c.medico_id=m.id
-   where m.id=$1 and c.id=$2 and c.status='ativo' on conflict(certificado_id) do nothing`,[e.medicoId,e.certificadoId,e.documentoTitular??null]);
+  await this.transacao(async c=>{
+   await c.query(`insert into cadastro_certificado_trabalhos(medico_id,certificado_id,documento_titular,snapshot)
+    select m.id,c.id,$3,jsonb_build_object('nome',m.nome_completo,'crm',m.crm) from medicos m join medico_certificados c on c.medico_id=m.id
+    where m.id=$1 and c.id=$2 and c.status='ativo' on conflict(certificado_id) do nothing`,[e.medicoId,e.certificadoId,e.documentoTitular??null]);
+   if(!e.documentoTitular)return;
+   const trabalhos=(await c.query('select * from cadastro_certificado_trabalhos where medico_id=$1 order by criado_em desc,id desc for update',[e.medicoId])).rows as TrabalhoCadastro[];
+   const atual=trabalhos.find(t=>t.medico_id===e.medicoId&&t.certificado_id===e.certificadoId);
+   if(!atual||atual.estado==='obsoleto')return;
+   const m=(await c.query('select nome_completo,crm,rqe from medicos where id=$1 for update',[e.medicoId])).rows[0];
+   if(!m)return;
+   const perfil={nome:m.nome_completo,crm:m.crm,rqe:m.rqe};
+   const anterior=trabalhos.find(t=>t.medico_id===e.medicoId&&t.certificado_id!==e.certificadoId&&t.documento_titular===e.documentoTitular&&temAprovacaoProfissional(t,perfil));
+   if(!anterior)return;
+   const dados:DadosCadastro={nomeConfirmado:perfil.nome,crmOrigem:'Confirmado pelo usuário no painel',aprovacaoPainel:anterior.dados.aprovacaoPainel};
+   await c.query("update cadastro_certificado_trabalhos set estado='concluido',dados=$2,documento_titular=$3,snapshot=$4,reserva=null,reservado_em=null,diagnostico=null,atualizado_em=now() where id=$1",[atual.id,JSON.stringify(dados),e.documentoTitular,JSON.stringify({nome:perfil.nome,crm:perfil.crm})]);
+  });
  }
  async agendarAtivos():Promise<void>{
   await this.pool.query(`insert into cadastro_certificado_trabalhos(medico_id,certificado_id,snapshot)

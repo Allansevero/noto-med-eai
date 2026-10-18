@@ -1445,6 +1445,11 @@
               </div>
               <p id="notaPadraoStatus" role="status" aria-live="polite">Se a nota ainda não foi localizada, tente buscar novamente. O Noto só libera a emissão quando consegue reproduzir a configuração encontrada.</p>
               <button type="button" class="btn-action btn-secondary" id="btnBuscarReferencia">Buscar nota pelo certificado</button>
+              <div id="fallbackXmlFiscal" class="hidden">
+                <label for="fileXmlFiscal">Envie o XML de uma NFS-e como alternativa à busca pelo certificado.</label>
+                <input type="file" id="fileXmlFiscal" accept=".xml,application/xml,text/xml" />
+                <button type="button" class="btn-action btn-secondary" id="btnEnviarXmlFiscal">Enviar XML</button>
+              </div>
               <div id="previewFiscal" class="hidden" style="width:100%">
                 <div class="params-card">
                   <p id="resumoNotaReferencia"></p>
@@ -1462,6 +1467,7 @@
                     </div>
                   </div>
                   <div class="fiscal-acoes">
+                    <button type="button" id="btnConfirmarFiscal" class="btn-action">Confirmar parâmetros</button>
                     <button type="button" id="btnEditarFiscal" class="btn-action">Editar parâmetros</button>
                     <button type="button" id="btnSalvarFiscal" class="btn-action hidden">Salvar parâmetros</button>
                     <button type="button" id="btnCancelarFiscal" class="btn-link hidden">Cancelar</button>
@@ -1469,7 +1475,7 @@
                   <p id="statusEdicaoFiscal" role="status" aria-live="polite"></p>
                 </div>
                 <p>Nas novas notas, paciente, valor, data e numeração serão próprios de cada emissão. A configuração será adotada a partir de hoje.</p>
-                <p id="statusAdocaoFiscalConta">Os parâmetros são validados automaticamente após o consentimento ao cadastrar o certificado.</p>
+                <p id="statusAdocaoFiscalConta">Confira os parâmetros encontrados e confirme a referência ou edite antes de salvar.</p>
               </div>
             </div>
             <button type="button" class="btn-action btn-secondary" id="btnAtualizarCertificado">Atualizar certificado</button>
@@ -1945,6 +1951,11 @@
     // --- NOTA PADRÃO: consulta automática, sem entrada de campos tributários ---
     let referenciaFiscalAtual = null;
     let notaPadraoDisponivel = false;
+    const mensagemFalhaBuscaFiscal = 'Não foi possível buscar sua nota pelo certificado. Tente novamente ou envie o XML como alternativa.';
+    function mostrarFallbackXmlFiscal() {
+      document.getElementById('fallbackXmlFiscal').classList.remove('hidden');
+      document.getElementById('notaPadraoStatus').textContent = mensagemFalhaBuscaFiscal;
+    }
     function mostrarReferenciaFiscal(referencia, perfil) {
       referenciaFiscalAtual = referencia?.versao === 2 ? referencia : null;
       const p = referenciaFiscalAtual?.parametrosSugeridos || {};
@@ -1962,10 +1973,12 @@
       document.getElementById('pendenciasNotaReferencia').textContent = semPendenciasConhecidas ? ''
         : 'A referência precisa de uma verificação fiscal. O sistema manterá a emissão pendente até concluir a análise desses dados.';
       document.getElementById('notaPadraoStatus').textContent = notaPadraoDisponivel
-        ? 'Nota encontrada. Os parâmetros desta referência passam pela validação fiscal automática.'
+        ? 'Nota encontrada. Confira os parâmetros e confirme a referência ou edite antes de salvar.'
         : 'A emissão ainda não foi liberada com esta referência.';
       document.getElementById('previewFiscal').classList.remove('hidden');
+      if (notaPadraoDisponivel) document.getElementById('fallbackXmlFiscal').classList.add('hidden');
       exibirParametrosConta(p);
+      atualizarAcoesFiscais();
     }
     let parametrosFiscaisAtuais = {}, edicaoFiscal = false, salvandoFiscal = false, hashEdicaoFiscal = null;
     const camposFiscaisEdicao = new Map();
@@ -2115,6 +2128,7 @@
       atualizarOpcoesNovoParametro();
     }
     function atualizarAcoesFiscais() {
+      document.getElementById('btnConfirmarFiscal').disabled = !notaPadraoDisponivel || edicaoFiscal || salvandoFiscal;
       document.getElementById('btnEditarFiscal').classList.toggle('hidden', edicaoFiscal);
       document.getElementById('btnSalvarFiscal').classList.toggle('hidden', !edicaoFiscal);
       document.getElementById('btnCancelarFiscal').classList.toggle('hidden', !edicaoFiscal);
@@ -2152,6 +2166,23 @@
       if (salvandoFiscal) return;
       edicaoFiscal = false; camposFiscaisEdicao.clear(); renderizarParametrosFiscais(parametrosFiscaisAtuais); atualizarAcoesFiscais();
       document.getElementById('statusEdicaoFiscal').textContent = '';
+    });
+    document.getElementById('btnConfirmarFiscal').addEventListener('click', async () => {
+      if (!notaPadraoDisponivel || edicaoFiscal || salvandoFiscal) return;
+      const mensagem = document.getElementById('statusEdicaoFiscal');
+      salvandoFiscal = true; atualizarAcoesFiscais();
+      mensagem.textContent = 'Validando e confirmando parâmetros…';
+      try {
+        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+        const res = await fetch('/api/onboarding/confirmar-fiscal', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicoId, referenciaHash: referenciaFiscalAtual.hash, usarReferencia: true }) });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não foi possível confirmar os parâmetros. Tente novamente.');
+        await atualizarVisualizacaoConta();
+        mensagem.textContent = 'Parâmetros confirmados com sucesso.';
+      } catch (erro) { mensagem.textContent = erro.message; }
+      finally { salvandoFiscal = false; atualizarAcoesFiscais(); }
     });
     document.getElementById('btnSalvarFiscal').addEventListener('click', async () => {
       if (!edicaoFiscal || salvandoFiscal) return;
@@ -2209,8 +2240,23 @@
         if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não conseguimos buscar sua nota agora. Tente novamente mais tarde.');
         exibirPreviewFiscal(data);
       } catch (erro) {
-        document.getElementById('notaPadraoStatus').textContent = erro.message;
+        mostrarFallbackXmlFiscal();
       } finally { btn.disabled = false; }
+    });
+    document.getElementById('btnEnviarXmlFiscal').addEventListener('click', async () => {
+      const arquivo = document.getElementById('fileXmlFiscal').files[0];
+      if (!arquivo) { document.getElementById('notaPadraoStatus').textContent = 'Selecione o XML da nota de referência.'; return; }
+      const btn = document.getElementById('btnEnviarXmlFiscal');
+      btn.disabled = true;
+      try {
+        const medicoId = sessaoAtual.usuario.medicoId || sessaoAtual.usuario.usuarioId;
+        const res = await fetch('/api/onboarding/xml', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ medicoId, xmlString: await arquivo.text() }) });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.detalhe || 'Não foi possível importar o XML. Tente novamente.');
+        exibirPreviewFiscal(data);
+      } catch (erro) { document.getElementById('notaPadraoStatus').textContent = erro.message; }
+      finally { btn.disabled = false; }
     });
     document.getElementById('btnRevisarFiscal').addEventListener('click', () => { alternarAba('conta'); abrirSecaoConta('fiscal'); });
     // --- PASSO 2: CERTIFICADO A1 E IMPORTACAO AUTOMATICA ---
@@ -2275,7 +2321,12 @@
           certArquivoBase64 = ''; certNomeArquivo = '';
           document.getElementById('inputSenhaCert').value = '';
           document.getElementById('senhaCertWrapper').classList.add('hidden');
-          mostrarPasso('profissional');
+          await carregarFluxoOnboarding();
+          if (data.importacaoFiscal?.ok) exibirPreviewFiscal(data.importacaoFiscal);
+          else {
+            mostrarFallbackXmlFiscal();
+            showAlert(mensagemFalhaBuscaFiscal, true, alertOnboarding);
+          }
         } else {
           showAlert(data.detalhe || 'Erro ao salvar certificado', true, alertOnboarding);
         }
@@ -2755,8 +2806,8 @@
             document.getElementById('labelContaTelefone').textContent = data.status.numeroWhatsapp ? 'Número conectado' : 'Número cadastrado';
             if (inputEmail && inputEmail.readOnly) inputEmail.value = data.status.email || '';
             document.getElementById('statusAdocaoFiscalConta').textContent = data.status.passos?.passo2FiscalConfirmado
-              ? 'Configuração fiscal validada e adotada automaticamente.'
-              : 'Configuração fiscal pendente. Se você cadastrou o certificado antes deste consentimento, atualize-o para registrar o aceite. Pendências técnicas precisam de análise.';
+              ? 'Configuração fiscal confirmada.'
+              : 'Confira os parâmetros encontrados e confirme a referência ou edite antes de salvar.';
             const switchCpfInit = document.getElementById('switchSolicitarCpfPaciente');
             if (switchCpfInit) {
               switchCpfInit.checked = Boolean(data.status.solicitarCpfDiretoPaciente);

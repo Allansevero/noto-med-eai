@@ -106,7 +106,7 @@ export async function consultarStatusOnboarding(
   const passo2XmlEnviado = Boolean(r.extraido_automaticamente || r.confirmado_pelo_medico);
   const politicaRevisada = Boolean(r.parametros_emissao?.confirmadoEm) && parametrosEmissaoSchema.safeParse(r.parametros_emissao?.parametros).success;
   const referenciaNova = r.dados_reforma_tributaria?.versao === 2;
-  const referenciaValidada = !referenciaNova || (preparacaoFiscalAtiva && politicaRevisada &&
+  const referenciaValidada = !referenciaNova || (politicaRevisada &&
     validarReferenciaFiscal(r.dados_reforma_tributaria, r.parametros_emissao).length === 0);
   const passo2FiscalConfirmado = Boolean(r.confirmado_pelo_medico) && (!preparacaoFiscalAtiva || politicaRevisada) && referenciaValidada;
   const passo3CertificadoValido = Number(r.cert_ativos || 0) > 0;
