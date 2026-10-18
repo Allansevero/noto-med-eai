@@ -30,6 +30,8 @@ export interface ProcessarWebhookDeps {
   pepper: string;
   instanciaOficialNome?: string;
   instanciaAssistenteNome?: string;
+  comunicacaoMedicoAtiva?: boolean;
+  aoReceberMensagemMedico?: (contexto: { medicoId: string; texto: string; chaveMensagem: string }) => Promise<unknown>;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
   aoReceberComprovante?: (contexto: { medicoId: string; pacienteId: string; mensagem: DadosMensagemEvolution }) => Promise<unknown>;
 }
@@ -88,7 +90,15 @@ export async function processarMensagemWebhook(
   if (!telefone) return { ok: true, acao: 'descartada', motivoDescarte: 'contato_nao_identificado' };
   if (!texto && tipo === 'texto') return { ok: true, acao: 'descartada', motivoDescarte: 'mensagem_sem_texto' };
 
-  if(payload.instance===deps.instanciaAssistenteNome)return {ok:true,acao:'descartada',motivoDescarte:'gatilho_nao_reconhecido'};
+  if (payload.instance === deps.instanciaAssistenteNome) {
+    if (deps.comunicacaoMedicoAtiva && !payload.data.key.fromMe && tipo === 'texto' && deps.aoReceberMensagemMedico) {
+      try {
+        const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
+        if (medico) await deps.aoReceberMensagemMedico({ medicoId: medico.id, texto, chaveMensagem: payload.data.key.id });
+      } catch { console.error('COMUNICACAO_MEDICO_CICLO_FALHOU'); }
+    }
+    return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };
+  }
 
   const instancia = await deps.repositorio.buscarInstanciaPorNome(payload.instance);
   if (!instancia) return { ok: false, motivo: 'instancia_nao_encontrada' };

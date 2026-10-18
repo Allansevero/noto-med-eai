@@ -3,6 +3,7 @@ interface HistoricoPergunta {
   repeticoes: number;
 }
 interface UltimaNotaConhecida {
+  paciente?: string | null;
   dataEmissao: string;
   valorCentavos: number;
   diasDesdeEmissao: number;
@@ -87,7 +88,7 @@ function decidirRepergunta(
 
 export function montarBoasVindas(
   nomeMedico: string,
-  ultimaNota: (UltimaNotaConhecida & { paciente?: string }) | null
+  ultimaNota: UltimaNotaConhecida | null
 ): [string, string, string] | [string, string, string, string] {
   const baloes: [string, string, string] = [
     `Olá, Dr(a). ${nomeMedico}! Sou o Noto, seu assistente de notas fiscais.`,

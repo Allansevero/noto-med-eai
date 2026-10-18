@@ -92,5 +92,11 @@ export function criarCofreContas(deps: {
     app.get('/tribemd/consultas', rota(async (_req, res) => { res.json({ ok: true, cofre: await cofre!.status(res.locals.dono), resultado: cofre!.resultado(res.locals.dono) }); }));
     app.use((_req, res) => res.status(404).json({ ok: false, codigo: 'COFRE_ROTA_INVALIDA' }));
     app.use((_erro: unknown, req: Request, res: Response, _next: unknown) => { apagar(req); res.status(400).json({ ok: false, codigo: 'ENTRADA_INVALIDA' }); });
-    return { app, encerrar: async () => { await cofre?.encerrar(); } };
+    return { app, encerrar: async () => { await cofre?.encerrar(); },
+        statusAgenda: async (medicoId: string) => {
+            if (!cofre) throw new ErroCofre('COFRE_INDISPONIVEL');
+            const status = await cofre.status(medicoId);
+            return { nome: status.salvo ? 'tribemd' : null, conectada: status.ativo && status.estado === 'conectado' };
+        }
+    };
 }

@@ -29,6 +29,8 @@ import { SupabaseAuthAdminService } from './io/supabase/supabase-auth-admin-serv
 import { solicitarOtp } from './otp/solicitar-otp.js';
 import { autenticarComOtp } from './auth/autenticar-com-otp.js';
 import { processarMensagemWebhook } from './fluxos/processar-mensagem-webhook.js';
+import { processarComunicacaoMedico } from './onboarding/processar-comunicacao-medico.js';
+import { lerEstadoComunicacaoMedico } from './onboarding/io/ler-estado-comunicacao-medico.js';
 import { orquestrarComprovante } from './fluxos/processar-comprovante.js';
 import { PostgresHistoricoComunicacao } from './io/postgres/postgres-historico-comunicacao.js';
 import { ExtratorComprovanteNvidia } from './io/nvidia/extrator-comprovante.js';
@@ -131,7 +133,17 @@ export function criarAppExpress() {
       pepper: config.appPepper
     });
 
+  const comunicarMedico = (medicoId: string, chaveProcessamento: string, texto?: string) => {
+    const agora = new Date();
+    return processarComunicacaoMedico({ medicoId, chaveProcessamento, agora,
+      ...(texto !== undefined ? { respostaMedico: { texto, dataMensagem: agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) } } : {})
+    }, { ativo: config.comunicacaoMedicoAtiva === true, historico: historicoComunicacao,
+      lerEstado: async (id, instante) => lerEstadoComunicacaoMedico(pool, id, instante, await cofres.statusAgenda(id), config.preparacaoFiscalAtiva === true),
+      log: (nivel, mensagem) => console[nivel === 'info' ? 'info' : 'error'](mensagem)
+    });
+  };
   const aoConectarWhatsapp = (medicoId: string) => {
+    void comunicarMedico(medicoId, 'onboarding');
     void (async () => {
     const { rows } = await pool.query("select nome_instancia from whatsapp_instancias where medico_id=$1 and oficial=false and status='conectado' limit 1", [medicoId]);
     if(rows[0]?.nome_instancia)await sincronizarHistoricoInstancia(rows[0].nome_instancia);
@@ -634,6 +646,8 @@ export function criarAppExpress() {
         consultaCpfProvider: hubCpfClient,
         instanciaOficialNome: config.evolutionOfficialInstanceName,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
+        comunicacaoMedicoAtiva: config.comunicacaoMedicoAtiva,
+        aoReceberMensagemMedico: contexto => comunicarMedico(contexto.medicoId, `assistente:${contexto.chaveMensagem}`, contexto.texto),
         aoReceberComprovante: contexto => orquestrarComprovante(contexto, {
           historico: historicoComunicacao,
           lerEstado: atendimentoRepo.lerEstado.bind(atendimentoRepo),
@@ -648,6 +662,7 @@ export function criarAppExpress() {
           ) return;
           const medicoId = await registrarConexaoWhatsapp(pool, evento);
           if (medicoId && evento.state === 'open') {
+            await comunicarMedico(medicoId, 'onboarding');
             void sincronizarHistoricoInstancia(evento.instancia).catch(() => console.warn('[WhatsApp]', {codigo:'HISTORICO_POS_CONEXAO_FALHOU'}));
           }
         }
