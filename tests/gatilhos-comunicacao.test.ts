@@ -82,3 +82,15 @@ describe('webhook assistente', () => {
     expect(erro.mock.calls).toEqual([['COMUNICACAO_MEDICO_CICLO_FALHOU']]);
   });
 });
+
+it('gatilhos simultâneos do mesmo médico preservam resposta clara após a ambígua', async () => {
+  const c = cenario(); const entrada = { medicoId: 'medico-ficticio', chaveProcessamento: 'inicio', agora };
+  await processarComunicacaoMedico(entrada, c.deps);
+  await processarComunicacaoMedico({ ...entrada, chaveProcessamento: 'pergunta' }, c.deps);
+  await Promise.all([
+    processarComunicacaoMedico({ ...entrada, chaveProcessamento: 'm1', respostaMedico: { texto: 'talvez', dataMensagem: '2026-10-18' } }, c.deps),
+    processarComunicacaoMedico({ ...entrada, chaveProcessamento: 'm2', respostaMedico: { texto: 'não', dataMensagem: '2026-10-18' } }, c.deps)
+  ]);
+  expect((await c.historico.ler(entrada.medicoId, 'simulado')).perguntaNota.resposta).toEqual({ temNota: false, desde: null });
+  expect(c.logs.filter(l => l.startsWith('enviaria aguardar_comprovante'))).toHaveLength(1);
+});

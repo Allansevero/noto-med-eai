@@ -53,3 +53,16 @@ describe('estado do médico reutiliza o checklist e consulta a nota do banco', (
     await expect(lerEstadoComunicacaoMedico(pool, medicoId, agora, agenda, false)).rejects.toThrow();
   });
 });
+
+it('certificado sem ativo também perde revisão na SQL, mas ainda comunica o problema após o vínculo', async () => {
+  const c = banco(); c.linha.cert_ativos = '0'; c.linha.revisao_profissional = null;
+  expect(await lerEstadoComunicacaoMedico(c.pool, medicoId, agora, agenda, false)).toMatchObject({ estado: { fiscal: { certificado: 'problema' } } });
+});
+it('última nota conta dias civis em São Paulo para dizer ontem, sem exigir 24 horas', async () => {
+  const c = banco(); const queryAnterior = c.pool.query.bind(c.pool);
+  c.pool.query = (async (sql: string, parametros: any[]) => sql.includes('from notas_fiscais')
+    ? { rows: [{ data_emissao: '2026-10-18T02:00:00Z', valor_servicos_centavos: 35000, paciente: 'Paciente Ficticio' }] }
+    : queryAnterior(sql, parametros)) as any;
+  expect(await lerEstadoComunicacaoMedico(c.pool, medicoId, new Date('2026-10-18T12:00:00Z'), agenda, false))
+    .toMatchObject({ estado: { ultimaNota: { diasDesdeEmissao: 1 } } });
+});
