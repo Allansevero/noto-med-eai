@@ -31,7 +31,8 @@ async function cenario() {
   const agora = new Date('2026-10-18T15:00:00Z');
   const entrada = { medicoId, chaveProcessamento: 'inicio', estado: { agora,
     fiscal: { certificado: 'ok' as const, dadosFiscais: 'ok' as const }, agenda: { nome: null, conectada: false }, ultimaNota: null } };
-  const logs: string[] = []; const deps = { historico, envioRealAtivo: false, log: (_nivel: string, texto: string) => logs.push(texto) };
+  const logs: string[] = []; const extratorResposta = { extrair: async (texto: string, dataMensagem: string) => ({ temNota: texto === 'não' ? 'não' as const : texto === 'talvez' ? 'incerto' as const : 'sim' as const, desde: texto.includes('hoje') ? dataMensagem : null, confianca: 0.90 }) };
+  const deps = { historico, envioRealAtivo: false, extratorResposta, log: (_nivel: string, texto: string) => logs.push(texto) };
   await orquestrarComunicacao(entrada, deps);
   await orquestrarComunicacao({ ...entrada, chaveProcessamento: 'pergunta' }, deps);
   return { entrada, deps, historico, logs, medicoId };
@@ -74,8 +75,16 @@ it('dia 10 significa dia do mês e ano da data civil explícita', () => {
   expect(interpretar('sim, desde dia 10')).toEqual({ temNota: true, desde: '2026-10-10' });
 });
 it.each([
-  ['sim, desde dia 30', '2026-02-28'], ['sim, desde dia 32', hoje], ['sim, desde dia 0', hoje],
-  ['sim, desde dia 20', hoje], ['sim, desde hoje', 'data-invalida']
+  ['sim, desde dia 31', '2026-03-02'], ['sim, desde dia 32', hoje], ['sim, desde dia 0', hoje],
+  ['sim, desde hoje', 'data-invalida']
 ])('data inválida ou futura é ambígua: %s em %s', (texto, data) => {
   expect(interpretar(texto, data)).toBeNull();
+});
+
+it('dia maior que hoje usa mês anterior conforme nova regra', () => {
+  expect(interpretar('sim, desde dia 20')).toEqual({ temNota: true, desde: '2026-09-20' });
+});
+
+it('dia 30 maior que 28 em fevereiro usa janeiro, sem rejeitar data válida', () => {
+  expect(interpretar('sim, desde dia 30', '2026-02-28')).toEqual({ temNota: true, desde: '2026-01-30' });
 });

@@ -13,7 +13,7 @@ function cenario(ativo = true) {
   const historico = new HistoricoComunicacaoEmMemoria(); const logs: string[] = [];
   const lerEstado = vi.fn(async () => ({ nomeMedico: 'Medica Ficticia', estado: { agora,
     fiscal: { certificado: 'ok' as const, dadosFiscais: 'ok' as const }, agenda: { nome: null, conectada: false }, ultimaNota: null } }));
-  return { historico, logs, lerEstado, deps: { ativo, historico, lerEstado, log: (_nivel: string, texto: string) => logs.push(texto) } };
+  return { historico, logs, lerEstado, deps: { ativo, historico, lerEstado, extratorResposta: { extrair: async (texto: string) => ({ temNota: texto === 'não' ? 'não' as const : 'incerto' as const, desde: null, confianca: 0.90 }) }, log: (_nivel: string, texto: string) => logs.push(texto) } };
 }
 describe('gatilho só em modo seco, com flag explícita', () => {
   it('configuração é desligada por padrão e só aceita true explícito', () => {
@@ -60,7 +60,7 @@ describe('webhook assistente', () => {
   });
   it('mensagem recebida de médico identificado aciona uma vez o ciclo sem criar paciente', async () => {
     const c = webhook(true); await processarMensagemWebhook(c.payload, 'segredo-ficticio', c.deps);
-    expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia' });
+    expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia', dataMensagem: null });
   });
   it.each(['enviada', 'grupo', 'imagem', 'oficial', 'segredo_invalido'] as const)('%s nunca é resposta do médico', async caso => {
     const c = webhook(true); let segredo = 'segredo-ficticio';
@@ -94,3 +94,12 @@ it('gatilhos simultâneos do mesmo médico preservam resposta clara após a amb�
   expect((await c.historico.ler(entrada.medicoId, 'simulado')).perguntaNota.resposta).toEqual({ temNota: false, desde: null });
   expect(c.logs.filter(l => l.startsWith('enviaria aguardar_comprovante'))).toHaveLength(1);
 });
+
+ it.each([
+   [1772422200, '2026-03-02'], ['1772422200', '2026-03-02'], [1772422200000, '2026-03-02'],
+   ['1772422200000', '2026-03-02'], [1772419800, '2026-03-01'], ['invalido', null], ['', null]
+ ])('timestamp do webhook %s vira data civil %s, sem usar processamento', async (timestamp, dataMensagem) => {
+   const c = webhook(true); (c.payload.data as any).messageTimestamp = timestamp;
+   await processarMensagemWebhook(c.payload, 'segredo-ficticio', c.deps);
+   expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia', dataMensagem });
+ });
