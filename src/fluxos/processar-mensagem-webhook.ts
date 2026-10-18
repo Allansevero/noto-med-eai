@@ -31,7 +31,7 @@ export interface ProcessarWebhookDeps {
   instanciaOficialNome?: string;
   instanciaAssistenteNome?: string;
   comunicacaoMedicoAtiva?: boolean;
-  aoReceberMensagemMedico?: (contexto: { medicoId: string; texto: string; chaveMensagem: string }) => Promise<unknown>;
+  aoReceberMensagemMedico?: (contexto: { medicoId: string; texto: string; chaveMensagem: string; dataMensagem: string | null }) => Promise<unknown>;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
   aoReceberComprovante?: (contexto: { medicoId: string; pacienteId: string; mensagem: DadosMensagemEvolution }) => Promise<unknown>;
 }
@@ -94,7 +94,13 @@ export async function processarMensagemWebhook(
     if (deps.comunicacaoMedicoAtiva && !payload.data.key.fromMe && tipo === 'texto' && deps.aoReceberMensagemMedico) {
       try {
         const medico = await deps.repositorio.buscarMedicoPorTelefone(telefone);
-        if (medico) await deps.aoReceberMensagemMedico({ medicoId: medico.id, texto, chaveMensagem: payload.data.key.id });
+        if (medico) {
+          const bruto = payload.data.messageTimestamp;
+          const numero = typeof bruto === 'number' ? bruto : typeof bruto === 'string' && bruto.trim() ? Number(bruto) : NaN;
+          const data = new Date(numero > 1e11 ? numero : numero * 1000);
+          const dataMensagem = Number.isFinite(data.getTime()) ? data.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : null;
+          await deps.aoReceberMensagemMedico({ medicoId: medico.id, texto, chaveMensagem: payload.data.key.id, dataMensagem });
+        }
       } catch { console.error('COMUNICACAO_MEDICO_CICLO_FALHOU'); }
     }
     return { ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' };

@@ -33,6 +33,7 @@ import { processarComunicacaoMedico } from './onboarding/processar-comunicacao-m
 import { lerEstadoComunicacaoMedico } from './onboarding/io/ler-estado-comunicacao-medico.js';
 import { orquestrarComprovante } from './fluxos/processar-comprovante.js';
 import { PostgresHistoricoComunicacao } from './io/postgres/postgres-historico-comunicacao.js';
+import { ExtratorRespostaMedicoNvidia } from './io/nvidia/extrator-resposta-medico.js';
 import { ExtratorComprovanteNvidia } from './io/nvidia/extrator-comprovante.js';
 
 import { processarOnboardingXml } from './onboarding/fluxos/processar-onboarding-xml.js';
@@ -133,11 +134,11 @@ export function criarAppExpress() {
       pepper: config.appPepper
     });
 
-  const comunicarMedico = (medicoId: string, chaveProcessamento: string, texto?: string) => {
+  const comunicarMedico = (medicoId: string, chaveProcessamento: string, texto?: string, dataMensagem?: string | null) => {
     const agora = new Date();
     return processarComunicacaoMedico({ medicoId, chaveProcessamento, agora,
-      ...(texto !== undefined ? { respostaMedico: { texto, dataMensagem: agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) } } : {})
-    }, { ativo: config.comunicacaoMedicoAtiva === true, historico: historicoComunicacao,
+      ...(texto !== undefined ? { respostaMedico: { texto, dataMensagem: dataMensagem ?? null } } : {})
+    }, { ativo: config.comunicacaoMedicoAtiva === true, extratorResposta: new ExtratorRespostaMedicoNvidia(config.nvidiaApiKey, config.nvidiaRegistroModel), historico: historicoComunicacao,
       lerEstado: async (id, instante) => lerEstadoComunicacaoMedico(pool, id, instante, await cofres.statusAgenda(id), config.preparacaoFiscalAtiva === true),
       log: (nivel, mensagem) => console[nivel === 'info' ? 'info' : 'error'](mensagem)
     });
@@ -647,7 +648,7 @@ export function criarAppExpress() {
         instanciaOficialNome: config.evolutionOfficialInstanceName,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         comunicacaoMedicoAtiva: config.comunicacaoMedicoAtiva,
-        aoReceberMensagemMedico: contexto => comunicarMedico(contexto.medicoId, `assistente:${contexto.chaveMensagem}`, contexto.texto),
+        aoReceberMensagemMedico: contexto => comunicarMedico(contexto.medicoId, `assistente:${contexto.chaveMensagem}`, contexto.texto, contexto.dataMensagem),
         aoReceberComprovante: contexto => orquestrarComprovante(contexto, {
           historico: historicoComunicacao,
           lerEstado: atendimentoRepo.lerEstado.bind(atendimentoRepo),

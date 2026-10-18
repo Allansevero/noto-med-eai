@@ -1,4 +1,4 @@
-import { decidirProximaAcao, montarBoasVindas, interpretarRespostaNota, montarPerguntaComunicacao, type EstadoMedicoAposOnboarding, type ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
+import { decidirProximaAcao, montarBoasVindas, validarRespostaNotaExtraida, montarPerguntaComunicacao, type ExtratorRespostaMedico, type EstadoMedicoAposOnboarding, type ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
 import type { HistoricoComunicacaoRepositorio } from './historico-comunicacao-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 
@@ -6,7 +6,7 @@ interface EntradaComunicacao {
   medicoId: string;
   chaveProcessamento: string;
   nomeMedico?: string;
-  respostaMedico?: { texto: string; dataMensagem: string };
+  respostaMedico?: { texto: string; dataMensagem: string | null };
   instanciaNome?: string;
   contatoTelefone?: string;
   estado: Omit<EstadoMedicoAposOnboarding, 'historico'> & { agora: Date };
@@ -16,6 +16,7 @@ interface DependenciasComunicacao {
   log: (nivel: 'info' | 'erro', mensagem: string) => void;
   envioRealAtivo?: boolean;
   transporte?: EnviarMensagemPaciente;
+  extratorResposta?: ExtratorRespostaMedico;
 }
 
 export async function orquestrarComunicacao(
@@ -33,7 +34,13 @@ export async function orquestrarComunicacao(
     let acao = decidirProximaAcao({ ...estado, historico: salvo });
     const fiscalOk = estado.fiscal.certificado === 'ok' && estado.fiscal.dadosFiscais === 'ok';
     if (fiscalOk && entrada.respostaMedico && salvo.perguntaNota.feitaEm && !salvo.perguntaNota.resposta) {
-      const resposta = interpretarRespostaNota(entrada.respostaMedico.texto, entrada.respostaMedico.dataMensagem);
+      const { texto, dataMensagem } = entrada.respostaMedico;
+      let extraido: unknown = null;
+      if (dataMensagem && dependencias.extratorResposta) {
+        try { extraido = await dependencias.extratorResposta.extrair(texto, dataMensagem); }
+        catch { /* Erro do provedor fica incerto; nunca registrar seu corpo ou o texto do médico. */ }
+      }
+      const resposta = validarRespostaNotaExtraida(extraido, texto, dataMensagem);
       if (resposta) {
         await historico.gravarResposta(medicoId, modo, resposta, estado.agora.toISOString());
         salvo = await historico.ler(medicoId, modo);

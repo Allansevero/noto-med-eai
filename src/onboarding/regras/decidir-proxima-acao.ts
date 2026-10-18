@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { CONFIANCA_MINIMA_COMPROVANTE } from '../../atendimento/comprovante.js';
+
 interface HistoricoPergunta {
   feitaEm: string | null;
   repeticoes: number;
@@ -120,7 +123,9 @@ export function interpretarRespostaNota(texto: string, dataMensagem: string): { 
   }
   const dia = /^sim, desde dia (\d{1,2})$/.exec(resposta);
   if (!dia) return null;
-  const desde = dataMensagem.slice(0, 8) + dia[1].padStart(2, '0');
+  const mes = new Date(dataMensagem + 'T00:00:00Z');
+  if (Number(dia[1]) > mes.getUTCDate()) mes.setUTCMonth(mes.getUTCMonth() - 1, 1);
+  const desde = mes.toISOString().slice(0, 8) + dia[1].padStart(2, '0');
   const data = new Date(desde + 'T00:00:00Z');
   if (!Number.isFinite(data.getTime()) || data.toISOString().slice(0, 10) !== desde || desde > dataMensagem) return null;
   return { temNota: true, desde };
@@ -134,4 +139,27 @@ export function montarPerguntaComunicacao(acao: ProximaAcaoNoto): string | null 
     return 'Para eu achar suas consultas, preciso da sua agenda. Posso te mandar o link?';
   }
   return null;
+}
+
+export const respostaNotaExtraidaSchema = z.object({
+  temNota: z.enum(['sim', 'não', 'incerto']), desde: z.string().nullable(), confianca: z.number().finite().min(0).max(1)
+}).strict();
+export type RespostaNotaExtraida = z.infer<typeof respostaNotaExtraidaSchema>;
+export interface ExtratorRespostaMedico {
+  extrair(texto: string, dataMensagem: string): Promise<RespostaNotaExtraida>;
+}
+
+/** A IA extrai; confiança, calendário e ausência de resposta são validados em código. */
+export function validarRespostaNotaExtraida(extraido: unknown, texto: string, dataMensagem: string | null): { temNota: boolean; desde: string | null } | null {
+  const resultado = respostaNotaExtraidaSchema.safeParse(extraido);
+  if (!resultado.success || !dataMensagem || !interpretarRespostaNota('sim, desde hoje', dataMensagem)) return null;
+  const campos = resultado.data;
+  if (campos.confianca < CONFIANCA_MINIMA_COMPROVANTE || campos.temNota === 'incerto') return null;
+  if (campos.temNota === 'não') return campos.desde === null ? { temNota: false, desde: null } : null;
+  const relativa = /\bdesde\s+(hoje|ontem|dia\s+\d+)\s*[.!?]?\s*$/i.exec(texto);
+  if (relativa) return interpretarRespostaNota('sim, desde ' + relativa[1].toLocaleLowerCase('pt-BR').replace(/\s+/g, ' '), dataMensagem);
+  if (campos.desde === null) return { temNota: true, desde: null };
+  const data = new Date(campos.desde + 'T00:00:00Z');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(campos.desde) || !Number.isFinite(data.getTime()) || data.toISOString().slice(0, 10) !== campos.desde || campos.desde > dataMensagem) return null;
+  return { temNota: true, desde: campos.desde };
 }
