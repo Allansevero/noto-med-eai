@@ -43,7 +43,7 @@ export class BancoHistoricoFalso {
         if (acao && acao !== 'nenhuma' && [...this.tentativas.values()].some(a => a.medico_id === medico && a.modo === modo && a.chave_acao === acao && a.chave_processamento !== t.chave_processamento)) throw new Error('UNIQUE_ACAO_SQL');
         this.tentativas.set(JSON.stringify([medico, modo, t.chave_processamento]), { ...t, medico_id: medico, modo, chave_acao: acao }); return { rows: [] };
       }
-      if (sql.startsWith('select lido, estado, decisao from public.noto_auditoria_comprovantes')) return { rows: structuredClone(this.comprovantes.filter(c => c.medico_id === medico)) };
+      if (sql.startsWith('select lido, estado, decisao from public.noto_auditoria_comprovantes')) return { rows: structuredClone(this.comprovantes.filter(c => c.medico_id === medico).map(c => ({ lido: c.lido, estado: c.estado, decisao: c.decisao }))) };
       if (sql.startsWith('insert into public.noto_auditoria_comprovantes')) {
         const lido = params[1] === null ? null : JSON.parse(params[1]); const decisao = JSON.parse(params[3]);
         this.comprovantes.push({ medico_id: medico, lido, estado: JSON.parse(params[2]), decisao,
