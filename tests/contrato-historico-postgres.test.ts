@@ -92,3 +92,13 @@ it('Postgres recupera histórico e auditoria em outra instância, sem memória c
   expect(c.banco.consultas).toContain('select pg_advisory_xact_lock(hashtextextended($1, 0))');
   expect(c.banco.consultas.every(sql => !/^(create|alter|drop|truncate)/.test(sql))).toBe(true);
 });
+
+it('Postgres preserva reserva anterior sem snapshot até a liberação explícita', async () => {
+  const c = criar('postgres');
+  await c.historico.reservar(medico, 'simulado', 'anterior');
+  c.banco.auditorias = []; // Estado SQL reservado existente antes do snapshot, sem alterar a tentativa.
+  await c.historico.gravarAcao(medico, 'simulado', 'anterior', { tipo: 'boas_vindas', ultimaNota: null }, instante);
+  expect(await c.historico.reservar(medico, 'simulado', 'nova')).toBe(false);
+  await c.historico.liberar(medico, 'simulado', 'anterior');
+  expect(await c.historico.reservar(medico, 'simulado', 'nova')).toBe(true);
+});
