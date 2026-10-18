@@ -32,7 +32,7 @@ export interface HistoricoComunicacaoRepositorio {
   registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null): Promise<DecisaoPedidoComprovante>;
 }
 
-interface EntradaMedico {
+export interface EntradaMedico {
   historico: HistoricoComunicacao;
   processamentos: Set<string>;
   reserva: string | null;
@@ -40,7 +40,7 @@ interface EntradaMedico {
 
 /** Implementação local: não fornece persistência entre reinícios nem trava entre processos. */
 export class HistoricoComunicacaoEmMemoria implements HistoricoComunicacaoRepositorio {
-  private medicos = new Map<string, EntradaMedico>();
+  constructor(private medicos = new Map<string, EntradaMedico>()) {}
   private comprovantes = new Map<string, AuditoriaComprovante[]>();
 
   async lerComprovantes(medicoId: string): Promise<AuditoriaComprovante[]> {
