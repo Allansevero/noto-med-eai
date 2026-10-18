@@ -87,17 +87,21 @@ function decidirRepergunta(
 
 export function montarBoasVindas(
   nomeMedico: string,
-  ultimaNota: UltimaNotaConhecida & { paciente: string }
-): [string, string, string, string] {
+  ultimaNota: (UltimaNotaConhecida & { paciente?: string }) | null
+): [string, string, string] | [string, string, string, string] {
+  const baloes: [string, string, string] = [
+    `Olá, Dr(a). ${nomeMedico}! Sou o Noto, seu assistente de notas fiscais.`,
+    'Eu emito suas notas a partir dos comprovantes de pagamento dos pacientes e envio a nota fiscal direto na conversa do paciente, do seu próprio WhatsApp, como se fosse você.',
+    'Se você pedir, também entrego uma nota nova ou antiga por aqui.'
+  ];
+  if (!ultimaNota?.paciente) return baloes;
   const dias = ultimaNota.diasDesdeEmissao;
   const quando = dias === 0 ? 'hoje' : dias === 1 ? 'ontem' : `há ${dias} dias`;
   const valor = (ultimaNota.valorCentavos / 100).toLocaleString('pt-BR', {
     minimumFractionDigits: 2, maximumFractionDigits: 2
   });
   return [
-    `Olá, Dr(a). ${nomeMedico}! Sou o Noto, seu assistente de notas fiscais.`,
-    'Eu emito suas notas a partir dos comprovantes de pagamento dos pacientes e envio a nota fiscal direto na conversa do paciente, do seu próprio WhatsApp, como se fosse você.',
-    'Se você pedir, também entrego uma nota nova ou antiga por aqui.',
+    ...baloes,
     `Vi que sua última nota foi para ${ultimaNota.paciente}, de R$ ${valor}, emitida ${quando}.`
   ];
 }
