@@ -33,12 +33,13 @@ function pfxFicticio() {
 }
 const pfx=pfxFicticio();
 let banco:BancoJornada, servidor:Server, origem:string, codigo:string, conectado:boolean;
-let supabase:any, logs:ReturnType<typeof vi.spyOn>, rede:ReturnType<typeof vi.spyOn>;
+let supabase:any, logs:ReturnType<typeof vi.spyOn>, avisos:ReturnType<typeof vi.spyOn>, erros:ReturnType<typeof vi.spyOn>, rede:ReturnType<typeof vi.spyOn>;
+let respostas:Array<{caminho:string;body:unknown}>;
 const configAnterior={...config};
 const objetos=new Map<string,Buffer>();
 const requisitarLocal=globalThis.fetch;
 beforeEach(async()=>{
-  vi.clearAllMocks();objetos.clear();banco=new BancoJornada();codigo='';conectado=false;
+  vi.clearAllMocks();objetos.clear();banco=new BancoJornada();codigo='';conectado=false;respostas=[];
   config.preparacaoFiscalAtiva=false;config.comunicacaoMedicoAtiva=true;config.evolutionApiUrl='https://evolution.invalid';config.evolutionGlobalApiKey='ficticia';config.evolutionWebhookSecret='ficticio';config.hubDesenvolvedorToken='';config.openserpBaseUrl='';
   fronteiras.query.mockImplementation((s,p)=>banco.query(s,p));fronteiras.connect.mockImplementation(()=>banco.connect());
   supabase={auth:{getUser:vi.fn(async(t:string)=>({data:{user:t===token?{id:authId}:null},error:t===token?null:{message:'Token invalido'}})),admin:{
@@ -69,6 +70,8 @@ beforeEach(async()=>{
     throw Error(`EVOLUTION_FORA_DO_CONTRATO: ${url.pathname}`);
   });
   logs=vi.spyOn(console,'info').mockImplementation(()=>{});
+  avisos=vi.spyOn(console,'warn').mockImplementation(()=>{});
+  erros=vi.spyOn(console,'error').mockImplementation(()=>{});
   const app=criarAppExpress();servidor=await new Promise<Server>(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   origem=`http://127.0.0.1:${(servidor.address() as any).port}`;
 });
@@ -77,11 +80,19 @@ afterEach(async()=>{
   expect(banco.desconhecidas).toEqual([]);
   expect(rede.mock.calls.filter(([u]: any[])=>/\/message\/(sendText|sendMedia)\//.test(String(u)))).toEqual([]);
   expect(banco.consultas.some(s=>/insert into (notas_fiscais|solicitacoes_nota)/.test(s))).toBe(false);
+  const mensagens=JSON.stringify([logs.mock.calls,avisos.mock.calls,erros.mock.calls]);
+  const respostasOnboarding=JSON.stringify(respostas.filter(r=>r.caminho!=='/api/auth/otp/verificar'));
+  for(const segredo of [senha,token,pfx.toString('base64')]) {
+    expect(mensagens).not.toContain(segredo);
+    expect(respostasOnboarding).not.toContain(segredo);
+  }
+  for(const segredo of [senha,pfx.toString('base64')])expect(JSON.stringify(respostas)).not.toContain(segredo);
   Object.assign(config,configAnterior);vi.restoreAllMocks();
 });
 async function chamar(caminho:string,body?:unknown,autorizacao=token){
   const r=await fetch(origem+caminho,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${autorizacao}`},...(body!==undefined?{body:JSON.stringify(body)}:{})});
-  return {status:r.status,body:await r.json() as any};
+  const resposta=await r.json() as any;respostas.push({caminho,body:resposta});
+  return {status:r.status,body:resposta};
 }
 async function entrar(){
   expect((await chamar('/api/auth/otp/solicitar',{telefone})).status).toBe(200);expect(codigo).toMatch(/^\d{6}$/);
@@ -130,7 +141,9 @@ it.each(['codigo','qrcode'] as const)('jornada OTP, A1, ADN real, revisão, What
   expect((await chamar('/api/onboarding/confirmar-fiscal',{medicoId,referenciaHash,parametrosEmissao:politica.parametros,serieDps:'2',proximoNumeroDps:20,razaoSocial:'Consultorio Revisado Ficticio'})).status).toBe(200);
   await chamar(`/api/onboarding/whatsapp/status?medicoId=${medicoId}`);
   await vi.waitFor(()=>expect(logs.mock.calls.filter((a: any[])=>a[0]==='enviaria boas_vindas')).toHaveLength(1));
+  expect(banco.historico.historicos.size).toBe(1);
   expect([...banco.historico.historicos.values()].every(h=>h.modo==='simulado')).toBe(true);
+  expect(banco.historico.envios.size).toBe(0);
   expect(banco.consultas.some(s=>s.includes('parametros_emissao = $3'))).toBe(true);
 });
 
@@ -150,4 +163,38 @@ it('reenvio do A1 do mesmo titular mantém aprovação profissional e conexão j
   const depois=(await chamar('/api/conta/cadastro/')).body.revisao;
   expect(depois.trabalhoId).not.toBe(antes.trabalhoId);expect(depois).toMatchObject({aprovado:true,nome,crm:'54321/SC',rqe:'9876',whatsappConectado:true});
   expect((await chamar(`/api/onboarding/status?medicoId=${medicoId}`)).body.status.passos).toMatchObject({passoProfissionalAprovado:true,passo4WhatsappConectado:true});
+});
+
+
+it('pesquisa e aprovação profissionais concluem enquanto a importação ADN ainda aguarda HTTP',async()=>{
+  const medicoId=await entrar();
+  const responderAdn=fronteiras.adn.getMockImplementation()!;
+  let liberar!:()=>void;
+  const bloqueio=new Promise<void>(resolve=>{liberar=resolve;});
+  let adnIniciado!:()=>void;
+  const inicioAdn=new Promise<void>(resolve=>{adnIniciado=resolve;});
+  fronteiras.adn.mockImplementationOnce(async(...args)=>{adnIniciado();await bloqueio;return responderAdn(...args);});
+  let uploadConcluido=false;
+  const envio=upload(medicoId).then(resposta=>{uploadConcluido=true;return resposta;});
+  try {
+    await inicioAdn;
+    expect(uploadConcluido).toBe(false);
+    expect(banco.perfil).toBeNull();
+    await pesquisarProfissional();
+    await aprovar();
+    const durante=(await chamar(`/api/onboarding/status?medicoId=${medicoId}`)).body.status;
+    expect(durante.passos).toMatchObject({passoProfissionalAprovado:true,passo3CertificadoValido:true,passo2XmlEnviado:false});
+    expect(uploadConcluido).toBe(false);
+    expect(banco.perfil).toBeNull();
+    liberar();
+    const certificado=await envio;
+    expect(certificado.status).toBe(200);
+    expect(certificado.body.importacaoFiscal).toMatchObject({ok:true,fonte:'adn',nsu:2});
+    const depois=(await chamar(`/api/onboarding/status?medicoId=${medicoId}`)).body.status;
+    expect(depois.passos).toMatchObject({passoProfissionalAprovado:true,passo2XmlEnviado:true});
+    expect((await chamar('/api/conta/cadastro/')).body.revisao).toMatchObject({aprovado:true,nome,crm:'54321/SC',rqe:'9876'});
+  } finally {
+    liberar();
+    await envio;
+  }
 });
