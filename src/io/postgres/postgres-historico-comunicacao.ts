@@ -26,16 +26,16 @@ export class PostgresHistoricoComunicacao implements HistoricoComunicacaoReposit
   }
 
   async lerComprovantes(medico: string): Promise<AuditoriaComprovante[]> {
-    return this.transacao(async client => (await this.lerAuditoria(client, medico, 'comprovante', 'medicos')).map(linha => linha.dados_novos));
+    return this.transacao(client => this.lerAuditoriaComprovantes(client, medico));
   }
   async registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null) {
     return this.transacao(async client => {
       // Serializa a leitura/deduplicação/gravação por médico inclusive entre processos.
       await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [estado.medicoId]);
-      const anteriores = await this.lerAuditoria(client, estado.medicoId, 'comprovante', 'medicos');
-      const decisao = decidirPedidoComprovante(lido, estado, anteriores.map(linha => linha.dados_novos.lido));
-      await client.query('insert into public.auditoria (acao, entidade, entidade_id, dados_novos) values ($1, $2, $3, $4::jsonb)',
-        ['comprovante', 'medicos', estado.medicoId, JSON.stringify({ lido, estado, decisao })]);
+      const anteriores = await this.lerAuditoriaComprovantes(client, estado.medicoId);
+      const decisao = decidirPedidoComprovante(lido, estado, anteriores.map(registro => registro.lido));
+      await client.query('insert into public.noto_auditoria_comprovantes (medico_id, lido, estado, decisao) values ($1, $2::jsonb, $3::jsonb, $4::jsonb)',
+        [estado.medicoId, lido === null ? null : JSON.stringify(lido), JSON.stringify(estado), JSON.stringify(decisao)]);
       return decisao;
     });
   }
@@ -47,8 +47,8 @@ export class PostgresHistoricoComunicacao implements HistoricoComunicacaoReposit
     } catch (erro) { await client.query('rollback').catch(() => {}); throw erro; }
     finally { client.release(); }
   }
-  private async lerAuditoria(client: pg.PoolClient, medico: string, acao: string, entidade: string): Promise<Linha[]> {
-    const { rows } = await client.query('select id, dados_novos from public.auditoria where entidade_id=$1 and acao=$2 and entidade=$3 order by criado_em, id', [medico, acao, entidade]);
+  private async lerAuditoriaComprovantes(client: pg.PoolClient, medico: string): Promise<AuditoriaComprovante[]> {
+    const { rows } = await client.query('select lido, estado, decisao from public.noto_auditoria_comprovantes where medico_id=$1 order by criado_em, id', [medico]);
     return rows;
   }
 
@@ -58,11 +58,11 @@ export class PostgresHistoricoComunicacao implements HistoricoComunicacaoReposit
       const { rows: estados } = await client.query('select * from public.noto_historico_comunicacao_medico where medico_id=$1 and modo=$2 for update', [medico, modo]);
       if (!estados[0]) throw new Error('HISTORICO_AUSENTE');
       const { rows: tentativas } = await client.query('select * from public.noto_comunicacao_tentativas where medico_id=$1 and modo=$2 order by criado_em, chave_processamento', [medico, modo]);
-      const envios = modo === 'real' ? await this.lerAuditoria(client, medico, 'comunicacao_envios', 'noto_historico_comunicacao_medico') : [];
-      const reservas = await this.lerAuditoria(client, medico, `comunicacao_reserva_${modo}`, 'noto_historico_comunicacao_medico');
-      const historico = this.montarHistorico(estados[0], tentativas, envios[0]?.dados_novos ?? []);
+      const { rows: envios } = modo === 'real' ? await client.query('select chave_processamento, tipo, baloes_enviados from public.noto_comunicacao_envios where medico_id=$1 and modo=$2 order by criado_em, chave_processamento', [medico, modo]) : { rows: [] };
+      const { rows: reservas } = await client.query('select chave_processamento from public.noto_comunicacao_reservas where medico_id=$1 and modo=$2', [medico, modo]);
+      const historico = this.montarHistorico(estados[0], tentativas, envios.map(envio => ({ chaveProcessamento: envio.chave_processamento, tipo: envio.tipo, baloesEnviados: envio.baloes_enviados })));
       const entrada: EntradaMedico = { historico, processamentos: new Set(tentativas.map(t => t.chave_processamento)),
-        reserva: reservas[0] ? reservas[0].dados_novos : tentativas.find(t => t.estado === 'reservado')?.chave_processamento ?? null };
+        reserva: reservas[0] ? reservas[0].chave_processamento : tentativas.find(t => t.estado === 'reservado')?.chave_processamento ?? null };
       const antes = JSON.stringify(historico);
       const enviosAntes = JSON.stringify(historico.envios);
       const reservaAntes = entrada.reserva;
@@ -72,18 +72,22 @@ export class PostgresHistoricoComunicacao implements HistoricoComunicacaoReposit
       if (chave && entrada.processamentos.has(chave)) await this.salvarTentativa(client, medico, modo, chave, entrada, tentativas, acao);
       // A ação concluída e a reserva ainda ativa são estados distintos na interface existente.
       if (reservaAntes !== entrada.reserva || (!reservas[0] && entrada.reserva !== null)) {
-        await this.salvarAuditoria(client, medico, `comunicacao_reserva_${modo}`, reservas[0], entrada.reserva);
+        await client.query(`insert into public.noto_comunicacao_reservas (medico_id, modo, chave_processamento) values ($1, $2, $3)
+          on conflict (medico_id, modo) do update set chave_processamento=excluded.chave_processamento`, [medico, modo, entrada.reserva]);
       }
       if (enviosAntes !== JSON.stringify(entrada.historico.envios)) {
-        await this.salvarAuditoria(client, medico, 'comunicacao_envios', envios[0], entrada.historico.envios);
+        await this.salvarEnvios(client, medico, entrada.historico.envios);
       }
       return resultado;
     });
   }
 
-  private async salvarAuditoria(client: pg.PoolClient, medico: string, acao: string, anterior: Linha | undefined, valor: string | null | HistoricoComunicacao['envios']) {
-    if (anterior) await client.query('update public.auditoria set dados_novos=$2::jsonb where id=$1', [anterior.id, JSON.stringify(valor)]);
-    else await client.query('insert into public.auditoria (acao, entidade, entidade_id, dados_novos) values ($1, $2, $3, $4::jsonb)', [acao, 'noto_historico_comunicacao_medico', medico, JSON.stringify(valor)]);
+  private async salvarEnvios(client: pg.PoolClient, medico: string, envios: HistoricoComunicacao['envios']) {
+    const registros = envios.map(envio => ({ chave_processamento: envio.chaveProcessamento, tipo: envio.tipo, baloes_enviados: envio.baloesEnviados }));
+    await client.query(`insert into public.noto_comunicacao_envios (medico_id, modo, chave_processamento, tipo, baloes_enviados)
+      select $1, 'real', envio.chave_processamento, envio.tipo, envio.baloes_enviados
+      from jsonb_to_recordset($2::jsonb) as envio(chave_processamento text, tipo text, baloes_enviados integer[])
+      on conflict (medico_id, modo, chave_processamento) do update set baloes_enviados=excluded.baloes_enviados`, [medico, JSON.stringify(registros)]);
   }
 
   private montarHistorico(linha: Linha, tentativas: Linha[], envios: HistoricoComunicacao['envios']): HistoricoComunicacao {
