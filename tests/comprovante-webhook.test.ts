@@ -13,7 +13,6 @@ function persistenciaWhatsapp() {
     async criarPacienteMinimo(params: unknown) { pacientes.push(params); return { id: 'paciente-1' }; },
     async vincularPacienteConversa(_conversa: string, pacienteId: string) { conversa.pacienteId = pacienteId; },
     async salvarMensagem(params: unknown) { mensagens.push(params); },
-    async criarSolicitacaoNota() { throw new Error('Webhook não deve emitir na base atual'); }
   };
   return { mensagens, pacientes, deps: { repositorio: repositorio as unknown as AtendimentoRepositorio,
     segredoConfigurado: 'segredo-ficticio', pepper: 'pepper-ficticio', instanciaAssistenteNome: 'assistente' } };

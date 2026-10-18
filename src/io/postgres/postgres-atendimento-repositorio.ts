@@ -10,14 +10,9 @@ import type {
   InstanciaRegistro,
   ConversaRegistro,
   PacienteRegistro,
-  MedicoDadosRegistro,
-  ConsultaEmAbertoRegistro,
-  SolicitacaoAguardandoDataRegistro
+  MedicoDadosRegistro
 } from '../../atendimento/atendimento-repositorio.js';
-import { randomUUID } from 'node:crypto';
 import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
-import { montarDescricaoServico } from '../../emissao/montar-descricao-servico.js';
-import { dadosProfissionaisCompletos } from '../../conta/validar-dados-emissao.js';
 
 export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
   constructor(
@@ -87,27 +82,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     };
   }
 
-  async buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null> {
-    const sql = `
-      select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
-      from pacientes
-      where id = $1
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, [pacienteId]);
-    if (rows.length === 0) return null;
-    return {
-      id: rows[0].id,
-      medicoId: rows[0].medico_id,
-      telefone: rows[0].telefone,
-      nome: rows[0].nome,
-      nomeValidado: Boolean(rows[0].nome_validado),
-      cpfHash: rows[0].cpf_cnpj_hash,
-      email: rows[0].email,
-      dataNascimento: rows[0].data_nascimento ? new Date(rows[0].data_nascimento) : null
-    };
-  }
-
   async buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null> {
     const sql = `
       select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
@@ -116,28 +90,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       limit 1
     `;
     const { rows } = await this.pool.query(sql, [medicoId, telefone]);
-    if (rows.length === 0) return null;
-    return {
-      id: rows[0].id,
-      medicoId: rows[0].medico_id,
-      telefone: rows[0].telefone,
-      nome: rows[0].nome,
-      nomeValidado: Boolean(rows[0].nome_validado),
-      cpfHash: rows[0].cpf_cnpj_hash,
-      email: rows[0].email,
-      dataNascimento: rows[0].data_nascimento ? new Date(rows[0].data_nascimento) : null
-    };
-  }
-
-  async buscarPacientePorCpfHash(medicoId: string, cpfHash: string): Promise<PacienteRegistro | null> {
-    const sql = `
-      select id, medico_id, telefone, nome, nome_validado, cpf_cnpj_hash, email, data_nascimento
-      from pacientes
-      where medico_id = $1 and cpf_cnpj_hash = $2
-      order by nome_validado desc, atualizado_em desc
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId, cpfHash]);
     if (rows.length === 0) return null;
     return {
       id: rows[0].id,
@@ -239,49 +191,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
     await this.pool.query(sql, [conversaId, pacienteId]);
   }
 
-  async marcarAguardandoCpf(conversaId: string, aguardandoDesde: Date | null): Promise<void> {
-    const sql = `update whatsapp_conversas set aguardando_cpf_desde = $2 where id = $1`;
-    await this.pool.query(sql, [conversaId, aguardandoDesde]);
-  }
-
-  async criarAgendamento(params: {
-    medicoId: string;
-    pacienteId: string;
-    conversaId: string;
-    dataHora: Date;
-    valorConsultaCentavos?: number | null;
-  }): Promise<{ id: string }> {
-    return { id: randomUUID() };
-  }
-
-  async buscarConsultasEmAberto(_medicoId: string, _pacienteId: string): Promise<ConsultaEmAbertoRegistro[]> {
-    return [];
-  }
-
-  async buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null> {
-    const sql = `
-      select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe,
-             coalesce(msf.ctrib_nac, '') as ctrib_nac_padrao,
-             u.telefone
-      from medicos m
-      join usuarios u on u.id = m.usuario_id
-      left join medico_servicos_fiscais msf on msf.medico_id = m.id and msf.padrao = true and msf.ativo = true
-      where m.id = $1
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, [medicoId]);
-    if (rows.length === 0) return null;
-    return {
-      id: rows[0].id,
-      nomeCompleto: rows[0].nome_completo,
-      especialidade: rows[0].especialidade,
-      crm: rows[0].crm,
-      rqe: rows[0].rqe,
-      ctribNacPadrao: rows[0].ctrib_nac_padrao,
-      telefone: rows[0].telefone
-    };
-  }
-
   async buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null> {
     const variantes = gerarVariantesTelefoneBrasileiro(telefone);
     if (variantes.length === 0) return null;
@@ -306,194 +215,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       ctribNacPadrao: rows[0].ctrib_nac_padrao,
       telefone: rows[0].telefone
     };
-  }
-
-  /** Busca médico vinculado ao telefone do usuário na instância assistente */
-  async buscarMedicoAssistentePorTelefone(telefone: string, _instancia: string): Promise<MedicoDadosRegistro | null> {
-    const variantes = gerarVariantesTelefoneBrasileiro(telefone);
-    if (!variantes.length) return null;
-    const { rows } = await this.pool.query(`
-      select m.id, m.nome_completo, m.especialidade, m.crm, m.rqe, u.telefone,
-             coalesce(msf.ctrib_nac, '') as ctrib_nac_padrao
-      from medicos m
-      join usuarios u on u.id = m.usuario_id
-      left join lateral (
-        select ctrib_nac from medico_servicos_fiscais
-        where medico_id = m.id and padrao = true and ativo = true
-        order by id limit 1
-      ) msf on true
-      where u.ativo = true and regexp_replace(u.telefone, '\\D', '', 'g') = any($1::text[])
-      limit 2
-    `, [variantes]);
-    if (rows.length !== 1) return null;
-    const medico = rows[0];
-    return {
-      id: medico.id,
-      nomeCompleto: medico.nome_completo,
-      especialidade: medico.especialidade,
-      crm: medico.crm,
-      rqe: medico.rqe,
-      telefone: medico.telefone,
-      ctribNacPadrao: medico.ctrib_nac_padrao
-    };
-  }
-
-  async criarSolicitacaoNota(params: {
-    medicoId: string;
-    pacienteId: string;
-    xdescServ: string;
-    valorServicoCentavos: number;
-    ctribNac: string;
-    fila: 'pronta' | 'pendente_cadastro' | null;
-    aguardandoDataConsulta?: boolean;
-    aguardandoDadosProfissionais?: boolean;
-    datasConsultaTexto?: string;
-    agendamentoIds?: string[];
-  }): Promise<{ id: string }> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('begin');
-      const sqlSolicitacao = `
-        insert into solicitacoes_nota (
-          medico_id, paciente_id, xdesc_serv, valor_servico_centavos, ctrib_nac,
-          fila, status, origem, aguardando_data_consulta, aguardando_dados_profissionais, datas_consulta_texto
-        )
-        values ($1, $2, $3, $4, $5, $6, 'pendente', 'whatsapp_comando', $7, $8, $9)
-        returning id
-      `;
-      const { rows } = await client.query(sqlSolicitacao, [
-        params.medicoId,
-        params.pacienteId,
-        params.xdescServ,
-        params.valorServicoCentavos,
-        params.ctribNac,
-        params.fila,
-        Boolean(params.aguardandoDataConsulta),
-        Boolean(params.aguardandoDadosProfissionais),
-        params.datasConsultaTexto ?? null
-      ]);
-      const solicitacaoId = rows[0].id;
-      // Snapshot somente quando existe exatamente um serviço ativo compatível.
-      await client.query(`with candidatos as (
-        select f.*, count(*) over () as quantidade from medico_servicos_fiscais f
-        where f.medico_id = $2 and f.padrao and f.ativo and f.ctrib_nac = $3)
-        update solicitacoes_nota s set servico_fiscal_id = f.id, cnbs = f.cnbs
-        from candidatos f where s.id = $1 and s.medico_id = $2 and f.quantidade = 1`,
-        [solicitacaoId, params.medicoId, params.ctribNac]);
-
-
-
-      await client.query('commit');
-      return { id: solicitacaoId };
-    } catch (err) {
-      await client.query('rollback');
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-
-  async buscarSolicitacaoAguardandoData(medicoId: string, pacienteId?: string): Promise<SolicitacaoAguardandoDataRegistro | null> {
-    const params: any[] = [medicoId];
-    let filtroPaciente = '';
-    if (pacienteId) {
-      params.push(pacienteId);
-      filtroPaciente = `and sn.paciente_id = $2`;
-    }
-    const sql = `
-      select sn.id, sn.medico_id, sn.paciente_id, sn.valor_servico_centavos, sn.ctrib_nac, sn.criado_em,
-             coalesce(p.nome, 'Paciente') as nome_paciente,
-             u.telefone as telefone_medico
-      from solicitacoes_nota sn
-      join pacientes p on p.id = sn.paciente_id
-      join medicos m on m.id = sn.medico_id
-      join usuarios u on u.id = m.usuario_id
-      where sn.medico_id = $1
-        and sn.aguardando_data_consulta = true
-        and sn.status = 'pendente'
-        ${filtroPaciente}
-      order by sn.criado_em desc
-      limit 1
-    `;
-    const { rows } = await this.pool.query(sql, params);
-    if (rows.length === 0) return null;
-    return {
-      id: rows[0].id,
-      medicoId: rows[0].medico_id,
-      pacienteId: rows[0].paciente_id,
-      nomePaciente: rows[0].nome_paciente,
-      telefoneMedico: rows[0].telefone_medico,
-      valorServicoCentavos: rows[0].valor_servico_centavos,
-      ctribNac: rows[0].ctrib_nac,
-      criadoEm: new Date(rows[0].criado_em)
-    };
-  }
-
-  async atualizarDataDescricaoSolicitacao(params: {
-    solicitacaoId: string;
-    xdescServ: string;
-    fila: 'pronta' | 'pendente_cadastro';
-    medicoId?:string; mensagemId?:string; instancia?:string;
-  }): Promise<void|boolean> {
-    if(params.mensagemId&&(!params.medicoId||!params.instancia))throw Error('CONTEXTO_DATA_INCOMPLETO');
-    const client = await this.pool.connect();
-    try {
-      await client.query('begin');
-      // Mesma ordem de locks da coleta profissional: médico antes da solicitação.
-      const { rows } = await client.query(`select m.id,m.nome_completo, m.crm, m.rqe, m.especialidade
-        from medicos m join solicitacoes_nota s on s.medico_id=m.id
-        where s.id=$1 and ($2::uuid is null or m.id=$2) for update of m`, [params.solicitacaoId,params.medicoId??null]);
-      const medico = rows[0];
-      let atualizada=false;
-      if(medico&&params.mensagemId){
-        const anterior=await client.query(`select id from auditoria where entidade='medicos' and entidade_id=$1 and acao='resposta_data_assistente'
-          and dados_novos->>'mensagemId'=$2 and dados_novos->>'instancia'=$3 limit 1`,[medico.id,params.mensagemId,params.instancia]);
-        if(anterior.rowCount){await client.query('commit');return false;}
-      }
-      const datas = params.xdescServ.match(/\bNAS DATAS\s+(.+)$/i)?.[1];
-      if (medico && datas) {
-        const descricao = montarDescricaoServico({nomeCompleto:medico.nome_completo ?? '',
-          crm:medico.crm, rqe:medico.rqe, especialidade:medico.especialidade}, datas);
-        const update=await client.query(`update solicitacoes_nota s
-          set xdesc_serv=$2, datas_consulta_texto=$4,
-              aguardando_dados_profissionais=aguardando_dados_profissionais or $5,
-              fila=case when aguardando_dados_profissionais or aguardando_confirmacao_medico or $5 then null else $3::fila_solicitacao_nota end,
-              aguardando_data_consulta=false, atualizado_em=now()
-          where s.id=$1 and s.status='pendente' and s.aguardando_data_consulta=true and s.tentativas=0
-            and s.bloqueada_em is null
-            and not exists(select 1 from notas_fiscais n where n.solicitacao_id=s.id)`,
-          [params.solicitacaoId, descricao, params.fila, datas, !dadosProfissionaisCompletos(medico)]);
-        atualizada=!!update.rowCount;
-        if(atualizada&&params.mensagemId)await client.query(`insert into auditoria(acao,entidade,entidade_id,dados_novos) values('resposta_data_assistente','medicos',$1,$2::jsonb)`,
-          [medico.id,JSON.stringify({mensagemId:params.mensagemId,instancia:params.instancia,solicitacaoId:params.solicitacaoId})]);
-      }
-      await client.query('commit');
-      return atualizada;
-    } catch (erro) {
-      await client.query('rollback');
-      throw erro;
-    } finally {
-      client.release();
-    }
-  }
-
-  async liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number> {
-    const sql = `
-      update solicitacoes_nota
-      set fila = 'pronta', status = 'pronta', aguardando_cpf_medico = false
-      where medico_id = $1
-        and paciente_id = $2
-        and status = 'pendente'
-        and tentativas = 0
-        and bloqueada_em is null
-        and not exists(select 1 from notas_fiscais n where n.solicitacao_id=solicitacoes_nota.id)
-        and not aguardando_dados_profissionais
-        and not aguardando_confirmacao_medico
-        and not aguardando_data_consulta
-        and (fila = 'pendente_cadastro' or fila is null)
-    `;
-    const res = await this.pool.query(sql, [medicoId, pacienteId]);
-    return res.rowCount ?? 0;
   }
 
   async salvarMensagem(params: {
@@ -615,18 +336,6 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
       `;
       await this.pool.query(sql, params);
     }
-  }
-
-  async buscarMensagensRecentesConversa(conversaId: string, limite: number = 20): Promise<string[]> {
-    const sql = `
-      select conteudo
-      from whatsapp_mensagens
-      where conversa_id = $1 and conteudo is not null and trim(conteudo) != ''
-      order by criado_em desc
-      limit $2
-    `;
-    const { rows } = await this.pool.query(sql, [conversaId, limite]);
-    return rows.map((r: { conteudo: string }) => r.conteudo).reverse();
   }
 }
 

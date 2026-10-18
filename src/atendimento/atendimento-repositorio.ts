@@ -62,9 +62,7 @@ export interface SolicitacaoAguardandoDataRegistro {
 export interface AtendimentoRepositorio {
   buscarInstanciaPorNome(nomeInstancia: string): Promise<InstanciaRegistro | null>;
   buscarOuCriarConversa(instanciaId: string, medicoId: string | null, contatoTelefone: string, contatoNome?: string | null): Promise<ConversaRegistro>;
-  buscarPacientePorId(pacienteId: string): Promise<PacienteRegistro | null>;
   buscarPacientePorTelefone(medicoId: string, telefone: string): Promise<PacienteRegistro | null>;
-  buscarPacientePorCpfHash?(medicoId: string, cpfHash: string): Promise<PacienteRegistro | null>;
   criarPacienteMinimo(params: {
     medicoId: string;
     telefone: string;
@@ -85,38 +83,7 @@ export interface AtendimentoRepositorio {
   }): Promise<void>;
 
   vincularPacienteConversa(conversaId: string, pacienteId: string): Promise<void>;
-  marcarAguardandoCpf(conversaId: string, aguardandoDesde: Date | null): Promise<void>;
-  criarAgendamento(params: {
-    medicoId: string;
-    pacienteId: string;
-    conversaId: string;
-    dataHora: Date;
-    valorConsultaCentavos?: number | null;
-  }): Promise<{ id: string }>;
-  buscarConsultasEmAberto(medicoId: string, pacienteId: string): Promise<ConsultaEmAbertoRegistro[]>;
-  buscarDadosMedico(medicoId: string): Promise<MedicoDadosRegistro | null>;
-  buscarMedicoAssistentePorTelefone?(telefone: string, instancia: string): Promise<MedicoDadosRegistro | null>;
   buscarMedicoPorTelefone(telefone: string): Promise<MedicoDadosRegistro | null>;
-  criarSolicitacaoNota(params: {
-    medicoId: string;
-    pacienteId: string;
-    xdescServ: string;
-    valorServicoCentavos: number;
-    ctribNac: string;
-    fila: 'pronta' | 'pendente_cadastro' | null;
-    aguardandoDataConsulta?: boolean;
-    aguardandoDadosProfissionais?: boolean;
-    datasConsultaTexto?: string;
-    agendamentoIds: string[];
-  }): Promise<{ id: string }>;
-  buscarSolicitacaoAguardandoData(medicoId: string, pacienteId?: string): Promise<SolicitacaoAguardandoDataRegistro | null>;
-  atualizarDataDescricaoSolicitacao(params: {
-    solicitacaoId: string;
-    xdescServ: string;
-    fila: 'pronta' | 'pendente_cadastro';
-    medicoId?:string; mensagemId?:string; instancia?:string;
-  }): Promise<void|boolean>;
-  liberarSolicitacoesPendentesCpf(medicoId: string, pacienteId: string): Promise<number>;
   salvarMensagem?(params: {
     conversaId: string;
     direcao: 'recebida' | 'enviada';
@@ -135,5 +102,4 @@ export interface AtendimentoRepositorio {
     comandoDetectado?: string | null;
     criadoEm?: Date;
   }>): Promise<void>;
-  buscarMensagensRecentesConversa?(conversaId: string, limite?: number): Promise<string[]>;
 }
