@@ -56,43 +56,43 @@ describe('injeção real do ciclo no servidor com fronteiras falsas', () => {
     expect(fronteiras.query.mock.calls[0][1]).toEqual([medico, paciente, config.encryptionKey]);
     expect(midia).toHaveBeenCalledExactlyOnceWith('clinica-ficticia', 'mensagem-ficticia');
     expect(fronteiras.completar.mock.calls[0].slice(0, 2)).toEqual(['chave-ficticia', 'modelo-ficticio']);
-    expect(banco.auditorias).toHaveLength(1);
-    expect(banco.auditorias[0].dados_novos.decisao.tipo).toBe('pedido_nota_pronto');
+    expect(banco.comprovantes).toHaveLength(1);
+    expect(banco.comprovantes[0].decisao.tipo).toBe('pedido_nota_pronto');
     expect(intencoes()).toEqual([['pediria nota pedido_nota_pronto']]);
     await receber(imagem, primeira.app);
-    expect(banco.auditorias.map(a => a.dados_novos.decisao.tipo)).toEqual(['pedido_nota_pronto', 'nenhuma']);
+    expect(banco.comprovantes.map(a => a.decisao.tipo)).toEqual(['pedido_nota_pronto', 'nenhuma']);
     expect(intencoes()).toHaveLength(1);
   });
   it('PDF no servidor vira dúvida própria, sem download nem IA', async () => {
     expect((await receber({ documentMessage: { mimetype: 'application/pdf' } })).status).toBe(200);
-    expect(banco.auditorias).toHaveLength(1);
-    expect(banco.auditorias[0].dados_novos.decisao).toEqual({ tipo: 'perguntar_medico', motivo: 'PDF_NAO_SUPORTADO' });
+    expect(banco.comprovantes).toHaveLength(1);
+    expect(banco.comprovantes[0].decisao).toEqual({ tipo: 'perguntar_medico', motivo: 'PDF_NAO_SUPORTADO' });
     expect(intencoes()).toEqual([['enviaria perguntar_medico']]); expect(erro).not.toHaveBeenCalled();
     expect(midia).not.toHaveBeenCalled(); expect(fronteiras.completar).not.toHaveBeenCalled();
   });
   it('cadastro ausente não ganha CPF ou consulta inventados', async () => {
     fronteiras.query.mockResolvedValue({ rows: [] }); await receber(imagem);
-    expect(banco.auditorias).toHaveLength(1);
-    expect(banco.auditorias[0].dados_novos.estado).toEqual({ medicoId: medico, paciente: { nome: null, cpf: null }, ultimaConsulta: null });
-    expect(banco.auditorias).toHaveLength(1);
-    expect(banco.auditorias[0].dados_novos.decisao.tipo).toBe('perguntar_medico');
+    expect(banco.comprovantes).toHaveLength(1);
+    expect(banco.comprovantes[0].estado).toEqual({ medicoId: medico, paciente: { nome: null, cpf: null }, ultimaConsulta: null });
+    expect(banco.comprovantes).toHaveLength(1);
+    expect(banco.comprovantes[0].decisao.tipo).toBe('perguntar_medico');
     expect(intencoes()).toEqual([['enviaria perguntar_medico']]);
   });
   it('falha de leitura mantém HTTP 200, sem pedido, IA ou intenção, com erro sanitizado', async () => {
     fronteiras.query.mockRejectedValueOnce(new Error('CPF SENHA TOKEN FICTICIOS PRIVADOS'));
-    expect((await receber(imagem)).status).toBe(200); expect(banco.auditorias).toEqual([]);
+    expect((await receber(imagem)).status).toBe(200); expect(banco.comprovantes).toEqual([]);
     expect(fronteiras.completar).not.toHaveBeenCalled(); expect(intencoes()).toEqual([]);
     expect(erro.mock.calls).toEqual([['COMPROVANTE_CICLO_FALHOU']]);
   });
   it('falha de gravação mantém HTTP 200 e não registra intenção', async () => {
-    banco.falhar = /^insert into public.auditoria/;
-    expect((await receber(imagem)).status).toBe(200); expect(banco.auditorias).toEqual([]); expect(intencoes()).toEqual([]);
+    banco.falhar = /^insert into public.noto_auditoria_comprovantes/;
+    expect((await receber(imagem)).status).toBe(200); expect(banco.comprovantes).toEqual([]); expect(intencoes()).toEqual([]);
     expect(erro.mock.calls).toEqual([['AUDITORIA_COMPROVANTE_FALHOU']]);
   });
   it('ausência de credencial IA vira dúvida sem rede ou download e sem default', async () => {
     config.nvidiaApiKey = undefined; await receber(imagem);
-    expect(banco.auditorias).toHaveLength(1);
-    expect(banco.auditorias[0].dados_novos.decisao).toEqual({ tipo: 'perguntar_medico', motivo: 'LEITURA_INDISPONIVEL' });
+    expect(banco.comprovantes).toHaveLength(1);
+    expect(banco.comprovantes[0].decisao).toEqual({ tipo: 'perguntar_medico', motivo: 'LEITURA_INDISPONIVEL' });
     expect(midia).not.toHaveBeenCalled(); expect(fronteiras.completar).not.toHaveBeenCalled();
   });
 });

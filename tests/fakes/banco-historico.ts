@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 export class BancoHistoricoFalso {
   historicos = new Map<string, Record<string, any>>();
   tentativas = new Map<string, Record<string, any>>();
-  auditorias: Array<Record<string, any>> = [];
+  comprovantes: Array<Record<string, any>> = [];
+  reservas = new Map<string, Record<string, any>>();
+  envios = new Map<string, Record<string, any>>();
   falhar: RegExp | null = null;
   consultas: string[] = [];
   private fila = Promise.resolve();
@@ -14,10 +16,11 @@ export class BancoHistoricoFalso {
     let snapshot: any;
     return { release: liberar, query: async (texto: string, params: any[] = []): Promise<{ rows: any[] }> => {
       const sql = texto.replace(/\s+/g, ' ').trim().toLowerCase(); this.consultas.push(sql);
+      if (/\bpublic\.auditoria\b/.test(sql)) throw new Error('AUDITORIA_GENERICA_PROIBIDA');
       if (this.falhar?.test(sql)) throw new Error('BANCO_FALSO_FALHOU_DADO_PRIVADO');
       const [medico, modo] = params; const chave = JSON.stringify([medico, modo]);
-      if (sql === 'begin') { snapshot = structuredClone([this.historicos, this.tentativas, this.auditorias]); return { rows: [] }; }
-      if (sql === 'rollback') { [this.historicos, this.tentativas, this.auditorias] = snapshot; return { rows: [] }; }
+      if (sql === 'begin') { snapshot = structuredClone([this.historicos, this.tentativas, this.comprovantes, this.reservas, this.envios]); return { rows: [] }; }
+      if (sql === 'rollback') { [this.historicos, this.tentativas, this.comprovantes, this.reservas, this.envios] = snapshot; return { rows: [] }; }
       if (sql === 'commit' || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
       if (sql.startsWith('insert into public.noto_historico_comunicacao_medico')) {
         if (!this.historicos.has(chave)) this.historicos.set(chave, { medico_id: medico, modo, boas_vindas_em: null,
@@ -40,13 +43,25 @@ export class BancoHistoricoFalso {
         if (acao && acao !== 'nenhuma' && [...this.tentativas.values()].some(a => a.medico_id === medico && a.modo === modo && a.chave_acao === acao && a.chave_processamento !== t.chave_processamento)) throw new Error('UNIQUE_ACAO_SQL');
         this.tentativas.set(JSON.stringify([medico, modo, t.chave_processamento]), { ...t, medico_id: medico, modo, chave_acao: acao }); return { rows: [] };
       }
-      if (sql.startsWith('select id, dados_novos from public.auditoria')) return { rows: structuredClone(this.auditorias.filter(a => a.entidade_id === params[0] && a.acao === params[1] && a.entidade === params[2])) };
-      if (sql.startsWith('insert into public.auditoria')) {
-        const row = { id: String(this.auditorias.length + 1), acao: params[0], entidade: params[1], entidade_id: params[2], dados_novos: JSON.parse(params[3]) };
-        this.auditorias.push(row); return { rows: [{ id: row.id }] };
+      if (sql.startsWith('select lido, estado, decisao from public.noto_auditoria_comprovantes')) return { rows: structuredClone(this.comprovantes.filter(c => c.medico_id === medico)) };
+      if (sql.startsWith('insert into public.noto_auditoria_comprovantes')) {
+        const lido = params[1] === null ? null : JSON.parse(params[1]); const decisao = JSON.parse(params[3]);
+        this.comprovantes.push({ medico_id: medico, lido, estado: JSON.parse(params[2]), decisao,
+          motivo: decisao.motivo, confianca: lido?.campos?.confianca ?? null }); return { rows: [] };
       }
-      if (sql.startsWith('update public.auditoria')) {
-        this.auditorias.find(a => a.id === params[0])!.dados_novos = JSON.parse(params[1]); return { rows: [] };
+      if (sql.startsWith('select chave_processamento from public.noto_comunicacao_reservas')) return { rows: structuredClone(this.reservas.has(chave) ? [this.reservas.get(chave)] : []) };
+      if (sql.startsWith('insert into public.noto_comunicacao_reservas')) {
+        this.reservas.set(chave, { medico_id: medico, modo, chave_processamento: params[2] }); return { rows: [] };
+      }
+      if (sql.startsWith('select chave_processamento, tipo, baloes_enviados from public.noto_comunicacao_envios')) return { rows: structuredClone([...this.envios.values()].filter(e => e.medico_id === medico && e.modo === modo)) };
+      if (sql.startsWith('insert into public.noto_comunicacao_envios')) {
+        for (const envio of JSON.parse(params[1])) {
+          const chaveEnvio = JSON.stringify([medico, 'real', envio.chave_processamento]);
+          if (!this.tentativas.has(chaveEnvio)) throw new Error('FK_ENVIO_TENTATIVA');
+          if ([...this.envios.values()].some(e => e.medico_id === medico && e.tipo === envio.tipo && e.chave_processamento !== envio.chave_processamento)) throw new Error('UNIQUE_ENVIO_TIPO');
+          this.envios.set(chaveEnvio, { ...envio, medico_id: medico, modo: 'real' });
+        }
+        return { rows: [] };
       }
       throw new Error('QUERY_NAO_SUPORTADA_NO_FAKE: ' + sql);
     } };

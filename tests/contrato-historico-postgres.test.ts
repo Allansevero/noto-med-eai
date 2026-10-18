@@ -22,7 +22,7 @@ function criar(tipo: 'memoria' | 'postgres') {
   }
   const historico: HistoricoComunicacaoRepositorio = tipo === 'memoria' ? new MemoriaComFalha() : new PostgresHistoricoComunicacao(banco as unknown as pg.Pool);
   return { historico, banco, falhar: (valor: 'leitura' | 'gravacao' | null) => { falha = valor;
-    banco.falhar = valor === 'leitura' ? /^select (\*|id, dados_novos)/ : valor === 'gravacao' ? /^(update|insert into public.auditoria)/ : null; } };
+    banco.falhar = valor === 'leitura' ? /^select (\*|lido,|chave_processamento)/ : valor === 'gravacao' ? /^(update|insert into public.noto_(auditoria_comprovantes|comunicacao_(reservas|envios)))/ : null; } };
 }
 for (const tipo of ['memoria', 'postgres'] as const) describe('contrato do histórico: ' + tipo, () => {
   it('reserva, consome chave, grava datas, resposta e separa modo/médico', async () => {
@@ -96,7 +96,7 @@ it('Postgres recupera histórico e auditoria em outra instância, sem memória c
 it('Postgres preserva reserva anterior sem snapshot até a liberação explícita', async () => {
   const c = criar('postgres');
   await c.historico.reservar(medico, 'simulado', 'anterior');
-  c.banco.auditorias = []; // Estado SQL reservado existente antes do snapshot, sem alterar a tentativa.
+  c.banco.reservas.clear(); // Reserva ausente, mantendo a tentativa SQL reservada para o mesmo caso de contrato.
   await c.historico.gravarAcao(medico, 'simulado', 'anterior', { tipo: 'boas_vindas', ultimaNota: null }, instante);
   expect(await c.historico.reservar(medico, 'simulado', 'nova')).toBe(false);
   await c.historico.liberar(medico, 'simulado', 'anterior');
