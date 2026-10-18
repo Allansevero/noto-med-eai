@@ -15,6 +15,9 @@ import type {
 } from '../../atendimento/atendimento-repositorio.js';
 import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
 
+// Suposição não verificada: a última consulta conhecida corresponde a um agendamento com este status.
+const STATUS_ULTIMA_CONSULTA_CONHECIDA = 'realizado';
+
 export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio, LeitorEstadoPedidoComprovante {
   constructor(
     private readonly pool: pg.Pool,
@@ -29,7 +32,7 @@ export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio, L
       from pacientes p
       left join lateral (
         select a.id, a.valor_consulta_centavos from agendamentos a
-        where a.medico_id = $1 and a.paciente_id = $2 and a.status = 'realizado'
+        where a.medico_id = $1 and a.paciente_id = $2 and a.status = '${STATUS_ULTIMA_CONSULTA_CONHECIDA}'
         order by a.data_hora desc limit 1
       ) consulta on true
       where p.medico_id = $1 and p.id = $2
