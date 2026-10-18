@@ -91,3 +91,12 @@ it('fora do assunto abaixo de 0,90 continua incerto, sem dispensar a validação
   expect(await orquestrarComunicacao(entrada, c.deps as any)).toEqual({ tipo: 'reperguntar', pergunta: 'nota_pendente' });
   expect((await c.historico.ler('medico-ficticio', 'simulado')).perguntaNota.resposta).toBeNull();
 });
+
+it('o cliente de IA recebe texto atual e contexto mascarados, sem dados identificadores', async () => {
+  cliente.mockResolvedValue(JSON.stringify({ temNota: 'sim', desde: null, confianca: 0.95 }));
+  const extrator = new ExtratorRespostaMedicoNvidia('credencial-ficticia', 'modelo-ficticio');
+  await extrator.extrair('sim, CPF 529.982.247-25', dia, { ...contexto, mensagens: ['CNPJ 12.345.678/0001-90', 'e-mail medico@example.invalid', 'telefone +55 (11) 99999-0000', 'protocolo 98765432101234567890'] });
+  const conteudo = JSON.parse(cliente.mock.calls[0][2][1].content);
+  expect(conteudo.texto).toBe('sim, CPF [OCULTO]');
+  expect(conteudo.contexto.mensagens).toEqual(['CNPJ [OCULTO]', 'e-mail [OCULTO]', 'telefone [OCULTO]', 'protocolo [OCULTO]']);
+});
