@@ -111,12 +111,19 @@ export function montarBoasVindas(
 export function interpretarRespostaNota(texto: string, dataMensagem: string): { temNota: boolean; desde: string | null } | null {
   const resposta = texto.trim().toLocaleLowerCase('pt-BR');
   if (resposta === 'não') return { temNota: false, desde: null };
+  const diaMensagem = new Date(dataMensagem + 'T00:00:00Z');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataMensagem) || !Number.isFinite(diaMensagem.getTime()) || diaMensagem.toISOString().slice(0, 10) !== dataMensagem) return null;
   if (resposta === 'sim, desde hoje') return { temNota: true, desde: dataMensagem };
-  if (resposta !== 'sim, desde ontem') return null;
-  const ontem = new Date(dataMensagem + 'T00:00:00Z');
-  if (!Number.isFinite(ontem.getTime())) return null;
-  ontem.setUTCDate(ontem.getUTCDate() - 1);
-  return { temNota: true, desde: ontem.toISOString().slice(0, 10) };
+  if (resposta === 'sim, desde ontem') {
+    diaMensagem.setUTCDate(diaMensagem.getUTCDate() - 1);
+    return { temNota: true, desde: diaMensagem.toISOString().slice(0, 10) };
+  }
+  const dia = /^sim, desde dia (\d{1,2})$/.exec(resposta);
+  if (!dia) return null;
+  const desde = dataMensagem.slice(0, 8) + dia[1].padStart(2, '0');
+  const data = new Date(desde + 'T00:00:00Z');
+  if (!Number.isFinite(data.getTime()) || data.toISOString().slice(0, 10) !== desde || desde > dataMensagem) return null;
+  return { temNota: true, desde };
 }
 
 export function montarPerguntaComunicacao(acao: ProximaAcaoNoto): string | null {
