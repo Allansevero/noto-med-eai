@@ -69,3 +69,13 @@ it('falha ao gravar resposta retorna nenhuma sem log de intenção', async () =>
   expect(await orquestrarComunicacao({ ...c.entrada, chaveProcessamento: 'falha', respostaMedico: { texto: 'não', dataMensagem: hoje } }, c.deps)).toEqual({ tipo: 'nenhuma' });
   expect(c.logs).toEqual(['HISTORICO_COMUNICACAO_FALHOU']);
 });
+
+it('dia 10 significa dia do mês e ano da data civil explícita', () => {
+  expect(interpretar('sim, desde dia 10')).toEqual({ temNota: true, desde: '2026-10-10' });
+});
+it.each([
+  ['sim, desde dia 30', '2026-02-28'], ['sim, desde dia 32', hoje], ['sim, desde dia 0', hoje],
+  ['sim, desde dia 20', hoje], ['sim, desde hoje', 'data-invalida']
+])('data inválida ou futura é ambígua: %s em %s', (texto, data) => {
+  expect(interpretar(texto, data)).toBeNull();
+});
