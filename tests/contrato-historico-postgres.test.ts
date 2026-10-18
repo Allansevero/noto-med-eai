@@ -40,6 +40,14 @@ for (const tipo of ['memoria', 'postgres'] as const) describe('contrato do hist�
     expect((await h.ler('00000000-0000-4000-8000-000000000002', 'simulado')).boasVindasComunicadas).toBe(false);
     salvo.registros.length = 0; expect((await h.ler(medico, 'simulado')).registros).toHaveLength(1);
   });
+  it('mantém exclusividade após gravar a ação até liberar explicitamente', async () => {
+    const { historico: h } = criar(tipo);
+    await h.reservar(medico, 'simulado', 'primeira');
+    await h.gravarAcao(medico, 'simulado', 'primeira', { tipo: 'boas_vindas', ultimaNota: null }, instante);
+    expect(await h.reservar(medico, 'simulado', 'segunda')).toBe(false);
+    await h.liberar(medico, 'simulado', 'primeira');
+    expect(await h.reservar(medico, 'simulado', 'segunda')).toBe(true);
+  });
   it('confirma balões ordenados sem transporte e só depois grava enviado', async () => {
     const { historico: h } = criar(tipo); const acao = { tipo: 'boas_vindas' as const, ultimaNota: null };
     await h.reservar(medico, 'real', 'envio'); expect(await h.reservarEnvio(medico, 'envio', acao)).toBe(true);
