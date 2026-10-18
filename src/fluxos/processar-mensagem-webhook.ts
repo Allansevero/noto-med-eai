@@ -11,7 +11,8 @@ import { extrairTelefoneJid } from '../whatsapp/extrair-telefone-jid.js';
 import {
   webhookEvolutionSchema,
   extrairTextoMensagem,
-  extrairTipoMensagem
+  extrairTipoMensagem,
+  type DadosMensagemEvolution
 } from '../whatsapp/payload-webhook-schema.js';
 import type { AtendimentoRepositorio } from '../atendimento/atendimento-repositorio.js';
 import type { ConsultaCpfProvider } from '../paciente/consulta-cpf-provider.js';
@@ -30,6 +31,7 @@ export interface ProcessarWebhookDeps {
   instanciaOficialNome?: string;
   instanciaAssistenteNome?: string;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
+  aoReceberComprovante?: (contexto: { medicoId: string; pacienteId: string; mensagem: DadosMensagemEvolution }) => Promise<unknown>;
 }
 
 export type ResultadoProcessarWebhook =
@@ -118,6 +120,9 @@ export async function processarMensagemWebhook(
       conteudo: texto,
       payloadBruto: payload.data
     });
+  }
+  if (deps.aoReceberComprovante && !payload.data.key.fromMe && tipo !== 'texto' && conversa.medicoId && conversa.pacienteId) {
+    await deps.aoReceberComprovante({ medicoId: conversa.medicoId, pacienteId: conversa.pacienteId, mensagem: payload.data });
   }
   return {ok:true,acao:'mensagem_registrada'};
 }
