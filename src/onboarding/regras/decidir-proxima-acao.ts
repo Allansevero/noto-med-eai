@@ -105,3 +105,25 @@ export function montarBoasVindas(
     `Vi que sua última nota foi para ${ultimaNota.paciente}, de R$ ${valor}, emitida ${quando}.`
   ];
 }
+
+/** Reconhece somente respostas inequívocas; a data civil vem do chamador. */
+export function interpretarRespostaNota(texto: string, dataMensagem: string): { temNota: boolean; desde: string | null } | null {
+  const resposta = texto.trim().toLocaleLowerCase('pt-BR');
+  if (resposta === 'não') return { temNota: false, desde: null };
+  if (resposta === 'sim, desde hoje') return { temNota: true, desde: dataMensagem };
+  if (resposta !== 'sim, desde ontem') return null;
+  const ontem = new Date(dataMensagem + 'T00:00:00Z');
+  if (!Number.isFinite(ontem.getTime())) return null;
+  ontem.setUTCDate(ontem.getUTCDate() - 1);
+  return { temNota: true, desde: ontem.toISOString().slice(0, 10) };
+}
+
+export function montarPerguntaComunicacao(acao: ProximaAcaoNoto): string | null {
+  if (acao.tipo === 'perguntar_nota_pendente' || acao.tipo === 'reperguntar' && acao.pergunta === 'nota_pendente') {
+    return 'Tem alguma nota para emitir? Desde que dia?';
+  }
+  if (acao.tipo === 'pedir_agenda' || acao.tipo === 'reperguntar' && acao.pergunta === 'agenda') {
+    return 'Para eu achar suas consultas, preciso da sua agenda. Posso te mandar o link?';
+  }
+  return null;
+}

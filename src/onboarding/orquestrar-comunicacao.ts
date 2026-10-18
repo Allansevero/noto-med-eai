@@ -1,4 +1,4 @@
-import { decidirProximaAcao, montarBoasVindas, type EstadoMedicoAposOnboarding, type ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
+import { decidirProximaAcao, montarBoasVindas, interpretarRespostaNota, montarPerguntaComunicacao, type EstadoMedicoAposOnboarding, type ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
 import type { HistoricoComunicacaoRepositorio } from './historico-comunicacao-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 
@@ -6,6 +6,7 @@ interface EntradaComunicacao {
   medicoId: string;
   chaveProcessamento: string;
   nomeMedico?: string;
+  respostaMedico?: { texto: string; dataMensagem: string };
   instanciaNome?: string;
   contatoTelefone?: string;
   estado: Omit<EstadoMedicoAposOnboarding, 'historico'> & { agora: Date };
@@ -28,12 +29,22 @@ export async function orquestrarComunicacao(
   try {
     reservado = await historico.reservar(medicoId, modo, chaveProcessamento);
     if (!reservado) return { tipo: 'nenhuma' };
-    const salvo = await historico.ler(medicoId, modo);
-    const acao = decidirProximaAcao({ ...estado, historico: salvo });
+    let salvo = await historico.ler(medicoId, modo);
+    let acao = decidirProximaAcao({ ...estado, historico: salvo });
+    const fiscalOk = estado.fiscal.certificado === 'ok' && estado.fiscal.dadosFiscais === 'ok';
+    if (fiscalOk && entrada.respostaMedico && salvo.perguntaNota.feitaEm && !salvo.perguntaNota.resposta) {
+      const resposta = interpretarRespostaNota(entrada.respostaMedico.texto, entrada.respostaMedico.dataMensagem);
+      if (resposta) {
+        await historico.gravarResposta(medicoId, modo, resposta, estado.agora.toISOString());
+        salvo = await historico.ler(medicoId, modo);
+        acao = decidirProximaAcao({ ...estado, historico: salvo });
+      } else acao = salvo.perguntaNota.repeticoes === 0 ? { tipo: 'reperguntar', pergunta: 'nota_pendente' } : { tipo: 'nenhuma' };
+    }
     if (acao.tipo === 'nenhuma') return acao;
     if (envioRealAtivo) return await enviarAcao(entrada, dependencias, acao);
     await historico.gravarAcao(medicoId, 'simulado', chaveProcessamento, acao, estado.agora.toISOString());
-    log('info', `enviaria ${acao.tipo}`);
+    const texto = montarPerguntaComunicacao(acao);
+    log('info', `enviaria ${acao.tipo}${texto ? ': ' + texto : ''}`);
     return acao;
   } catch {
     log('erro', 'HISTORICO_COMUNICACAO_FALHOU');
