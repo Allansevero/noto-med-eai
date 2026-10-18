@@ -81,6 +81,12 @@ function painel() {
 }
 
 describe('jornada fiscal no painel', () => {
+  it('não oferece XML ao abrir uma referência ausente sem falha na busca automática', () => {
+    const p = painel();
+    runInContext('mostrarReferenciaFiscal(null, {})', p.contexto);
+    expect(p.el('fallbackXmlFiscal').classList.contains('hidden')).toBe(true);
+  });
+
   it('oferece XML somente após falhar a busca pelo certificado e oculta após sucesso', async () => {
     const p = painel();
     expect(p.el('fallbackXmlFiscal').classList.contains('hidden')).toBe(true);
