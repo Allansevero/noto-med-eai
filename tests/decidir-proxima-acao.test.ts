@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decidirProximaAcao, type EstadoMedicoAposOnboarding } from '../src/onboarding/regras/decidir-proxima-acao.js';
+import { decidirProximaAcao, montarBoasVindas, type EstadoMedicoAposOnboarding } from '../src/onboarding/regras/decidir-proxima-acao.js';
 
 const agora = new Date('2026-10-18T12:00:00Z');
 const intervaloDias = 3;
@@ -146,5 +146,90 @@ describe('ações já comunicadas não voltam', () => {
     const antes = structuredClone(estado); const instante = agora.getTime();
     expect(decidirProximaAcao(estado, agora, intervaloDias)).toEqual(decidirProximaAcao(estado, agora, intervaloDias));
     expect(estado).toEqual(antes); expect(agora.getTime()).toBe(instante);
+  });
+});
+
+describe('contrato decidirProximaAcao(estado)', () => {
+  const casos: Array<{
+    nome: string;
+    preparar: (estado: EstadoMedicoAposOnboarding) => void;
+    acao: object;
+  }> = [
+    { nome: 'problema_fiscal', preparar: estado => { estado.fiscal.certificado = 'problema'; },
+      acao: { tipo: 'problema_fiscal', campos: ['certificado'] } },
+    { nome: 'boas_vindas', preparar: estado => { estado.historico.boasVindasComunicadas = false; },
+      acao: { tipo: 'boas_vindas', ultimaNota: estadoDoMedico().ultimaNota } },
+    { nome: 'perguntar_nota_pendente', preparar: estado => { estado.historico.perguntaNota.feitaEm = null; },
+      acao: { tipo: 'perguntar_nota_pendente' } },
+    { nome: 'pedir_agenda', preparar: estado => { estado.historico.perguntaNota.resposta = { temNota: true, desde: null }; },
+      acao: { tipo: 'pedir_agenda', agendaInformada: null } },
+    { nome: 'agenda_nao_atendida', preparar: estado => { estado.agenda.nome = 'iClinic'; },
+      acao: { tipo: 'agenda_nao_atendida', agenda: 'iClinic', registrarInteresse: true } },
+    { nome: 'listar_consultas_sem_nota', preparar: estado => {
+      estado.agenda = { nome: 'TribeMD', conectada: true };
+      estado.historico.perguntaNota.resposta = { temNota: true, desde: '2026-10-01' };
+    }, acao: { tipo: 'listar_consultas_sem_nota', agenda: 'tribemd', desde: '2026-10-01' } },
+    { nome: 'aguardar_comprovante', preparar: estado => { estado.historico.perguntaNota.resposta = { temNota: false, desde: null }; },
+      acao: { tipo: 'aguardar_comprovante' } },
+    { nome: 'reperguntar', preparar: estado => { estado.historico.perguntaNota.feitaEm = '2026-10-15T12:00:00Z'; },
+      acao: { tipo: 'reperguntar', pergunta: 'nota_pendente' } },
+    { nome: 'nenhuma', preparar: estado => {
+      estado.historico.perguntaNota = { feitaEm: '2026-10-01T12:00:00Z', resposta: null, repeticoes: 1 };
+    }, acao: { tipo: 'nenhuma' } }
+  ];
+
+  it.each(casos)('$nome com uma única entrada devolve uma única ação exata', ({ preparar, acao }) => {
+    const estado = { ...estadoDoMedico(), agora, intervaloReperguntaDias: intervaloDias };
+    preparar(estado);
+    expect(decidirProximaAcao(estado)).toEqual(acao);
+  });
+
+  it.each(casos)('certificado ou dado fiscal vence o estado $nome', ({ preparar }) => {
+    for (const campo of ['certificado', 'dadosFiscais'] as const) {
+      const estado = { ...estadoDoMedico(), agora, intervaloReperguntaDias: intervaloDias };
+      preparar(estado); estado.fiscal[campo] = 'problema';
+      expect(decidirProximaAcao(estado).tipo).toBe('problema_fiscal');
+    }
+  });
+
+  it('usa relógio e intervalo do estado para não reperguntar antes do prazo', () => {
+    const estado = { ...estadoDoMedico(), agora, intervaloReperguntaDias: 4 };
+    estado.historico.perguntaNota.feitaEm = '2026-10-15T12:00:00Z';
+    expect(decidirProximaAcao(estado)).toEqual({ tipo: 'nenhuma' });
+    estado.intervaloReperguntaDias = 3;
+    expect(decidirProximaAcao(estado)).toEqual({ tipo: 'reperguntar', pergunta: 'nota_pendente' });
+    estado.historico.perguntaNota.repeticoes = 1;
+    expect(decidirProximaAcao(estado)).toEqual({ tipo: 'nenhuma' });
+  });
+
+  it('não altera o estado e é determinística com uma única entrada', () => {
+    const estado = { ...estadoDoMedico(), agora, intervaloReperguntaDias: intervaloDias };
+    estado.historico.perguntaNota.feitaEm = '2026-10-01T12:00:00Z';
+    const antes = structuredClone(estado);
+    expect(decidirProximaAcao(estado)).toEqual({ tipo: 'reperguntar', pergunta: 'nota_pendente' });
+    expect(decidirProximaAcao(estado)).toEqual(decidirProximaAcao(estado));
+    expect(estado).toEqual(antes);
+  });
+});
+
+describe('boas-vindas fixas em quatro balões', () => {
+  it.each([[0, 'hoje'], [1, 'ontem'], [2, 'há 2 dias'], [18, 'há 18 dias']] as const)(
+    '%s dias desde a última nota escreve exatamente %s', (diasDesdeEmissao, quando) => {
+      const nota = { paciente: 'Paciente Exemplo', dataEmissao: '2026-10-18', valorCentavos: 123456, diasDesdeEmissao };
+      const antes = structuredClone(nota);
+      expect(montarBoasVindas('Ana Exemplo', nota)).toEqual([
+        'Olá, Dr(a). Ana Exemplo! Sou o Noto, seu assistente de notas fiscais.',
+        'Eu emito suas notas a partir dos comprovantes de pagamento dos pacientes e envio a nota fiscal direto na conversa do paciente, do seu próprio WhatsApp, como se fosse você.',
+        'Se você pedir, também entrego uma nota nova ou antiga por aqui.',
+        `Vi que sua última nota foi para Paciente Exemplo, de R$ 1.234,56, emitida ${quando}.`
+      ]);
+      expect(nota).toEqual(antes);
+    }
+  );
+  it('formata centavos com duas casas sem arredondar para reais inteiros', () => {
+    const nota = { paciente: 'Outro Exemplo', dataEmissao: '2026-10-18', valorCentavos: 105, diasDesdeEmissao: 0 };
+    expect(montarBoasVindas('Outro Médico', nota)[3]).toBe(
+      'Vi que sua última nota foi para Outro Exemplo, de R$ 1,05, emitida hoje.'
+    );
   });
 });
