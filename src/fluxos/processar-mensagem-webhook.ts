@@ -122,7 +122,11 @@ export async function processarMensagemWebhook(
     });
   }
   if (deps.aoReceberComprovante && !payload.data.key.fromMe && tipo !== 'texto' && conversa.medicoId && conversa.pacienteId) {
-    await deps.aoReceberComprovante({ medicoId: conversa.medicoId, pacienteId: conversa.pacienteId, mensagem: payload.data });
+    try {
+      await deps.aoReceberComprovante({ medicoId: conversa.medicoId, pacienteId: conversa.pacienteId, mensagem: payload.data });
+    } catch {
+      console.error('COMPROVANTE_CICLO_FALHOU');
+    }
   }
   return {ok:true,acao:'mensagem_registrada'};
 }

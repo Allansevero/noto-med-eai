@@ -2,11 +2,28 @@ import type { DadosMensagemEvolution } from '../whatsapp/payload-webhook-schema.
 import type { ExtratorComprovante, EstadoPedidoComprovante, ResultadoExtracaoComprovante,
   DecisaoPedidoComprovante } from '../atendimento/comprovante.js';
 import type { HistoricoComunicacaoRepositorio } from '../onboarding/historico-comunicacao-repositorio.js';
+import type { ProcessarWebhookDeps } from './processar-mensagem-webhook.js';
 
 interface ProcessarComprovanteDeps {
   extrator: ExtratorComprovante;
   historico: Pick<HistoricoComunicacaoRepositorio, 'registrarComprovante'>;
   log: (nivel: 'erro', codigo: string) => void;
+}
+
+interface OrquestrarComprovanteDeps extends Omit<ProcessarComprovanteDeps, 'log'> {
+  lerEstado: (medicoId: string, pacienteId: string) => Promise<EstadoPedidoComprovante>;
+  log: (nivel: 'info' | 'erro', mensagem: string) => void;
+}
+
+export async function orquestrarComprovante(
+  contexto: Parameters<NonNullable<ProcessarWebhookDeps['aoReceberComprovante']>>[0],
+  deps: OrquestrarComprovanteDeps
+): Promise<DecisaoPedidoComprovante> {
+  const estado = await deps.lerEstado(contexto.medicoId, contexto.pacienteId);
+  const decisao = await processarComprovante(contexto.mensagem, estado, deps);
+  if (decisao.tipo === 'pedido_nota_pronto') deps.log('info', `pediria nota ${decisao.tipo}`);
+  if (decisao.tipo === 'perguntar_medico' || decisao.tipo === 'perguntar_pacote') deps.log('info', `enviaria ${decisao.tipo}`);
+  return decisao;
 }
 
 export async function processarComprovante(
