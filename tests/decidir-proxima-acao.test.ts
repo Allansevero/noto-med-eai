@@ -233,3 +233,16 @@ describe('boas-vindas fixas em quatro balões', () => {
     );
   });
 });
+
+describe('boas-vindas sem última nota com paciente conhecido', () => {
+  it.each([
+    null,
+    { dataEmissao: '2026-10-18', valorCentavos: 123456, diasDesdeEmissao: 0 }
+  ])('retorna somente os três primeiros balões quando a nota é %j', nota => {
+    expect(montarBoasVindas('Ana Exemplo', nota)).toEqual([
+      'Olá, Dr(a). Ana Exemplo! Sou o Noto, seu assistente de notas fiscais.',
+      'Eu emito suas notas a partir dos comprovantes de pagamento dos pacientes e envio a nota fiscal direto na conversa do paciente, do seu próprio WhatsApp, como se fosse você.',
+      'Se você pedir, também entrego uma nota nova ou antiga por aqui.'
+    ]);
+  });
+});
