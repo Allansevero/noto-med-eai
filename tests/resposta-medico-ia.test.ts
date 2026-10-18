@@ -68,7 +68,7 @@ async function cenario() {
 }
 it('sim livre sem data é gravado apenas no histórico simulado depois da extração', async () => {
   const c = await cenario();
-  expect(await orquestrarComunicacao({ ...c.entrada, chaveProcessamento: 'resposta', respostaMedico: { texto: 'tenho sim', dataMensagem: data, contexto } }, c.deps)).toEqual({ tipo: 'pedir_agenda', agendaInformada: null });
+  expect(await orquestrarComunicacao({ ...c.entrada, chaveProcessamento: 'resposta', respostaMedico: { texto: 'tenho sim', dataMensagem: data } }, c.deps)).toEqual({ tipo: 'pedir_agenda', agendaInformada: null });
   expect(c.extrair).toHaveBeenCalledExactlyOnceWith('tenho sim', data, contexto);
   expect((await c.historico.ler('medico-ficticio', 'simulado')).perguntaNota.resposta).toEqual({ temNota: true, desde: null });
   expect((await c.historico.ler('medico-ficticio', 'real')).perguntaNota.resposta).toBeNull();

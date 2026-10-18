@@ -77,3 +77,10 @@ it('confiança baixa continua incerta e permite só a repergunta existente', asy
   expect(await orquestrarComunicacao(entrada, c.deps as any)).toEqual({ tipo: 'reperguntar', pergunta: 'nota_pendente' });
   expect(await orquestrarComunicacao({ ...entrada, chaveProcessamento: 'outro' }, c.deps as any)).toEqual({ tipo: 'nenhuma' });
 });
+
+it('contexto não aceita objetos no lugar de texto e não os envia ao cliente', async () => {
+  cliente.mockResolvedValue(JSON.stringify({ temNota: 'sim', desde: null, confianca: 0.95 }));
+  const extrator = new ExtratorRespostaMedicoNvidia('credencial-ficticia', 'modelo-ficticio');
+  await expect((extrator.extrair as any)('sim', dia, { ...contexto, mensagens: [{ campoPrivado: 'NAO_ENVIAR' }] })).rejects.toThrow();
+  expect(cliente).not.toHaveBeenCalled();
+});
