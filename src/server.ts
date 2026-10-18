@@ -43,7 +43,6 @@ import { resolverMedicoId } from './onboarding/io/resolver-medico-id.js';
 import { salvarPerfilProfissional, ErroPerfilProfissional } from './io/postgres/salvar-perfil-profissional.js';
 import { salvarPreferenciasMedico } from './conta/salvar-preferencias-medico.js';
 import { ZodError } from 'zod';
-import { generateDanfsePdf } from './fiscal/danfse/gerar-danfse-pdf.js';
 import { HubDesenvolvedorCpfClient } from './io/hubdodesenvolvedor/hub-desenvolvedor-cpf-client.js';
 import { AdnNfseClient } from './io/fiscal/adn-nfse-client.js';
 import { extrairChavesCertificado } from './io/fiscal/extrair-chaves-certificado.js';
@@ -676,73 +675,6 @@ export function criarAppExpress() {
 
   app.post('/webhook/evolution', webhookHandler);
   app.post('/webhook/evolution/:evento', webhookHandler);
-
-  // Rota de Consulta Cadastral de CPF (Hub do Desenvolvedor)
-  app.get('/api/pacientes/consultar-cpf', async (req: Request, res: Response) => {
-    try {
-      const cpf = String(req.query['cpf'] || '');
-      if (!cpf) {
-        return res.status(400).json({ ok: false, detalhe: 'Parâmetro cpf é obrigatório' });
-      }
-      if (!hubCpfClient) {
-        return res.status(503).json({ ok: false, detalhe: 'HUB_DESENVOLVEDOR_TOKEN não configurado no servidor' });
-      }
-      const dados = await hubCpfClient.consultar(cpf);
-      if (!dados) {
-        return res.status(404).json({ ok: false, detalhe: 'CPF não encontrado ou inválido' });
-      }
-      return res.json({ ok: true, dados });
-    } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao consultar CPF' });
-    }
-  });
-
-  // Rota de Pré-visualização ou Download do DANFSe v2.0 em PDF
-  app.get('/api/danfse/preview', async (_req: Request, res: Response) => {
-    try {
-      const pdfBytes = await generateDanfsePdf({
-        ambiente: 'producao',
-        numero: '1',
-        serie: '00001',
-        prestador: {
-          razaoSocial: 'CLÍNICA MÉDICA DEMO LTDA',
-          cnpj: '12.345.678/0001-90',
-          inscricaoMunicipal: '99887766',
-          endereco: 'Av. Ipiranga, 6681 - Partenon',
-          municipio: 'Porto Alegre',
-          uf: 'RS',
-          cep: '90619-900',
-          telefone: '51999998888',
-          email: 'financeiro@clinicademo.com.br',
-          simplesNacional: true
-        },
-        tomador: {
-          nome: 'PACIENTE EXEMPLO SILVA',
-          cpf: '529.982.247-25',
-          endereco: 'Rua dos Andradas, 1000 - Centro',
-          municipio: 'Porto Alegre',
-          uf: 'RS',
-          cep: '90020-006',
-          telefone: '51988887777',
-          email: 'paciente@exemplo.com'
-        },
-        servico: {
-          cTribNac: '041601',
-          cNBS: '123011300',
-          valor: 350.00,
-          aliquota: 2.00,
-          issApurado: 7.00,
-          discriminacao: 'REFERENTE A 1 CONSULTA MÉDICA REALIZADA COM DR. EXEMPLO (CRM: 12345/RS) EM 27 DE SETEMBRO DE 2026.'
-        }
-      });
-
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'inline; filename="DANFSe-preview.pdf"');
-      return res.send(Buffer.from(pdfBytes));
-    } catch (err: any) {
-      return res.status(500).json({ ok: false, detalhe: err?.message || 'Erro ao gerar PDF do DANFSe' });
-    }
-  });
 
   if (process.env['NODE_ENV'] !== 'test') {
     setTimeout(() => {
