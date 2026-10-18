@@ -13,7 +13,7 @@ vi.mock('../src/api/nfse/processar-solicitacao-emissao-api.js', () => ({ process
 function leitura(): ResultadoExtracaoComprovante & { tipo: 'extraido' } {
   return { tipo: 'extraido', campos: {
     valorCentavos: 35000, dataPagamento: '2026-10-18', nomePagador: 'Paciente Exemplo', nomeFavorecido: 'Medica Exemplo',
-    confianca: { valorCentavos: 'alta', dataPagamento: 'alta', nomePagador: 'alta', nomeFavorecido: 'alta' }
+    confianca: { valorCentavos: 0.90, dataPagamento: 0.90, nomePagador: 0.90, nomeFavorecido: 0.90 }
   } };
 }
 function cadastro(): EstadoPedidoComprovante {
@@ -56,13 +56,25 @@ describe('pedido de nota determinístico a partir do comprovante', () => {
     const lido = leitura(); delete lido.campos[campo];
     expect(decidirPedidoComprovante(lido, cadastro(), [])).toEqual({ tipo: 'perguntar_medico', motivo: 'CAMPO_OBRIGATORIO_AUSENTE' });
   });
-  it.each(['valorCentavos', 'dataPagamento', 'nomePagador', 'nomeFavorecido'] as const)('confiança baixa em %s vai ao médico', campo => {
-    const lido = leitura(); lido.campos.confianca![campo] = 'baixa';
+  it.each(['valorCentavos', 'dataPagamento', 'nomePagador', 'nomeFavorecido'] as const)('confiança abaixo de 0,90 em %s vai ao médico', campo => {
+    const lido = leitura(); lido.campos.confianca![campo] = 0.8999;
     expect(decidirPedidoComprovante(lido, cadastro(), [])).toEqual({ tipo: 'perguntar_medico', motivo: 'CONFIANCA_INSUFICIENTE' });
   });
   it('confiança não informada não recebe um default', () => {
     const lido = leitura(); delete lido.campos.confianca;
     expect(decidirPedidoComprovante(lido, cadastro(), [])).toEqual({ tipo: 'perguntar_medico', motivo: 'CONFIANCA_INSUFICIENTE' });
+  });
+  it.each(['valorCentavos', 'dataPagamento', 'nomePagador', 'nomeFavorecido'] as const)('confiança de %s ausente não recebe default', campo => {
+    const lido = leitura(); delete lido.campos.confianca![campo];
+    expect(decidirPedidoComprovante(lido, cadastro(), [])).toEqual({ tipo: 'perguntar_medico', motivo: 'CONFIANCA_INSUFICIENTE' });
+  });
+  it.each([-0.01, 1.01, NaN, Infinity])('confiança %s fora da escala finita de 0 a 1 vai ao médico', confianca => {
+    const lido = leitura(); lido.campos.confianca!.nomeFavorecido = confianca;
+    expect(decidirPedidoComprovante(lido, cadastro(), [])).toEqual({ tipo: 'perguntar_medico', motivo: 'CONFIANCA_INSUFICIENTE' });
+  });
+  it('confiança máxima de 1 em todos os campos permite pedido pronto', () => {
+    const lido = leitura(); lido.campos.confianca = { valorCentavos: 1, dataPagamento: 1, nomePagador: 1, nomeFavorecido: 1 };
+    expect(decidirPedidoComprovante(lido, cadastro(), []).tipo).toBe('pedido_nota_pronto');
   });
   it('pagador diferente fica na observação estruturada, mantendo CPF do paciente', () => {
     const lido = leitura(); lido.campos.nomePagador = 'Pagador Exemplo';
@@ -108,7 +120,7 @@ describe('extração e auditoria antes de devolver qualquer pedido', () => {
   });
   it.each(['perguntar_medico', 'perguntar_pacote'] as const)('audita também %s', async tipo => {
     const lido = leitura();
-    if (tipo === 'perguntar_medico') lido.campos.confianca!.nomePagador = 'baixa';
+    if (tipo === 'perguntar_medico') lido.campos.confianca!.nomePagador = 0.8999;
     else lido.campos.valorCentavos = 70000;
     const { deps, historico } = cenario(undefined, lido);
     const decisao = await processarComprovante(mensagem(), cadastro(), deps);
