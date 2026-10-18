@@ -33,7 +33,8 @@ export class CofreTribemd {
     async status(id: string) {
         const p = await this.perfis.ler(id);
         try {
-            return { salvo: !!p.senha, estado: this.trabalhos.has(id) ? 'conectando' : p.cofre?.estado ?? (p.senha ? 'salvo' : 'vazio'),
+            const estado: NonNullable<PerfilTribemd['cofre']>['estado'] | 'conectando' | 'vazio' = this.trabalhos.has(id) ? 'conectando' : p.cofre?.estado ?? (p.senha ? 'salvo' : 'vazio');
+            return { salvo: !!p.senha, estado,
                 ativo: p.cofre?.ativo ?? false, verificadoEm: p.cofre?.verificadoEm ?? null, codigo: p.cofre?.codigo ?? null,
                 consultasDisponiveis: this.resultados.get(id)?.resultado.consultas.length ?? null };
         }

@@ -3,6 +3,12 @@ import type pg from 'pg';
 import { z } from 'zod';
 import { join } from 'node:path';
 import { CofreTribemd, ErroCofre, consentimentoCofre } from './tribemd-cofre.js';
+const conectadoPorEstado: Record<Awaited<ReturnType<CofreTribemd['status']>>['estado'], boolean> = {
+    vazio: false, salvo: false, conectando: false, conectado: true, desconectado: false, atencao: false
+};
+export function mapearStatusAgenda(status: Awaited<ReturnType<CofreTribemd['status']>>) {
+    return { nome: status.salvo ? 'tribemd' : null, conectada: status.ativo && conectadoPorEstado[status.estado] };
+}
 const credencial = z.object({ email: z.string().trim().email().max(254), senha: z.string().min(1).max(256), consentimento: z.literal(consentimentoCofre) }).strict();
 const vazio = z.object({}).strict();
 const apagar = (req: Request) => { if (Buffer.isBuffer((req as any).rawBody))
@@ -96,7 +102,7 @@ export function criarCofreContas(deps: {
         statusAgenda: async (medicoId: string) => {
             if (!cofre) throw new ErroCofre('COFRE_INDISPONIVEL');
             const status = await cofre.status(medicoId);
-            return { nome: status.salvo ? 'tribemd' : null, conectada: status.ativo && status.estado === 'conectado' };
+            return mapearStatusAgenda(status);
         }
     };
 }
