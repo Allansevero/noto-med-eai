@@ -29,7 +29,6 @@ export interface AppConfig {
   nvidiaRegistroModel?: string;
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
-  comparacaoFiscalAtiva?: boolean;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
 }
@@ -61,7 +60,6 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     nvidiaRegistroModel: env['NVIDIA_REGISTRO_MODEL']?.trim() || 'meta/llama-3.2-90b-vision-instruct',
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
-    comparacaoFiscalAtiva: env['COMPARACAO_FISCAL_ATIVA'] === 'true',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
   };

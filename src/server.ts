@@ -49,7 +49,6 @@ import { carregarCertificadoMedico } from './io/fiscal/carregar-certificado-medi
 import { sincronizarHistoricoEvolutionUmaVez } from './onboarding/io/sincronizar-historico-evolution.js';
 import { PostgresDadosProfissionaisService } from './io/postgres/postgres-dados-profissionais-service.js';
 import { registrarConexaoWhatsapp } from './onboarding/io/registrar-conexao-whatsapp.js';
-import { compararPerfilFiscal } from './onboarding/fluxos/comparar-perfil-fiscal.js';
 import { configurarDesempenhoHttp, OPCOES_ARQUIVOS_ESTATICOS } from './http/configurar-desempenho-http.js';
 import { tratarErrosHttp } from './http/tratar-erros-http.js';
 import { criarEncerramentoGracioso } from './processo/encerrar-gracioso.js';
@@ -336,20 +335,6 @@ export function criarAppExpress() {
       return res.json({ ok: true, ...resultado });
     } catch (err: any) {
       return res.status(400).json({ ok: false, detalhe: err?.message || 'Erro ao salvar preferências' });
-    }
-  });
-
-  app.post('/api/onboarding/comparar-fiscal', async (req: Request, res: Response) => {
-    if (!config.comparacaoFiscalAtiva) return res.json({ ok: true, ativo: false });
-    try {
-      if (!req.body?.medicoId) return res.status(400).json({ ok: false, detalhe: 'Médico não informado.' });
-      const medicoId = await resolverMedicoId(pool, req.body.medicoId);
-      const comparacao = await compararPerfilFiscal({ pool, supabase: authAdminService.supabaseClient, pepper: config.appPepper }, medicoId);
-      return res.json({ ok: true, ativo: true, comparacao });
-    } catch (erro: any) {
-      const detalhe = erro?.code === '42P01' ? 'Comparação fiscal ainda não preparada no servidor. A equipe precisa executar a migração.'
-        : erro?.message || 'Não foi possível comparar os dados fiscais agora.';
-      return res.status(400).json({ ok: false, ativo: true, detalhe });
     }
   });
 
