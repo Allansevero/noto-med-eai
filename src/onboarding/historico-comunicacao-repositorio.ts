@@ -12,7 +12,9 @@ export type HistoricoComunicacao = EstadoMedicoAposOnboarding['historico'] & {
     tipo: ProximaAcaoNoto['tipo'];
     pergunta?: 'nota_pendente' | 'agenda' | 'problema_fiscal';
     quando: string;
+    estado?: 'enviado';
   }>;
+  envios: Array<{ chaveProcessamento: string; tipo: ProximaAcaoNoto['tipo']; baloesEnviados: number[] }>;
 };
 
 export interface HistoricoComunicacaoRepositorio {
@@ -22,6 +24,8 @@ export interface HistoricoComunicacaoRepositorio {
   gravarAcao(medicoId: string, modo: ModoComunicacao, chaveProcessamento: string, acao: ProximaAcaoNoto, quando: string): Promise<void>;
   gravarResposta(medicoId: string, modo: ModoComunicacao, resposta: RespostaNota, quando: string): Promise<void>;
   liberar(medicoId: string, modo: ModoComunicacao, chaveProcessamento: string): Promise<void>;
+  reservarEnvio(medicoId: string, chaveProcessamento: string, acao: ProximaAcaoNoto): Promise<boolean>;
+  confirmarBalao(medicoId: string, chaveProcessamento: string, indice: number): Promise<void>;
 }
 
 interface EntradaMedico {
@@ -73,6 +77,7 @@ export class HistoricoComunicacaoEmMemoria implements HistoricoComunicacaoReposi
       }
     }
     historico.registros.push({ modo, chaveProcessamento, tipo: acao.tipo, quando,
+      ...(modo === 'real' ? { estado: 'enviado' as const } : {}),
       ...(acao.tipo === 'reperguntar' ? { pergunta: acao.pergunta } : {}) });
     medico.historico = historico;
   }
@@ -88,6 +93,24 @@ export class HistoricoComunicacaoEmMemoria implements HistoricoComunicacaoReposi
     if (medico.reserva === chaveProcessamento) medico.reserva = null;
   }
 
+  async reservarEnvio(medicoId: string, chaveProcessamento: string, acao: ProximaAcaoNoto): Promise<boolean> {
+    const medico = this.obterMedico(medicoId, 'real');
+    if (medico.reserva !== chaveProcessamento) throw new Error('COMUNICACAO_SEM_RESERVA');
+    // Mantém a ação reservada após falha: entrega incerta não autoriza reenvio.
+    if (medico.historico.envios.some(envio => envio.tipo === acao.tipo)) return false;
+    medico.historico.envios.push({ chaveProcessamento, tipo: acao.tipo, baloesEnviados: [] });
+    return true;
+  }
+
+  async confirmarBalao(medicoId: string, chaveProcessamento: string, indice: number): Promise<void> {
+    const medico = this.obterMedico(medicoId, 'real');
+    const envio = medico.historico.envios.find(item => item.chaveProcessamento === chaveProcessamento);
+    if (medico.reserva !== chaveProcessamento || !envio || indice !== envio.baloesEnviados.length) {
+      throw new Error('COMUNICACAO_CONFIRMACAO_INVALIDA');
+    }
+    envio.baloesEnviados.push(indice);
+  }
+
   private obterMedico(medicoId: string, modo: ModoComunicacao): EntradaMedico {
     const chave = JSON.stringify([medicoId, modo]);
     let medico = this.medicos.get(chave);
@@ -101,7 +124,7 @@ export class HistoricoComunicacaoEmMemoria implements HistoricoComunicacaoReposi
         perguntaNota: { feitaEm: null, repeticoes: 0, resposta: null },
         perguntaAgenda: { feitaEm: null, repeticoes: 0 },
         agendasNaoAtendidasComunicadas: [], consultasListadas: false, aguardandoComprovanteComunicado: false,
-        registros: []
+        registros: [], envios: []
       }
     };
     this.medicos.set(chave, medico);
