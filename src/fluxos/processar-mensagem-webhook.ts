@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Orquestrador central do webhook da Evolution API.
  * Valida autenticidade e payload, extrai contato e direciona para:
@@ -31,7 +32,7 @@ export interface ProcessarWebhookDeps {
   instanciaOficialNome?: string;
   instanciaAssistenteNome?: string;
   comunicacaoMedicoAtiva?: boolean;
-  aoReceberMensagemMedico?: (contexto: { medicoId: string; texto: string; chaveMensagem: string; dataMensagem: string | null }) => Promise<unknown>;
+  aoReceberMensagemMedico?: (contexto: { medicoId: string; texto: string; chaveMensagem: string; chaveConversa: string; dataMensagem: string | null }) => Promise<unknown>;
   aoAtualizarConexao?: (evento: { instancia: string; state: 'open' | 'close' | 'connecting' }) => Promise<void>;
   aoReceberComprovante?: (contexto: { medicoId: string; pacienteId: string; mensagem: DadosMensagemEvolution }) => Promise<unknown>;
 }
@@ -99,7 +100,8 @@ export async function processarMensagemWebhook(
           const numero = typeof bruto === 'number' ? bruto : typeof bruto === 'string' && bruto.trim() ? Number(bruto) : NaN;
           const data = new Date(numero > 1e11 ? numero : numero * 1000);
           const dataMensagem = Number.isFinite(data.getTime()) ? data.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : null;
-          await deps.aoReceberMensagemMedico({ medicoId: medico.id, texto, chaveMensagem: payload.data.key.id, dataMensagem });
+          const chaveConversa = createHash('sha256').update(JSON.stringify([payload.instance, telefone])).digest('hex');
+          await deps.aoReceberMensagemMedico({ medicoId: medico.id, texto, chaveMensagem: payload.data.key.id, chaveConversa, dataMensagem });
         }
       } catch { console.error('COMUNICACAO_MEDICO_CICLO_FALHOU'); }
     }

@@ -29,6 +29,7 @@ import { SupabaseAuthAdminService } from './io/supabase/supabase-auth-admin-serv
 import { solicitarOtp } from './otp/solicitar-otp.js';
 import { autenticarComOtp } from './auth/autenticar-com-otp.js';
 import { processarMensagemWebhook } from './fluxos/processar-mensagem-webhook.js';
+import { MemoriaConversaMedico } from './onboarding/contexto-conversa-medico.js';
 import { processarComunicacaoMedico } from './onboarding/processar-comunicacao-medico.js';
 import { lerEstadoComunicacaoMedico } from './onboarding/io/ler-estado-comunicacao-medico.js';
 import { orquestrarComprovante } from './fluxos/processar-comprovante.js';
@@ -71,6 +72,7 @@ export function criarAppExpress() {
   const otpRepo = new PostgresOtpRepositorio(pool);
   const atendimentoRepo = new PostgresAtendimentoRepositorio(pool, config.encryptionKey);
   const historicoComunicacao = new PostgresHistoricoComunicacao(pool);
+  const memoriaConversa = new MemoriaConversaMedico();
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
@@ -134,11 +136,11 @@ export function criarAppExpress() {
       pepper: config.appPepper
     });
 
-  const comunicarMedico = (medicoId: string, chaveProcessamento: string, texto?: string, dataMensagem?: string | null) => {
+  const comunicarMedico = (medicoId: string, chaveProcessamento: string, texto?: string, dataMensagem?: string | null, chaveConversa?: string) => {
     const agora = new Date();
-    return processarComunicacaoMedico({ medicoId, chaveProcessamento, agora,
+    return processarComunicacaoMedico({ medicoId, chaveProcessamento, agora, chaveConversa,
       ...(texto !== undefined ? { respostaMedico: { texto, dataMensagem: dataMensagem ?? null } } : {})
-    }, { ativo: config.comunicacaoMedicoAtiva === true, extratorResposta: new ExtratorRespostaMedicoNvidia(config.nvidiaApiKey, config.nvidiaRegistroModel), historico: historicoComunicacao,
+    }, { ativo: config.comunicacaoMedicoAtiva === true, memoriaConversa, extratorResposta: new ExtratorRespostaMedicoNvidia(config.nvidiaApiKey, config.nvidiaRegistroModel), historico: historicoComunicacao,
       lerEstado: async (id, instante) => lerEstadoComunicacaoMedico(pool, id, instante, await cofres.statusAgenda(id), config.preparacaoFiscalAtiva === true),
       log: (nivel, mensagem) => console[nivel === 'info' ? 'info' : 'error'](mensagem)
     });
@@ -648,7 +650,7 @@ export function criarAppExpress() {
         instanciaOficialNome: config.evolutionOfficialInstanceName,
         instanciaAssistenteNome: config.evolutionAssistantInstanceName,
         comunicacaoMedicoAtiva: config.comunicacaoMedicoAtiva,
-        aoReceberMensagemMedico: contexto => comunicarMedico(contexto.medicoId, `assistente:${contexto.chaveMensagem}`, contexto.texto, contexto.dataMensagem),
+        aoReceberMensagemMedico: contexto => comunicarMedico(contexto.medicoId, `assistente:${contexto.chaveMensagem}`, contexto.texto, contexto.dataMensagem, contexto.chaveConversa),
         aoReceberComprovante: contexto => orquestrarComprovante(contexto, {
           historico: historicoComunicacao,
           lerEstado: atendimentoRepo.lerEstado.bind(atendimentoRepo),

@@ -1,3 +1,5 @@
+import { MemoriaConversaMedico, sanitizarTextoMedico } from './contexto-conversa-medico.js';
+import { montarPerguntaComunicacao } from './regras/decidir-proxima-acao.js';
 import { orquestrarComunicacao } from './orquestrar-comunicacao.js';
 import type { HistoricoComunicacaoRepositorio } from './historico-comunicacao-repositorio.js';
 import type { ProximaAcaoNoto, ExtratorRespostaMedico } from './regras/decidir-proxima-acao.js';
@@ -10,8 +12,8 @@ const processamentos = new Map<string, Promise<ProximaAcaoNoto>>();
 
 /** A flag habilita somente a simulação; não recebe transporte nem opção de envio real. */
 export async function processarComunicacaoMedico(
-  entrada: Pick<Entrada, 'medicoId' | 'chaveProcessamento' | 'respostaMedico'> & { agora: Date },
-  deps: { ativo: boolean; extratorResposta?: ExtratorRespostaMedico; historico: HistoricoComunicacaoRepositorio;
+  entrada: Pick<Entrada, 'medicoId' | 'chaveProcessamento' | 'respostaMedico'> & { agora: Date; chaveConversa?: string },
+  deps: { ativo: boolean; memoriaConversa?: MemoriaConversaMedico; extratorResposta?: ExtratorRespostaMedico; historico: HistoricoComunicacaoRepositorio;
     lerEstado: (medicoId: string, agora: Date) => Promise<EstadoComunicacaoMedico | null>;
     log: (nivel: 'info' | 'erro', mensagem: string) => void }
 ): Promise<ProximaAcaoNoto> {
@@ -21,7 +23,19 @@ export async function processarComunicacaoMedico(
     try {
       const estado = await deps.lerEstado(entrada.medicoId, entrada.agora);
       if (!estado) return { tipo: 'nenhuma' };
-      return await orquestrarComunicacao({ ...entrada, ...estado }, { historico: deps.historico, log: deps.log, envioRealAtivo: false, extratorResposta: deps.extratorResposta });
+      const { memoriaConversa } = deps;
+      const conversa = entrada.chaveConversa;
+      const respostaMedico = entrada.respostaMedico ? { ...entrada.respostaMedico,
+        texto: sanitizarTextoMedico(entrada.respostaMedico.texto),
+        mensagensSeguras: memoriaConversa && conversa ? memoriaConversa.ler(entrada.medicoId, conversa) : entrada.respostaMedico.mensagensSeguras
+      } : undefined;
+      const acao = await orquestrarComunicacao({ ...entrada, ...estado, respostaMedico }, { historico: deps.historico, log: deps.log, envioRealAtivo: false, extratorResposta: deps.extratorResposta });
+      if (memoriaConversa && conversa) {
+        if (respostaMedico) memoriaConversa.registrar(entrada.medicoId, conversa, `medico:${entrada.chaveProcessamento}`, respostaMedico.texto);
+        const pergunta = montarPerguntaComunicacao(acao);
+        if (pergunta) memoriaConversa.registrar(entrada.medicoId, conversa, `noto:${entrada.chaveProcessamento}`, pergunta);
+      }
+      return acao;
     } catch {
       deps.log('erro', 'COMUNICACAO_ESTADO_FALHOU');
       return { tipo: 'nenhuma' };
