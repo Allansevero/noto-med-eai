@@ -50,10 +50,12 @@ it('migração nova cria só as tabelas faltantes com RLS, revokes e cascata por
   expect(sql).toContain('references public.noto_comunicacao_tentativas');
   expect(sql).not.toMatch(/\bpublic\.auditoria\b/);
 });
-it('última consulta mantém o filtro realizado, sem mudar parâmetros ou a leitura de ausência', async () => {
+it('última consulta vem da tabela sincronizada com status normalizado, sem inventar ausência', async () => {
   const query = vi.fn(async (_sql: string, _params: unknown[]) => ({ rows: [] }));
   const h = new PostgresAtendimentoRepositorio({ query } as unknown as pg.Pool, 'chave-ficticia');
   expect(await h.lerEstado(medico, 'paciente-ficticio')).toEqual({ medicoId: medico, paciente: { nome: null, cpf: null }, ultimaConsulta: null });
-  expect(query.mock.calls[0][0]).toMatch(/a\.status = 'realizado'/);
+  expect(query.mock.calls[0][0]).toMatch(/from public\.noto_consultas_sincronizadas a/);
+  expect(query.mock.calls[0][0]).toMatch(/a\.status = 'realizada'/);
+  expect(query.mock.calls[0][0]).not.toMatch(/from agendamentos/);
   expect(query.mock.calls[0][1]).toEqual([medico, 'paciente-ficticio', 'chave-ficticia']);
 });
