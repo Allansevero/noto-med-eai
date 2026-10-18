@@ -142,11 +142,18 @@ export function montarPerguntaComunicacao(acao: ProximaAcaoNoto): string | null 
 }
 
 export const respostaNotaExtraidaSchema = z.object({
-  temNota: z.enum(['sim', 'não', 'incerto']), desde: z.string().nullable(), confianca: z.number().finite().min(0).max(1)
+  temNota: z.enum(['sim', 'não', 'incerto', 'fora_do_assunto']), desde: z.string().nullable(), confianca: z.number().finite().min(0).max(1)
 }).strict();
 export type RespostaNotaExtraida = z.infer<typeof respostaNotaExtraidaSchema>;
+// Limite técnico do contexto, sem alterar regras de decisão ou intervalos.
+export const LIMITE_MENSAGENS_CONTEXTO_MEDICO = 4;
+export const contextoRespostaMedicoSchema = z.object({
+  acaoPendente: z.enum(['perguntar_nota_pendente', 'pedir_agenda']),
+  pergunta: z.string(), mensagens: z.array(z.string()).max(LIMITE_MENSAGENS_CONTEXTO_MEDICO)
+}).strict();
+export type ContextoRespostaMedico = z.infer<typeof contextoRespostaMedicoSchema>;
 export interface ExtratorRespostaMedico {
-  extrair(texto: string, dataMensagem: string): Promise<RespostaNotaExtraida>;
+  extrair(texto: string, dataMensagem: string, contexto: ContextoRespostaMedico): Promise<RespostaNotaExtraida>;
 }
 
 /** A IA extrai; confiança, calendário e ausência de resposta são validados em código. */
@@ -154,7 +161,7 @@ export function validarRespostaNotaExtraida(extraido: unknown, texto: string, da
   const resultado = respostaNotaExtraidaSchema.safeParse(extraido);
   if (!resultado.success || !dataMensagem || !interpretarRespostaNota('sim, desde hoje', dataMensagem)) return null;
   const campos = resultado.data;
-  if (campos.confianca < CONFIANCA_MINIMA_COMPROVANTE || campos.temNota === 'incerto') return null;
+  if (campos.confianca < CONFIANCA_MINIMA_COMPROVANTE || campos.temNota === 'incerto' || campos.temNota === 'fora_do_assunto') return null;
   if (campos.temNota === 'não') return campos.desde === null ? { temNota: false, desde: null } : null;
   const relativa = /\bdesde\s+(hoje|ontem|dia\s+\d+)\s*[.!?]?\s*$/i.exec(texto);
   if (relativa) return interpretarRespostaNota('sim, desde ' + relativa[1].toLocaleLowerCase('pt-BR').replace(/\s+/g, ' '), dataMensagem);

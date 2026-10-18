@@ -1,4 +1,5 @@
-import { decidirProximaAcao, montarBoasVindas, validarRespostaNotaExtraida, montarPerguntaComunicacao, type ExtratorRespostaMedico, type EstadoMedicoAposOnboarding, type ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
+import { CONFIANCA_MINIMA_COMPROVANTE } from '../atendimento/comprovante.js';
+import { decidirProximaAcao, montarBoasVindas, validarRespostaNotaExtraida, montarPerguntaComunicacao, respostaNotaExtraidaSchema, LIMITE_MENSAGENS_CONTEXTO_MEDICO, type ContextoRespostaMedico, type ExtratorRespostaMedico, type EstadoMedicoAposOnboarding, type ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
 import type { HistoricoComunicacaoRepositorio } from './historico-comunicacao-repositorio.js';
 import type { EnviarMensagemPaciente } from '../whatsapp/enviar-mensagem-paciente.js';
 
@@ -6,7 +7,7 @@ interface EntradaComunicacao {
   medicoId: string;
   chaveProcessamento: string;
   nomeMedico?: string;
-  respostaMedico?: { texto: string; dataMensagem: string | null };
+  respostaMedico?: { texto: string; dataMensagem: string | null; mensagensSeguras?: readonly string[] };
   instanciaNome?: string;
   contatoTelefone?: string;
   estado: Omit<EstadoMedicoAposOnboarding, 'historico'> & { agora: Date };
@@ -35,11 +36,21 @@ export async function orquestrarComunicacao(
     const fiscalOk = estado.fiscal.certificado === 'ok' && estado.fiscal.dadosFiscais === 'ok';
     if (fiscalOk && entrada.respostaMedico && salvo.perguntaNota.feitaEm && !salvo.perguntaNota.resposta) {
       const { texto, dataMensagem } = entrada.respostaMedico;
+      const ultimaPergunta = salvo.registros.filter(registro => registro.tipo === 'perguntar_nota_pendente' || registro.tipo === 'pedir_agenda' ||
+        registro.tipo === 'reperguntar' && (registro.pergunta === 'nota_pendente' || registro.pergunta === 'agenda')).at(-1);
+      const pedirAgenda = ultimaPergunta?.tipo === 'pedir_agenda' || ultimaPergunta?.pergunta === 'agenda';
+      const contexto: ContextoRespostaMedico = {
+        acaoPendente: pedirAgenda ? 'pedir_agenda' : 'perguntar_nota_pendente',
+        pergunta: montarPerguntaComunicacao(pedirAgenda ? { tipo: 'pedir_agenda', agendaInformada: null } : { tipo: 'perguntar_nota_pendente' })!,
+        mensagens: entrada.respostaMedico.mensagensSeguras?.slice(-LIMITE_MENSAGENS_CONTEXTO_MEDICO) ?? []
+      };
       let extraido: unknown = null;
       if (dataMensagem && dependencias.extratorResposta) {
-        try { extraido = await dependencias.extratorResposta.extrair(texto, dataMensagem); }
+        try { extraido = await dependencias.extratorResposta.extrair(texto, dataMensagem, contexto); }
         catch { /* Erro do provedor fica incerto; nunca registrar seu corpo ou o texto do médico. */ }
       }
+      const campos = respostaNotaExtraidaSchema.safeParse(extraido);
+      if (contexto.acaoPendente !== 'perguntar_nota_pendente' || campos.success && campos.data.temNota === 'fora_do_assunto' && campos.data.confianca >= CONFIANCA_MINIMA_COMPROVANTE) return { tipo: 'nenhuma' };
       const resposta = validarRespostaNotaExtraida(extraido, texto, dataMensagem);
       if (resposta) {
         await historico.gravarResposta(medicoId, modo, resposta, estado.agora.toISOString());
