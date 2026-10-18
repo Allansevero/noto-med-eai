@@ -83,7 +83,7 @@ it('mensagem atrasada calcula hoje pelo timestamp recebido, nunca pelo relógio 
   await receber(mensagem('m3', 'tenho sim desde hoje'), app);
   expect(banco.historicos.get(JSON.stringify([medico, 'simulado']))!.resposta_nota).toEqual({ temNota: true, desde: '2026-03-02' });
   expect(fronteiras.completar).toHaveBeenCalledTimes(1);
-  expect(fronteiras.completar.mock.calls[0][2][1]).toEqual({ role: 'user', content: JSON.stringify({ texto: 'tenho sim desde hoje', dataMensagem: '2026-03-02' }) });
+  expect(fronteiras.completar.mock.calls[0][2][1]).toEqual({ role: 'user', content: JSON.stringify({ texto: 'tenho sim desde hoje', dataMensagem: '2026-03-02', contexto: { acaoPendente: 'perguntar_nota_pendente', pergunta: 'Tem alguma nota para emitir? Desde que dia?', mensagens: [] } }) });
 });
 it('timestamp ausente não é substituído pelo processamento e repergunta sem chamar IA', async () => {
   const { app } = await receber(mensagem('m1')); await receber(mensagem('m2'), app);

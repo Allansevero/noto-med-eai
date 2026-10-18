@@ -6,6 +6,7 @@ import { orquestrarComunicacao } from '../src/onboarding/orquestrar-comunicacao.
 import { HistoricoComunicacaoEmMemoria } from '../src/onboarding/historico-comunicacao-repositorio.js';
 const cliente = vi.hoisted(() => vi.fn());
 vi.mock('../src/io/nvidia/chat-client.js', () => ({ completarNvidia: cliente }));
+const contexto = { acaoPendente: 'perguntar_nota_pendente' as const, pergunta: 'Tem alguma nota para emitir? Desde que dia?', mensagens: [] };
 const data = '2026-03-02'; const agora = new Date('2026-10-18T15:00:00Z');
 let rede: ReturnType<typeof vi.spyOn>;
 beforeEach(() => { cliente.mockReset(); rede = vi.spyOn(globalThis, 'fetch').mockImplementation(() => { throw Error('REDE_PROIBIDA'); }); });
@@ -16,18 +17,18 @@ describe('extração da resposta usa o mesmo cliente, com IA falsa', () => {
   it('cliente recebe só texto e data civil, devolve apenas campos sem decidir ação', async () => {
     cliente.mockResolvedValue(JSON.stringify(campos));
     const extrator = new ExtratorRespostaMedicoNvidia('credencial-ficticia', 'modelo-ficticio');
-    expect(await extrator.extrair('tenho sim', data)).toEqual(campos);
+    expect(await extrator.extrair('tenho sim', data, contexto)).toEqual(campos);
     expect(cliente).toHaveBeenCalledTimes(1); const args = cliente.mock.calls[0];
     expect(args.slice(0, 2)).toEqual(['credencial-ficticia', 'modelo-ficticio']); expect(args[3]).toEqual({ formatoJson: true });
-    expect(args[2][1]).toEqual({ role: 'user', content: JSON.stringify({ texto: 'tenho sim', dataMensagem: data }) });
+    expect(args[2][1]).toEqual({ role: 'user', content: JSON.stringify({ texto: 'tenho sim', dataMensagem: data, contexto }) });
     expect(JSON.stringify(args[2])).not.toContain('credencial-ficticia');
   });
   it.each(['{}', '{"temNota":"sim","desde":null,"confianca":0.95,"emitir":true}', 'texto sem JSON'])('saída fora do contrato é rejeitada: %s', async resposta => {
     cliente.mockResolvedValue(resposta);
-    await expect(new ExtratorRespostaMedicoNvidia('credencial-ficticia', 'modelo-ficticio').extrair('sim', data)).rejects.toThrow();
+    await expect(new ExtratorRespostaMedicoNvidia('credencial-ficticia', 'modelo-ficticio').extrair('sim', data, contexto)).rejects.toThrow();
   });
   it('sem configuração não chama o provedor', async () => {
-    await expect(new ExtratorRespostaMedicoNvidia(undefined, undefined).extrair('sim', data)).rejects.toThrow(); expect(cliente).not.toHaveBeenCalled();
+    await expect(new ExtratorRespostaMedicoNvidia(undefined, undefined).extrair('sim', data, contexto)).rejects.toThrow(); expect(cliente).not.toHaveBeenCalled();
   });
 });
 describe('decisão posterior à IA é determinística', () => {
@@ -67,8 +68,8 @@ async function cenario() {
 }
 it('sim livre sem data é gravado apenas no histórico simulado depois da extração', async () => {
   const c = await cenario();
-  expect(await orquestrarComunicacao({ ...c.entrada, chaveProcessamento: 'resposta', respostaMedico: { texto: 'tenho sim', dataMensagem: data } }, c.deps)).toEqual({ tipo: 'pedir_agenda', agendaInformada: null });
-  expect(c.extrair).toHaveBeenCalledExactlyOnceWith('tenho sim', data);
+  expect(await orquestrarComunicacao({ ...c.entrada, chaveProcessamento: 'resposta', respostaMedico: { texto: 'tenho sim', dataMensagem: data, contexto } }, c.deps)).toEqual({ tipo: 'pedir_agenda', agendaInformada: null });
+  expect(c.extrair).toHaveBeenCalledExactlyOnceWith('tenho sim', data, contexto);
   expect((await c.historico.ler('medico-ficticio', 'simulado')).perguntaNota.resposta).toEqual({ temNota: true, desde: null });
   expect((await c.historico.ler('medico-ficticio', 'real')).perguntaNota.resposta).toBeNull();
 });
