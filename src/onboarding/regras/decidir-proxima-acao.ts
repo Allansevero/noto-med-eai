@@ -8,6 +8,8 @@ interface UltimaNotaConhecida {
   diasDesdeEmissao: number;
 }
 export interface EstadoMedicoAposOnboarding {
+  agora?: Date;
+  intervaloReperguntaDias?: number;
   fiscal: { certificado: 'ok' | 'problema'; dadosFiscais: 'ok' | 'problema' };
   agenda: { nome: string | null; conectada: boolean };
   ultimaNota: UltimaNotaConhecida | null;
@@ -36,8 +38,8 @@ export type ProximaAcaoNoto =
 /** Histórico precisa refletir comunicações confirmadas; decidir não grava nem marca envio. */
 export function decidirProximaAcao(
   estado: EstadoMedicoAposOnboarding,
-  agora: Date,
-  intervaloReperguntaDias: number
+  agora = estado.agora,
+  intervaloReperguntaDias = estado.intervaloReperguntaDias
 ): ProximaAcaoNoto {
   const historico = estado.historico;
   const campos: Array<'certificado' | 'dados_fiscais'> = [];
@@ -70,11 +72,29 @@ export function decidirProximaAcao(
 function decidirRepergunta(
   historico: HistoricoPergunta,
   pergunta: 'nota_pendente' | 'agenda',
-  agora: Date,
-  intervaloDias: number
+  agora: Date | undefined,
+  intervaloDias: number | undefined
 ): ProximaAcaoNoto {
+  if (!agora || intervaloDias === undefined) return { tipo: 'nenhuma' };
   const intervaloMs = intervaloDias * 24 * 60 * 60 * 1000;
   if (historico.feitaEm && historico.repeticoes === 0 && Number.isFinite(intervaloMs) && intervaloMs > 0 &&
       agora.getTime() - Date.parse(historico.feitaEm) >= intervaloMs) return { tipo: 'reperguntar', pergunta };
   return { tipo: 'nenhuma' };
+}
+
+export function montarBoasVindas(
+  nomeMedico: string,
+  ultimaNota: UltimaNotaConhecida & { paciente: string }
+): [string, string, string, string] {
+  const dias = ultimaNota.diasDesdeEmissao;
+  const quando = dias === 0 ? 'hoje' : dias === 1 ? 'ontem' : `há ${dias} dias`;
+  const valor = (ultimaNota.valorCentavos / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+  return [
+    `Olá, Dr(a). ${nomeMedico}! Sou o Noto, seu assistente de notas fiscais.`,
+    'Eu emito suas notas a partir dos comprovantes de pagamento dos pacientes e envio a nota fiscal direto na conversa do paciente, do seu próprio WhatsApp, como se fosse você.',
+    'Se você pedir, também entrego uma nota nova ou antiga por aqui.',
+    `Vi que sua última nota foi para ${ultimaNota.paciente}, de R$ ${valor}, emitida ${quando}.`
+  ];
 }
