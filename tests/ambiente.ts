@@ -13,7 +13,7 @@ vi.stubEnv('SUPABASE_URL', 'https://supabase.invalid');
 vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'credencial-ficticia-de-teste');
 vi.stubEnv('ENCRYPTION_KEY', 'chave-ficticia-de-testes');
 vi.stubEnv('APP_PEPPER', 'pepper-ficticio-de-testes');
-for (const nome of ['TRIBEMD_TESTE_ATIVO', 'AGENTE_FISCAL_ATIVO', 'PREPARACAO_FISCAL_ATIVA', 'COMPARACAO_FISCAL_ATIVA']) vi.stubEnv(nome, 'false');
+for (const nome of ['AGENTE_FISCAL_ATIVO', 'PREPARACAO_FISCAL_ATIVA', 'COMPARACAO_FISCAL_ATIVA']) vi.stubEnv(nome, 'false');
 
 const fetchLocal = globalThis.fetch;
 vi.stubGlobal('fetch', (input: Parameters<typeof fetch>[0], init?: RequestInit) => {

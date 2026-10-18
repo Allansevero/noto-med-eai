@@ -2,7 +2,6 @@ import { criarCofreContas } from './cofre/router.js';
 import { PostgresCadastro } from './cadastro/postgres-cadastro.js';
 import { CadastroCertificado } from './cadastro/cadastro-certificado.js';
 import { criarConsultaEmpresa, PesquisaRegistroIndisponivel } from './cadastro/consultas.js';
-import { montarAreaTesteTribemd } from './desenvolvedor/tribemd-montar.js';
 import { criarRouterStatusWhatsapp } from './whatsapp/status-router.js';
 import { criarRouterCadastroPainel } from './cadastro/router-painel.js';
 import { OpenSerpConsultaRegistro } from './cadastro/openserp-registro.js';
@@ -61,8 +60,6 @@ const __dirname = dirname(__filename);
 
 export function criarAppExpress() {
   const app = express();
-  const testeTribemd = montarAreaTesteTribemd(app);
-  app.locals.encerrarTesteTribemd = testeTribemd.encerrar;
   configurarDesempenhoHttp(app);
 
   // Instanciação dos adaptadores de infraestrutura
@@ -727,7 +724,6 @@ if (process.env['NODE_ENV'] !== 'test') {
           servidor.close(() => resolver());
           servidor.closeIdleConnections();
         }),
-        app.locals.encerrarTesteTribemd(),
         app.locals.encerrarCofres()
       ]);
     },

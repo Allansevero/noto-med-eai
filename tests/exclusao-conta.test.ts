@@ -17,7 +17,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(servidor.address() as AddressInfo).port}`;
 });
 afterAll(async () => {
-  await Promise.all([app.locals.encerrarCofres(), app.locals.encerrarTesteTribemd()]);
+  await app.locals.encerrarCofres();
   await new Promise<void>((resolver, rejeitar) => servidor.close(erro => erro ? rejeitar(erro) : resolver()));
 });
 

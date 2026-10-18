@@ -13,7 +13,6 @@ comando ou serviço separado de worker, Noto Fiscal ou Noto IA nesta versão.
 - Recepção de eventos e histórico de WhatsApp, sem decisões dos agentes antigos.
 - API de emissão (`/api/v1/nfse`, `/v2/nfse`, `/v2/nfsen`), fila, assinatura,
   transmissão, armazenamento e conversão PDF.
-- Leitor TribeMD validado na área protegida `/desenvolvedor/tribemd/`, no mesmo app.
 - Cofre TribeMD por conta no painel: credenciais e cookies criptografados,
   conexão, leitura da agenda, reconexão, alteração, desconexão e exclusão.
 
