@@ -121,7 +121,8 @@ export async function processarMensagemWebhook(
       payloadBruto: payload.data
     });
   }
-  if (deps.aoReceberComprovante && !payload.data.key.fromMe && tipo !== 'texto' && conversa.medicoId && conversa.pacienteId) {
+  const midiaComprovante = !!payload.data.message?.imageMessage || payload.data.message?.documentMessage?.mimetype === 'application/pdf';
+  if (deps.aoReceberComprovante && !payload.data.key.fromMe && midiaComprovante && conversa.medicoId && conversa.pacienteId) {
     try {
       await deps.aoReceberComprovante({ medicoId: conversa.medicoId, pacienteId: conversa.pacienteId, mensagem: payload.data });
     } catch {

@@ -5,6 +5,7 @@
  */
 
 import type pg from 'pg';
+import type { EstadoPedidoComprovante, LeitorEstadoPedidoComprovante } from '../../atendimento/comprovante.js';
 import type {
   AtendimentoRepositorio,
   InstanciaRegistro,
@@ -14,11 +15,29 @@ import type {
 } from '../../atendimento/atendimento-repositorio.js';
 import { gerarVariantesTelefoneBrasileiro } from '../../whatsapp/variantes-telefone-brasileiro.js';
 
-export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio {
+export class PostgresAtendimentoRepositorio implements AtendimentoRepositorio, LeitorEstadoPedidoComprovante {
   constructor(
     private readonly pool: pg.Pool,
     private readonly chaveCriptografia: string
   ) {}
+
+  async lerEstado(medicoId: string, pacienteId: string): Promise<EstadoPedidoComprovante> {
+    const { rows } = await this.pool.query(`
+      select p.nome, case when p.cpf_cnpj_encriptado is not null
+        then pgp_sym_decrypt(p.cpf_cnpj_encriptado, $3) end as cpf,
+        consulta.id as consulta_id, consulta.valor_consulta_centavos
+      from pacientes p
+      left join lateral (
+        select a.id, a.valor_consulta_centavos from agendamentos a
+        where a.medico_id = $1 and a.paciente_id = $2 and a.status = 'realizado'
+        order by a.data_hora desc limit 1
+      ) consulta on true
+      where p.medico_id = $1 and p.id = $2
+    `, [medicoId, pacienteId, this.chaveCriptografia]);
+    const linha = rows[0];
+    return { medicoId, paciente: { nome: linha?.nome ?? null, cpf: linha?.cpf ?? null },
+      ultimaConsulta: linha?.consulta_id ? { valorConsultaCentavos: linha.valor_consulta_centavos ?? null } : null };
+  }
 
   async buscarInstanciaPorNome(nomeInstancia: string): Promise<InstanciaRegistro | null> {
     const sql = `

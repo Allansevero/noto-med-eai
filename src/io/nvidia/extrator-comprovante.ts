@@ -23,6 +23,7 @@ export class ExtratorComprovanteNvidia implements ExtratorComprovante {
   ) {}
 
   async extrair(mensagem: DadosMensagemEvolution): Promise<ResultadoExtracaoComprovante> {
+    if (mensagem.message?.documentMessage?.mimetype === 'application/pdf') return { tipo: 'pdf_nao_suportado' };
     const midia = await this.lerMidia(mensagem);
     // O cliente visual recebe imagem; PDF exige preparação de mídia, sem fingir uma conversão.
     if (!midia?.base64 || !midia.mimetype?.startsWith('image/')) throw new Error('COMPROVANTE_MIDIA_INDISPONIVEL');

@@ -16,6 +16,7 @@ export interface CamposComprovante {
 export type ResultadoExtracaoComprovante =
   | { tipo: 'extraido'; campos: CamposComprovante }
   | { tipo: 'ilegivel' }
+  | { tipo: 'pdf_nao_suportado' }
   | { tipo: 'nao_comprovante' };
 export interface ExtratorComprovante {
   extrair(mensagem: DadosMensagemEvolution): Promise<ResultadoExtracaoComprovante>;
@@ -25,10 +26,13 @@ export interface EstadoPedidoComprovante {
   paciente: { nome: string | null; cpf: string | null };
   ultimaConsulta: Pick<ConsultaEmAbertoRegistro, 'valorConsultaCentavos'> | null;
 }
+export interface LeitorEstadoPedidoComprovante {
+  lerEstado(medicoId: string, pacienteId: string): Promise<EstadoPedidoComprovante>;
+}
 export type DecisaoPedidoComprovante =
   | { tipo: 'nenhuma'; motivo: 'COMPROVANTE_JA_PROCESSADO' | 'AUDITORIA_FALHOU' }
   | { tipo: 'perguntar_medico'; motivo: 'LEITURA_INDISPONIVEL' | 'COMPROVANTE_ILEGIVEL' | 'NAO_COMPROVANTE'
-      | 'CAMPO_OBRIGATORIO_AUSENTE' | 'CONFIANCA_INSUFICIENTE' | 'CADASTRO_INCOMPLETO' | 'VALOR_DIVERGENTE' }
+      | 'CAMPO_OBRIGATORIO_AUSENTE' | 'CONFIANCA_INSUFICIENTE' | 'CADASTRO_INCOMPLETO' | 'VALOR_DIVERGENTE' | 'PDF_NAO_SUPORTADO' }
   | { tipo: 'perguntar_pacote'; motivo: 'VALOR_MULTIPLO_CONSULTA' }
   | { tipo: 'pedido_nota_pronto'; motivo: 'VALOR_IGUAL_ULTIMA_CONSULTA'; pedido: {
       medicoId: string; valorCentavos: number; dataPagamento: string;
@@ -46,6 +50,7 @@ export function decidirPedidoComprovante(
   processados: Array<ResultadoExtracaoComprovante | null>
 ): DecisaoPedidoComprovante {
   if (!lido) return { tipo: 'perguntar_medico', motivo: 'LEITURA_INDISPONIVEL' };
+  if (lido.tipo === 'pdf_nao_suportado') return { tipo: 'perguntar_medico', motivo: 'PDF_NAO_SUPORTADO' };
   if (lido.tipo === 'ilegivel') return { tipo: 'perguntar_medico', motivo: 'COMPROVANTE_ILEGIVEL' };
   if (lido.tipo === 'nao_comprovante') return { tipo: 'perguntar_medico', motivo: 'NAO_COMPROVANTE' };
   const { valorCentavos, dataPagamento, nomePagador, nomeFavorecido, confianca } = lido.campos;
