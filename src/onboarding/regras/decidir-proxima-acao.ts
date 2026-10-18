@@ -16,6 +16,7 @@ export interface EstadoMedicoAposOnboarding {
   historico: {
     /** Refere-se à ocorrência fiscal atual, não a problemas anteriores já resolvidos. */
     problemaFiscalComunicado: boolean;
+    problemaFiscal?: HistoricoPergunta;
     boasVindasComunicadas: boolean;
     perguntaNota: HistoricoPergunta & { resposta: { temNota: boolean; desde: string | null } | null };
     perguntaAgenda: HistoricoPergunta;
@@ -32,7 +33,7 @@ export type ProximaAcaoNoto =
   | { tipo: 'agenda_nao_atendida'; agenda: string; registrarInteresse: true }
   | { tipo: 'listar_consultas_sem_nota'; agenda: 'tribemd'; desde: string | null }
   | { tipo: 'aguardar_comprovante' }
-  | { tipo: 'reperguntar'; pergunta: 'nota_pendente' | 'agenda' }
+  | { tipo: 'reperguntar'; pergunta: 'nota_pendente' | 'agenda' | 'problema_fiscal' }
   | { tipo: 'nenhuma' };
 
 /** Histórico precisa refletir comunicações confirmadas; decidir não grava nem marca envio. */
@@ -45,7 +46,9 @@ export function decidirProximaAcao(
   const campos: Array<'certificado' | 'dados_fiscais'> = [];
   if (estado.fiscal.certificado === 'problema') campos.push('certificado');
   if (estado.fiscal.dadosFiscais === 'problema') campos.push('dados_fiscais');
-  if (campos.length) return historico.problemaFiscalComunicado ? { tipo: 'nenhuma' } : { tipo: 'problema_fiscal', campos };
+  if (campos.length && !historico.problemaFiscalComunicado) return { tipo: 'problema_fiscal', campos };
+  if (campos.length) return historico.problemaFiscal
+    ? decidirRepergunta(historico.problemaFiscal, 'problema_fiscal', agora, intervaloReperguntaDias) : { tipo: 'nenhuma' };
   if (!historico.boasVindasComunicadas) return { tipo: 'boas_vindas', ultimaNota: estado.ultimaNota ? { ...estado.ultimaNota } : null };
   if (!historico.perguntaNota.feitaEm) return { tipo: 'perguntar_nota_pendente' };
 
@@ -71,7 +74,7 @@ export function decidirProximaAcao(
 
 function decidirRepergunta(
   historico: HistoricoPergunta,
-  pergunta: 'nota_pendente' | 'agenda',
+  pergunta: 'nota_pendente' | 'agenda' | 'problema_fiscal',
   agora: Date | undefined,
   intervaloDias: number | undefined
 ): ProximaAcaoNoto {
