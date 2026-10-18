@@ -65,3 +65,12 @@ describe('cofre HTTP real com identidade e banco fake na borda', () => {
     expect(await perfis.ler(medicoA)).toEqual({}); expect(await perfis.ler(medicoB)).toEqual(perfil(false));
   });
 });
+
+it('status interno da agenda devolve só nome/conexão do dono, sem expor envelope', async () => {
+  expect(await (servico as any).statusAgenda(medicoA)).toEqual({ nome: 'tribemd', conectada: true });
+  expect(await (servico as any).statusAgenda(medicoB)).toEqual({ nome: 'tribemd', conectada: false });
+});
+it('perfil ausente não é tratado como agenda conectada', async () => {
+  await perfis.esquecer(medicoA);
+  expect(await (servico as any).statusAgenda(medicoA)).toEqual({ nome: null, conectada: false });
+});

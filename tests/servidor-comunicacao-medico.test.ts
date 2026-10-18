@@ -1,0 +1,76 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { BancoHistoricoFalso } from './fakes/banco-historico.js';
+import { criarAppExpress } from '../src/server.js';
+import { config } from '../src/config.js';
+import { EvolutionApiClient } from '../src/io/evolution/evolution-api-client.js';
+const fronteiras = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), agenda: vi.fn(), sincronizar: vi.fn(), emitir: vi.fn() }));
+vi.mock('../src/io/postgres/pool.js', () => ({ pool: { query: fronteiras.query, connect: fronteiras.connect } }));
+vi.mock('../src/cofre/router.js', async () => { const express = await import('express'); return { criarCofreContas: () => ({ app: express.default(), statusAgenda: fronteiras.agenda, encerrar: async () => {} }) }; });
+vi.mock('../src/onboarding/io/sincronizar-historico-evolution.js', () => ({ sincronizarHistoricoEvolutionUmaVez: fronteiras.sincronizar }));
+vi.mock('../src/api/nfse/processar-solicitacao-emissao-api.js', () => ({ processarSolicitacaoEmissaoApi: fronteiras.emitir }));
+const medico = '00000000-0000-4000-8000-000000000001';
+let banco: BancoHistoricoFalso; let logs: ReturnType<typeof vi.spyOn>, erros: ReturnType<typeof vi.spyOn>;
+let rede: ReturnType<typeof vi.spyOn>, enviar: ReturnType<typeof vi.spyOn>, pdf: ReturnType<typeof vi.spyOn>;
+const anterior = { ativo: config.comunicacaoMedicoAtiva, segredo: config.evolutionWebhookSecret };
+beforeEach(() => {
+  vi.clearAllMocks(); banco = new BancoHistoricoFalso(); config.comunicacaoMedicoAtiva = true; config.evolutionWebhookSecret = 'segredo-ficticio';
+  fronteiras.connect.mockImplementation(() => banco.connect()); fronteiras.agenda.mockResolvedValue({ nome: null, conectada: false });
+  fronteiras.sincronizar.mockResolvedValue({});
+  fronteiras.query.mockImplementation(async (sql: string) => {
+    if (sql.includes('as cert_ativos')) return { rows: [{ medico_id: medico, medico_nome: 'Medica Ficticia', crm: '12345/SC', rqe: null, confirmado_pelo_medico: true,
+      cert_ativos: '1', whats_conectados: '1', whatsapp_vinculado: true,
+      revisao_profissional: { estado: 'concluido', dados: { aprovacaoPainel: { confirmadoEm: '2026-10-17T15:00:00Z', nome: 'Medica Ficticia', crm: '12345/SC', rqe: null } } } }] };
+    if (sql.includes('from notas_fiscais')) return { rows: [] };
+    if (sql.includes('regexp_replace(u.telefone')) return { rows: [{ id: medico, nome_completo: 'Medica Ficticia', crm: '12345/SC', telefone: '5511999990000' }] };
+    if (sql.includes('update whatsapp_instancias')) return { rows: [{ medico_id: medico }] };
+    throw Error('SQL_FORA_DO_TESTE');
+  });
+  rede = vi.spyOn(globalThis, 'fetch').mockImplementation(() => { throw Error('REDE_PROIBIDA'); });
+  enviar = vi.spyOn(EvolutionApiClient.prototype, 'enviarTexto').mockImplementation(() => { throw Error('ENVIO_PROIBIDO'); });
+  pdf = vi.spyOn(EvolutionApiClient.prototype, 'enviarPdf').mockImplementation(() => { throw Error('PDF_PROIBIDO'); });
+  logs = vi.spyOn(console, 'info').mockImplementation(() => {}); erros = vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterEach(() => {
+  expect(rede).not.toHaveBeenCalled(); expect(enviar).not.toHaveBeenCalled(); expect(pdf).not.toHaveBeenCalled(); expect(fronteiras.emitir).not.toHaveBeenCalled();
+  config.comunicacaoMedicoAtiva = anterior.ativo; config.evolutionWebhookSecret = anterior.segredo; vi.restoreAllMocks();
+});
+function mensagem(id: string, texto = 'Olá') { return { event: 'messages.upsert', instance: config.evolutionAssistantInstanceName, data: {
+  key: { id, remoteJid: '5511999990000@s.whatsapp.net', fromMe: false }, message: { conversation: texto }
+} }; }
+async function receber(body: unknown, app = criarAppExpress()) {
+  const handler = (app as any).router.stack.find((c: any) => c.route?.path === '/webhook/evolution').route.stack[0].handle;
+  let status = 200; let corpo: any;
+  const res = { status(n: number) { status = n; return res; }, json(c: unknown) { corpo = c; return res; } };
+  await handler({ body, headers: { apikey: 'segredo-ficticio' }, query: {} }, res);
+  return { app, status, corpo };
+}
+const intencoes = () => logs.mock.calls.filter((args: unknown[]) => typeof args[0] === 'string' && /^enviaria /.test(args[0]));
+it('flag desligada no app preserva descarte e não toca banco/cofre/histórico', async () => {
+  config.comunicacaoMedicoAtiva = false;
+  expect((await receber(mensagem('m1'))).corpo).toEqual({ ok: true, acao: 'descartada', motivoDescarte: 'gatilho_nao_reconhecido' });
+  expect(fronteiras.query).not.toHaveBeenCalled(); expect(fronteiras.connect).not.toHaveBeenCalled(); expect(fronteiras.agenda).not.toHaveBeenCalled(); expect(intencoes()).toEqual([]);
+});
+it('assistente liga banco real do estado e histórico Postgres em ciclo seco com resposta registrada', async () => {
+  const { app } = await receber(mensagem('m1'));
+  await receber(mensagem('m2'), app);
+  await receber(mensagem('m3', 'não'), app);
+  expect(intencoes()).toEqual([['enviaria boas_vindas'], ['enviaria perguntar_nota_pendente: Tem alguma nota para emitir? Desde que dia?'], ['enviaria aguardar_comprovante']]);
+  expect(banco.historicos.get(JSON.stringify([medico, 'simulado']))!.resposta_nota).toEqual({ temNota: false, desde: null });
+  expect([...banco.historicos.values()].every(h => h.modo === 'simulado')).toBe(true);
+  await receber(mensagem('m3', 'não'), app); expect(intencoes()).toHaveLength(3); expect(erros).not.toHaveBeenCalled();
+});
+it('conexão autenticada do consultório aciona boas-vindas uma vez após onboarding', async () => {
+  const evento = { event: 'connection.update', instance: 'clinica-ficticia', data: { state: 'open' } };
+  const { app, corpo } = await receber(evento); expect(corpo).toEqual({ ok: true, acao: 'conexao_atualizada' });
+  await receber(evento, app); expect(intencoes()).toEqual([['enviaria boas_vindas']]);
+});
+it('falha do status do cofre não inventa agenda desconectada nem derruba webhook', async () => {
+  fronteiras.agenda.mockRejectedValueOnce(Error('erro privado ficticio'));
+  expect((await receber(mensagem('m1'))).status).toBe(200);
+  expect(intencoes()).toEqual([]); expect(erros.mock.calls).toEqual([['COMUNICACAO_ESTADO_FALHOU']]); expect(banco.tentativas.size).toBe(0);
+});
+it('flag desligada no evento de conexão não acrescenta consultas de comunicação', async () => {
+  config.comunicacaoMedicoAtiva = false;
+  await receber({ event: 'connection.update', instance: 'clinica-ficticia', data: { state: 'open' } });
+  expect(fronteiras.query).toHaveBeenCalledTimes(1); expect(fronteiras.connect).not.toHaveBeenCalled(); expect(fronteiras.agenda).not.toHaveBeenCalled(); expect(intencoes()).toEqual([]);
+});
