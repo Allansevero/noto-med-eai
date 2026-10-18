@@ -84,3 +84,10 @@ it('contexto não aceita objetos no lugar de texto e não os envia ao cliente', 
   await expect((extrator.extrair as any)('sim', dia, { ...contexto, mensagens: [{ campoPrivado: 'NAO_ENVIAR' }] })).rejects.toThrow();
   expect(cliente).not.toHaveBeenCalled();
 });
+
+it('fora do assunto abaixo de 0,90 continua incerto, sem dispensar a validação do 9b', async () => {
+  const c = await cenario(); c.extrair.mockResolvedValue({ temNota: 'fora_do_assunto', desde: null, confianca: 0.40 });
+  const entrada = { ...c.entrada, chaveProcessamento: 'baixa', respostaMedico: { texto: 'pode ser', dataMensagem: dia } };
+  expect(await orquestrarComunicacao(entrada, c.deps as any)).toEqual({ tipo: 'reperguntar', pergunta: 'nota_pendente' });
+  expect((await c.historico.ler('medico-ficticio', 'simulado')).perguntaNota.resposta).toBeNull();
+});
