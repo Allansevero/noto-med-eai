@@ -59,21 +59,31 @@ export class PostgresHistoricoComunicacao implements HistoricoComunicacaoReposit
       if (!estados[0]) throw new Error('HISTORICO_AUSENTE');
       const { rows: tentativas } = await client.query('select * from public.noto_comunicacao_tentativas where medico_id=$1 and modo=$2 order by criado_em, chave_processamento', [medico, modo]);
       const envios = modo === 'real' ? await this.lerAuditoria(client, medico, 'comunicacao_envios', 'noto_historico_comunicacao_medico') : [];
+      const reservas = await this.lerAuditoria(client, medico, `comunicacao_reserva_${modo}`, 'noto_historico_comunicacao_medico');
       const historico = this.montarHistorico(estados[0], tentativas, envios[0]?.dados_novos ?? []);
       const entrada: EntradaMedico = { historico, processamentos: new Set(tentativas.map(t => t.chave_processamento)),
-        reserva: tentativas.find(t => t.estado === 'reservado')?.chave_processamento ?? null };
+        reserva: reservas[0] ? reservas[0].dados_novos : tentativas.find(t => t.estado === 'reservado')?.chave_processamento ?? null };
       const antes = JSON.stringify(historico);
       const enviosAntes = JSON.stringify(historico.envios);
+      const reservaAntes = entrada.reserva;
       const memoria = new HistoricoComunicacaoEmMemoria(new Map([[JSON.stringify([medico, modo]), entrada]]));
       const resultado = await operacao(memoria);
       if (antes !== JSON.stringify(entrada.historico)) await this.salvarHistorico(client, medico, modo, entrada.historico);
       if (chave && entrada.processamentos.has(chave)) await this.salvarTentativa(client, medico, modo, chave, entrada, tentativas, acao);
+      // A ação concluída e a reserva ainda ativa são estados distintos na interface existente.
+      if (reservaAntes !== entrada.reserva || (!reservas[0] && entrada.reserva !== null)) {
+        await this.salvarAuditoria(client, medico, `comunicacao_reserva_${modo}`, reservas[0], entrada.reserva);
+      }
       if (enviosAntes !== JSON.stringify(entrada.historico.envios)) {
-        if (envios[0]) await client.query('update public.auditoria set dados_novos=$2::jsonb where id=$1', [envios[0].id, JSON.stringify(entrada.historico.envios)]);
-        else await client.query('insert into public.auditoria (acao, entidade, entidade_id, dados_novos) values ($1, $2, $3, $4::jsonb)', ['comunicacao_envios', 'noto_historico_comunicacao_medico', medico, JSON.stringify(entrada.historico.envios)]);
+        await this.salvarAuditoria(client, medico, 'comunicacao_envios', envios[0], entrada.historico.envios);
       }
       return resultado;
     });
+  }
+
+  private async salvarAuditoria(client: pg.PoolClient, medico: string, acao: string, anterior: Linha | undefined, valor: string | null | HistoricoComunicacao['envios']) {
+    if (anterior) await client.query('update public.auditoria set dados_novos=$2::jsonb where id=$1', [anterior.id, JSON.stringify(valor)]);
+    else await client.query('insert into public.auditoria (acao, entidade, entidade_id, dados_novos) values ($1, $2, $3, $4::jsonb)', [acao, 'noto_historico_comunicacao_medico', medico, JSON.stringify(valor)]);
   }
 
   private montarHistorico(linha: Linha, tentativas: Linha[], envios: HistoricoComunicacao['envios']): HistoricoComunicacao {
