@@ -60,7 +60,7 @@ describe('webhook assistente', () => {
   });
   it('mensagem recebida de médico identificado aciona uma vez o ciclo sem criar paciente', async () => {
     const c = webhook(true); await processarMensagemWebhook(c.payload, 'segredo-ficticio', c.deps);
-    expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia', dataMensagem: null });
+    expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia', chaveConversa: 'b37abf8e0d16b341fdbcb549ba228f479022562bd2f9074f1d1ddec4771b3e32', dataMensagem: null });
   });
   it.each(['enviada', 'grupo', 'imagem', 'oficial', 'segredo_invalido'] as const)('%s nunca é resposta do médico', async caso => {
     const c = webhook(true); let segredo = 'segredo-ficticio';
@@ -101,5 +101,14 @@ it('gatilhos simultâneos do mesmo médico preservam resposta clara após a amb�
  ])('timestamp do webhook %s vira data civil %s, sem usar processamento', async (timestamp, dataMensagem) => {
    const c = webhook(true); (c.payload.data as any).messageTimestamp = timestamp;
    await processarMensagemWebhook(c.payload, 'segredo-ficticio', c.deps);
-   expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia', dataMensagem });
+   expect(c.aoReceberMensagemMedico).toHaveBeenCalledExactlyOnceWith({ medicoId: 'medico-ficticio', texto: 'não', chaveMensagem: 'mensagem-ficticia', chaveConversa: 'b37abf8e0d16b341fdbcb549ba228f479022562bd2f9074f1d1ddec4771b3e32', dataMensagem });
  });
+
+it('contatos diferentes na instância assistente têm chaves de conversa distintas', async () => {
+  const c = webhook(true); await processarMensagemWebhook(c.payload, 'segredo-ficticio', c.deps);
+  const outro = structuredClone(c.payload); outro.data.key.remoteJid = '5511999990001@s.whatsapp.net';
+  await processarMensagemWebhook(outro, 'segredo-ficticio', c.deps);
+  const chamadas = c.aoReceberMensagemMedico.mock.calls as unknown as Array<[{ chaveConversa: string }]>;
+  expect(chamadas[0][0].chaveConversa).not.toBe(chamadas[1][0].chaveConversa);
+  expect(chamadas[0][0].chaveConversa).toMatch(/^[a-f0-9]{64}$/);
+});

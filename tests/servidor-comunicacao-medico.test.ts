@@ -83,7 +83,7 @@ it('mensagem atrasada calcula hoje pelo timestamp recebido, nunca pelo relógio 
   await receber(mensagem('m3', 'tenho sim desde hoje'), app);
   expect(banco.historicos.get(JSON.stringify([medico, 'simulado']))!.resposta_nota).toEqual({ temNota: true, desde: '2026-03-02' });
   expect(fronteiras.completar).toHaveBeenCalledTimes(1);
-  expect(fronteiras.completar.mock.calls[0][2][1]).toEqual({ role: 'user', content: JSON.stringify({ texto: 'tenho sim desde hoje', dataMensagem: '2026-03-02', contexto: { acaoPendente: 'perguntar_nota_pendente', pergunta: 'Tem alguma nota para emitir? Desde que dia?', mensagens: [] } }) });
+  expect(fronteiras.completar.mock.calls[0][2][1]).toEqual({ role: 'user', content: JSON.stringify({ texto: 'tenho sim desde hoje', dataMensagem: '2026-03-02', contexto: { acaoPendente: 'perguntar_nota_pendente', pergunta: 'Tem alguma nota para emitir? Desde que dia?', mensagens: ['Olá', 'Olá', 'Tem alguma nota para emitir? Desde que dia?'] } }) });
 });
 it('timestamp ausente não é substituído pelo processamento e repergunta sem chamar IA', async () => {
   const { app } = await receber(mensagem('m1')); await receber(mensagem('m2'), app);
@@ -92,4 +92,26 @@ it('timestamp ausente não é substituído pelo processamento e repergunta sem c
   expect(fronteiras.completar).not.toHaveBeenCalled();
   expect(banco.historicos.get(JSON.stringify([medico, 'simulado']))!.resposta_nota).toBeNull();
   expect(intencoes().at(-1)).toEqual(['enviaria reperguntar: Tem alguma nota para emitir? Desde que dia?']);
+});
+
+it('contexto real do app usa só quatro textos mascarados e não os persiste nem loga', async () => {
+  fronteiras.completar.mockResolvedValue(JSON.stringify({ temNota: 'fora_do_assunto', desde: null, confianca: 0.95 }));
+  const { app } = await receber(mensagem('m1')); await receber(mensagem('m2'), app);
+  const textos = ['CPF 529.982.247-25', 'CNPJ 12.345.678/0001-90', 'e-mail medico@example.invalid', 'telefone +55 (11) 99999-0000', 'protocolo 98765432101234567890'];
+  for (let i = 0; i < textos.length; i++) await receber(mensagem(`p${i}`, textos[i]), app);
+  const ultimo = JSON.parse(fronteiras.completar.mock.calls.at(-1)![2][1].content);
+  expect(ultimo.texto).toBe('protocolo [OCULTO]');
+  expect(ultimo.contexto.mensagens).toEqual(['CPF [OCULTO]', 'CNPJ [OCULTO]', 'e-mail [OCULTO]', 'telefone [OCULTO]']);
+  const gravado = JSON.stringify([[...banco.historicos.values()], [...banco.tentativas.values()], [...banco.reservas.values()]]);
+  const logado = JSON.stringify([logs.mock.calls, erros.mock.calls]);
+  for (const texto of textos) { expect(gravado).not.toContain(texto); expect(logado).not.toContain(texto); }
+  expect(gravado).not.toContain('[OCULTO]'); expect(logado).not.toContain('[OCULTO]');
+});
+it('nova instância do app não recupera textos da instância anterior', async () => {
+  fronteiras.completar.mockResolvedValue(JSON.stringify({ temNota: 'fora_do_assunto', desde: null, confianca: 0.95 }));
+  const { app } = await receber(mensagem('m1')); await receber(mensagem('m2'), app);
+  await receber(mensagem('m3', 'Como funciona?'), app);
+  expect(JSON.parse(fronteiras.completar.mock.calls.at(-1)![2][1].content).contexto.mensagens).not.toEqual([]);
+  await receber(mensagem('m4', 'E a mensalidade?'), criarAppExpress());
+  expect(JSON.parse(fronteiras.completar.mock.calls.at(-1)![2][1].content).contexto.mensagens).toEqual([]);
 });
