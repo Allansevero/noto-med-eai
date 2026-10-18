@@ -1,3 +1,4 @@
+import type { ResultadoFonteAgenda } from '../../agenda/fonte-agenda.js';
 import type pg from 'pg';
 import { HistoricoComunicacaoEmMemoria, type HistoricoComunicacaoRepositorio, type EntradaMedico,
   type HistoricoComunicacao, type ModoComunicacao } from '../../onboarding/historico-comunicacao-repositorio.js';
@@ -28,12 +29,12 @@ export class PostgresHistoricoComunicacao implements HistoricoComunicacaoReposit
   async lerComprovantes(medico: string): Promise<AuditoriaComprovante[]> {
     return this.transacao(client => this.lerAuditoriaComprovantes(client, medico));
   }
-  async registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null) {
+  async registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null, agenda?: ResultadoFonteAgenda) {
     return this.transacao(async client => {
       // Serializa a leitura/deduplicação/gravação por médico inclusive entre processos.
       await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [estado.medicoId]);
       const anteriores = await this.lerAuditoriaComprovantes(client, estado.medicoId);
-      const decisao = decidirPedidoComprovante(lido, estado, anteriores.map(registro => registro.lido));
+      const decisao = decidirPedidoComprovante(lido, estado, anteriores.map(registro => registro.lido), agenda);
       await client.query('insert into public.noto_auditoria_comprovantes (medico_id, lido, estado, decisao) values ($1, $2::jsonb, $3::jsonb, $4::jsonb)',
         [estado.medicoId, lido === null ? null : JSON.stringify(lido), JSON.stringify(estado), JSON.stringify(decisao)]);
       return decisao;

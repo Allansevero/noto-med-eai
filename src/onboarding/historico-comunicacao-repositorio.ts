@@ -1,3 +1,4 @@
+import type { ResultadoFonteAgenda } from '../agenda/fonte-agenda.js';
 import type { EstadoMedicoAposOnboarding, ProximaAcaoNoto } from './regras/decidir-proxima-acao.js';
 import { decidirPedidoComprovante, type AuditoriaComprovante, type EstadoPedidoComprovante,
   type ResultadoExtracaoComprovante, type DecisaoPedidoComprovante } from '../atendimento/comprovante.js';
@@ -29,7 +30,7 @@ export interface HistoricoComunicacaoRepositorio {
   reservarEnvio(medicoId: string, chaveProcessamento: string, acao: ProximaAcaoNoto): Promise<boolean>;
   confirmarBalao(medicoId: string, chaveProcessamento: string, indice: number): Promise<void>;
   lerComprovantes(medicoId: string): Promise<AuditoriaComprovante[]>;
-  registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null): Promise<DecisaoPedidoComprovante>;
+  registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null, agenda?: ResultadoFonteAgenda): Promise<DecisaoPedidoComprovante>;
 }
 
 export interface EntradaMedico {
@@ -47,10 +48,10 @@ export class HistoricoComunicacaoEmMemoria implements HistoricoComunicacaoReposi
     return structuredClone(this.comprovantes.get(medicoId) ?? []);
   }
 
-  async registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null): Promise<DecisaoPedidoComprovante> {
+  async registrarComprovante(estado: EstadoPedidoComprovante, lido: ResultadoExtracaoComprovante | null, agenda?: ResultadoFonteAgenda): Promise<DecisaoPedidoComprovante> {
     const anteriores = this.comprovantes.get(estado.medicoId) ?? [];
     // Sem await entre leitura, deduplicação e gravação: decisão e auditoria são atômicas nesta memória.
-    const decisao = decidirPedidoComprovante(lido, estado, anteriores.map(registro => registro.lido));
+    const decisao = decidirPedidoComprovante(lido, estado, anteriores.map(registro => registro.lido), agenda);
     this.comprovantes.set(estado.medicoId, [...anteriores, structuredClone({ lido, estado, decisao })]);
     return structuredClone(decisao);
   }

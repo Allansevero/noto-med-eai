@@ -1,3 +1,5 @@
+import type { ResultadoFonteAgenda } from '../agenda/fonte-agenda.js';
+import type { ProximaAcaoNoto } from '../onboarding/regras/decidir-proxima-acao.js';
 import { validarCpf } from '../paciente/validar-cpf.js';
 import type { ConsultaEmAbertoRegistro } from './atendimento-repositorio.js';
 import type { DadosMensagemEvolution } from '../whatsapp/payload-webhook-schema.js';
@@ -30,9 +32,10 @@ export interface LeitorEstadoPedidoComprovante {
   lerEstado(medicoId: string, pacienteId: string): Promise<EstadoPedidoComprovante>;
 }
 export type DecisaoPedidoComprovante =
+  | (Extract<ProximaAcaoNoto, { tipo: 'pedir_agenda' }> & { motivo: 'SEM_AGENDA_CONECTADA' })
   | { tipo: 'nenhuma'; motivo: 'COMPROVANTE_JA_PROCESSADO' | 'AUDITORIA_FALHOU' }
   | { tipo: 'perguntar_medico'; motivo: 'LEITURA_INDISPONIVEL' | 'COMPROVANTE_ILEGIVEL' | 'NAO_COMPROVANTE'
-      | 'CAMPO_OBRIGATORIO_AUSENTE' | 'CONFIANCA_INSUFICIENTE' | 'CADASTRO_INCOMPLETO' | 'VALOR_DIVERGENTE' | 'PDF_NAO_SUPORTADO' }
+      | 'CAMPO_OBRIGATORIO_AUSENTE' | 'CONFIANCA_INSUFICIENTE' | 'CADASTRO_INCOMPLETO' | 'VALOR_DIVERGENTE' | 'PDF_NAO_SUPORTADO' | 'FONTE_INDISPONIVEL' | 'ACESSO_EXPIRADO' }
   | { tipo: 'perguntar_pacote'; motivo: 'VALOR_MULTIPLO_CONSULTA' }
   | { tipo: 'pedido_nota_pronto'; motivo: 'VALOR_IGUAL_ULTIMA_CONSULTA'; pedido: {
       medicoId: string; valorCentavos: number; dataPagamento: string;
@@ -47,8 +50,13 @@ export interface AuditoriaComprovante {
 export function decidirPedidoComprovante(
   lido: ResultadoExtracaoComprovante | null,
   estado: EstadoPedidoComprovante,
-  processados: Array<ResultadoExtracaoComprovante | null>
+  processados: Array<ResultadoExtracaoComprovante | null>,
+  agenda?: ResultadoFonteAgenda
 ): DecisaoPedidoComprovante {
+  if (agenda?.tipo === 'erro') {
+    if (agenda.codigo === 'SEM_AGENDA_CONECTADA') return { tipo: 'pedir_agenda', agendaInformada: null, motivo: agenda.codigo };
+    return { tipo: 'perguntar_medico', motivo: agenda.codigo };
+  }
   if (!lido) return { tipo: 'perguntar_medico', motivo: 'LEITURA_INDISPONIVEL' };
   if (lido.tipo === 'pdf_nao_suportado') return { tipo: 'perguntar_medico', motivo: 'PDF_NAO_SUPORTADO' };
   if (lido.tipo === 'ilegivel') return { tipo: 'perguntar_medico', motivo: 'COMPROVANTE_ILEGIVEL' };
