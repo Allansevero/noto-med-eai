@@ -55,6 +55,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     private readonly preparacaoFiscalAtiva = false
   ) {}
 
+  emitir(item: SolicitacaoEmissaoItem & { emissaoComprovante?: never }): Promise<
+    ResultadoEmissaoDps & ({ sucesso: false } | { pdfStoragePath: string })>;
+  emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps>;
   async emitir(item: SolicitacaoEmissaoItem): Promise<ResultadoEmissaoDps> {
     return this.emitirPreparado(item);
   }
@@ -89,6 +92,9 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
     const prestadorConfig = await this.carregarPerfilFiscal(item.medicoId);
     if (!prestadorConfig) {
       return { sucesso: false, erro: `Perfil fiscal não cadastrado para o médico ${item.medicoId}` };
+    }
+    if (item.emissaoComprovante && prestadorConfig.ambiente !== 2) {
+      return { sucesso: false, erro: 'AMBIENTE_FISCAL_BLOQUEADO', codigoErroSefin: 'AMBIENTE_FISCAL_BLOQUEADO' };
     }
     if (prestadorConfig.referenciaImportada && !this.preparacaoFiscalAtiva) {
       return { sucesso: false, erro: 'Ative a preparação fiscal para emitir com os parâmetros da referência importada.',
@@ -409,7 +415,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
 
     let pdfBytes: Uint8Array | Buffer | undefined;
 
-    if (this.meuDanfeClient && (!this.preparacaoFiscalAtiva || xmlAutorizadoFinal)) {
+    if (!item.emissaoComprovante && this.meuDanfeClient && (!this.preparacaoFiscalAtiva || xmlAutorizadoFinal)) {
       try {
         const xmlString = xmlAutorizadoFinal || montarXmlNfse({
           chaveAcesso: chaveAcessoFinal,
@@ -432,7 +438,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       }
     }
 
-    if (!pdfBytes) {
+    if (!item.emissaoComprovante && !pdfBytes) {
       pdfBytes = await generateDanfsePdf(dadosDanfse);
     }
 
@@ -450,7 +456,7 @@ export class PostgresEmissorDpsService implements EmissorDpsService {
       }
     }
 
-    const pdfBase64 = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}`;
+    const pdfBase64 = pdfBytes ? `data:application/pdf;base64,${Buffer.from(pdfBytes).toString('base64')}` : null;
 
     return {
       sucesso: true,

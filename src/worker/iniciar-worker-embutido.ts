@@ -21,7 +21,7 @@ import { type NotificadorAlertas } from './notificar-erro-medico.js';
 
 export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
   const workerId = `embedded-${process.pid}-${randomUUID().slice(0, 6)}`;
-  const filaRepo = new PostgresFilaRepositorio(pool, config.agenteFiscalAtivo);
+  const filaRepo = new PostgresFilaRepositorio(pool, config.agenteFiscalAtivo, config.emissaoComprovanteHomologacaoAtiva);
   const meuDanfeClient = config.meuDanfeApiKey ? new MeuDanfeClient(config.meuDanfeApiKey) : undefined;
   const hubCpfClient = config.hubDesenvolvedorToken ? new HubDesenvolvedorCpfClient(config.hubDesenvolvedorToken) : undefined;
   const supabaseClient = config.supabaseUrl && config.supabaseServiceRoleKey
@@ -41,6 +41,9 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
     config.agenteFiscalAtivo,
     config.preparacaoFiscalAtiva
   );
+  const emissorComprovante = config.emissaoComprovanteHomologacaoAtiva
+    ? new PostgresEmissorDpsService(pool, config.encryptionKey, meuDanfeClient, hubCpfClient, supabaseClient, sefinClient, true, true)
+    : undefined;
   const evolutionClient = new EvolutionApiClient(
     config.evolutionApiUrl,
     config.evolutionGlobalApiKey,
@@ -98,7 +101,7 @@ export function iniciarWorkerEmbutido(pool: pg.Pool, config: AppConfig) {
         const res = await processarItemFila(item, {
           filaRepositorio: filaRepo,
           dadosProfissionais,
-          emissorDps,
+          emissorDps: item.emissaoComprovante && emissorComprovante ? emissorComprovante : emissorDps,
           enviarPdfDanfse: evolutionClient,
           notificadorAlertas
         });

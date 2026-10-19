@@ -13,7 +13,7 @@ import type {
 } from '../../worker/fila-repositorio.js';
 
 export class PostgresFilaRepositorio implements FilaRepositorio {
-  constructor(private readonly pool: pg.Pool, private readonly modoAgente = false) {}
+  constructor(private readonly pool: pg.Pool, private readonly modoAgente = false, private readonly emissaoComprovanteAtiva = false) {}
 
   async buscarETravarProximoItem(workerId: string): Promise<ItemFilaComTentativas | null> {
     const sql = `
@@ -21,13 +21,13 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         select id
         from solicitacoes_nota
         where fila = 'pronta'
-          and origem = 'api'
+          and ${this.emissaoComprovanteAtiva ? `(origem = 'api' or (origem = 'whatsapp' and exists (select 1 from public.noto_emissoes_comprovantes ec where ec.solicitacao_id = solicitacoes_nota.id and ec.medico_id = solicitacoes_nota.medico_id and ec.estado = 'enfileirada')))` : `origem = 'api'`}
           and not aguardando_dados_profissionais
           and not aguardando_confirmacao_medico
           and not aguardando_cpf_medico
           and status not in ('simulada', 'emitida')
           and (proxima_tentativa_em is null or proxima_tentativa_em <= now())
-          and (bloqueada_em is null or (not $2 and bloqueada_em < now() - interval '5 minutes'))
+          and (bloqueada_em is null or (${this.emissaoComprovanteAtiva ? `origem = 'api' and ` : ''}not $2 and bloqueada_em < now() - interval '5 minutes'))
         order by criado_em asc
         limit 1
         for update skip locked
@@ -38,7 +38,7 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
       from proximo
       where sn.id = proximo.id
       returning sn.id, sn.medico_id, sn.paciente_id, sn.xdesc_serv, sn.valor_servico_centavos,
-                sn.ctrib_nac, sn.cnbs, sn.cclass_trib, sn.cind_op, sn.tentativas
+                sn.ctrib_nac, sn.cnbs, sn.cclass_trib, sn.cind_op, sn.tentativas${this.emissaoComprovanteAtiva ? `, (sn.origem = 'whatsapp') as emissao_comprovante` : ''}
     `;
     const { rows } = await this.pool.query(sql, [workerId, this.modoAgente]);
     if (rows.length === 0) return null;
@@ -54,8 +54,60 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
       cnbs: r.cnbs,
       cclassTrib: r.cclass_trib,
       cindOp: r.cind_op,
-      tentativas: r.tentativas
+      tentativas: r.tentativas,
+      ...(r.emissao_comprovante === true ? { emissaoComprovante: true as const } : {})
     };
+  }
+
+  async iniciarEmissaoComprovante(solicitacaoId: string): Promise<'iniciada' | 'ocupada' | 'bloqueada'> {
+    if (!this.emissaoComprovanteAtiva) return 'bloqueada';
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const { rows } = await client.query(`select ec.estado, pf.ambiente
+        from public.noto_emissoes_comprovantes ec
+        join solicitacoes_nota sn on sn.id = ec.solicitacao_id and sn.medico_id = ec.medico_id
+        left join medico_perfil_fiscal pf on pf.medico_id = ec.medico_id
+        where ec.solicitacao_id = $1 and sn.origem = 'whatsapp'
+        for update of ec, sn`, [solicitacaoId]);
+      if (rows[0]?.estado !== 'enfileirada') {
+        await client.query('commit');
+        return 'ocupada';
+      }
+      if (rows[0].ambiente !== 'homologacao') {
+        await client.query(`update public.noto_emissoes_comprovantes set estado = 'bloqueada',
+          erro_codigo = 'AMBIENTE_FISCAL_BLOQUEADO', atualizado_em = now() where solicitacao_id = $1`, [solicitacaoId]);
+        await client.query(`update solicitacoes_nota set status = 'erro', fila = null,
+          erro = 'AMBIENTE_FISCAL_BLOQUEADO', bloqueada_em = null, bloqueada_por_worker = null where id = $1`, [solicitacaoId]);
+        await client.query('commit');
+        return 'bloqueada';
+      }
+      const inicio = await client.query(`update public.noto_emissoes_comprovantes set estado = 'emitindo', atualizado_em = now()
+        where solicitacao_id = $1 and estado = 'enfileirada'`, [solicitacaoId]);
+      if (inicio.rowCount !== 1) throw new Error('Reserva de emissão indisponível.');
+      await client.query('commit');
+      return 'iniciada';
+    } catch (erro) {
+      await client.query('rollback');
+      throw erro;
+    } finally { client.release(); }
+  }
+
+  async registrarFalhaComprovante(params: { solicitacaoId: string; erroCodigo: string }): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const resultado = await client.query(`update public.noto_emissoes_comprovantes
+        set estado = 'erro', erro_codigo = $2, atualizado_em = now()
+        where solicitacao_id = $1 and estado = 'emitindo'`, [params.solicitacaoId, params.erroCodigo]);
+      if (resultado.rowCount !== 1) throw new Error('Reserva de emissão indisponível.');
+      await client.query(`update solicitacoes_nota set status = 'erro', fila = null, erro = $2,
+        bloqueada_em = null, bloqueada_por_worker = null where id = $1`, [params.solicitacaoId, params.erroCodigo]);
+      await client.query('commit');
+    } catch (erro) {
+      await client.query('rollback');
+      throw erro;
+    } finally { client.release(); }
   }
 
   async suspenderPorDadosProfissionais(solicitacaoId: string): Promise<void> {
@@ -104,8 +156,9 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
           medico_id, solicitacao_id, chave_acesso, ndps, serie, competencia,
           data_emissao, status, valor_servicos_centavos, xml_storage_path, pdf_storage_path, resposta_sefin_raw
         ) values ($1, $2, $3, $4, $5, $6, $7, 'autorizada', $8, $9, $10, $11)
+        ${params.emissaoComprovante ? 'returning id' : ''}
       `;
-      await client.query(sqlNota, [
+      const nota = await client.query(sqlNota, [
         params.medicoId,
         params.solicitacaoId,
         params.chaveAcesso,
@@ -119,6 +172,13 @@ export class PostgresFilaRepositorio implements FilaRepositorio {
         params.respostaSefinRaw ? JSON.stringify(params.respostaSefinRaw) : null
       ]);
 
+      if (params.emissaoComprovante) {
+        const vinculo = await client.query(`update public.noto_emissoes_comprovantes
+          set estado = 'nota_gerada', nota_fiscal_id = $2, erro_codigo = null, atualizado_em = now()
+          where solicitacao_id = $1 and medico_id = $3 and estado = 'emitindo' and nota_fiscal_id is null`,
+          [params.solicitacaoId, nota.rows[0]?.id, params.medicoId]);
+        if (!nota.rows[0]?.id || vinculo.rowCount !== 1) throw new Error('Vínculo de emissão indisponível.');
+      }
       const sqlAtualizaSolicitacao = `
         update solicitacoes_nota
         set status = 'emitida',

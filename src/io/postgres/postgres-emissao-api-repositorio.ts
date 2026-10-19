@@ -53,7 +53,7 @@ export class PostgresEmissaoApiRepositorio implements EmissaoApiRepositorio {
     };
   }
 
-  async buscarPerfilFiscalMedico(medicoId: string): Promise<PerfilFiscalMedicoRegistro | null> {
+  async buscarPerfilFiscalMedico(medicoId: string, client?: pg.PoolClient): Promise<PerfilFiscalMedicoRegistro | null> {
     const sql = `
       select
         m.id as medico_id, m.nome_completo, m.especialidade, m.crm, m.rqe,
@@ -69,7 +69,7 @@ export class PostgresEmissaoApiRepositorio implements EmissaoApiRepositorio {
       where m.id = $1
       limit 1
     `;
-    const { rows } = await this.pool.query(sql, [medicoId]);
+    const { rows } = await (client ?? this.pool).query(sql, [medicoId]);
     if (rows.length === 0) return null;
     const r = rows[0];
     const completo = Boolean(r.confirmado_pelo_medico) && Boolean(r.ctrib_nac);
@@ -101,22 +101,22 @@ export class PostgresEmissaoApiRepositorio implements EmissaoApiRepositorio {
     return this.inserirNovoPaciente(medicoId, cpfHash, paciente);
   }
 
-  async enfileirarSolicitacao(params: CriarSolicitacaoEmissaoParams): Promise<{ id: string }> {
-    const client = await this.pool.connect();
+  async enfileirarSolicitacao(params: CriarSolicitacaoEmissaoParams, clientExterno?: pg.PoolClient): Promise<{ id: string }> {
+    const client = clientExterno ?? await this.pool.connect();
     try {
-      await client.query('begin');
+      if (!clientExterno) await client.query('begin');
       const sql = `
         insert into solicitacoes_nota (
           referencia_externa, medico_id, paciente_id, valor_servico_centavos,
           xdesc_serv, ctrib_nac, cnbs, cclass_trib, cind_op,
           datas_consulta_texto, origem, status, fila, tentativas
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'api', 'pronta', 'pronta', 0)
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pronta', 'pronta', 0)
         returning id
       `;
       const values = [
         params.ref, params.medicoId, params.pacienteId, params.valorServicoCentavos,
         params.xdescServ, params.ctribNac, params.cnbs ?? null, params.cclassTrib ?? null,
-        params.cindOp ?? null, params.datasConsultaTexto ?? null
+        params.cindOp ?? null, params.datasConsultaTexto ?? null, params.origem ?? 'api'
       ];
       const { rows } = await client.query(sql, values);
       const solicitacaoId = rows[0].id;
@@ -125,13 +125,13 @@ export class PostgresEmissaoApiRepositorio implements EmissaoApiRepositorio {
         from medico_servicos_fiscais f
         where s.id = $1 and f.medico_id = $2 and f.padrao = true and f.ativo = true
       `, [solicitacaoId, params.medicoId]);
-      await client.query('commit');
+      if (!clientExterno) await client.query('commit');
       return { id: solicitacaoId };
     } catch (erro) {
-      await client.query('rollback');
+      if (!clientExterno) await client.query('rollback');
       throw erro;
     } finally {
-      client.release();
+      if (!clientExterno) client.release();
     }
   }
 

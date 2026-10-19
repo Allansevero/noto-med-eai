@@ -12,6 +12,7 @@ export interface ItemFilaComTentativas extends SolicitacaoEmissaoItem {
 
 export interface RegistrarSucessoEmissaoParams {
   solicitacaoId: string;
+  emissaoComprovante?: true;
   medicoId: string;
   chaveAcesso: string;
   ndps: number;
@@ -20,7 +21,7 @@ export interface RegistrarSucessoEmissaoParams {
   dataEmissao: Date;
   valorServicosCentavos: number;
   xmlStoragePath: string;
-  pdfStoragePath: string;
+  pdfStoragePath: string | null;
   respostaSefinRaw?: Record<string, unknown>;
 }
 
@@ -32,6 +33,8 @@ export interface ContextoEnvioNota {
 }
 
 export interface FilaRepositorio {
+  iniciarEmissaoComprovante?(solicitacaoId: string): Promise<'iniciada' | 'ocupada' | 'bloqueada'>;
+  registrarFalhaComprovante?(params: { solicitacaoId: string; erroCodigo: string }): Promise<void>;
   buscarETravarProximoItem(workerId: string): Promise<ItemFilaComTentativas | null>;
   suspenderPorDadosProfissionais?(solicitacaoId: string): Promise<void>;
   buscarContextoEnvio(solicitacaoId: string): Promise<ContextoEnvioNota | null>;

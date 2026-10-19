@@ -6,6 +6,7 @@
 
 export interface SolicitacaoEmissaoItem {
   id: string;
+  emissaoComprovante?: true;
   medicoId: string;
   pacienteId: string;
   xdescServ: string;
@@ -26,7 +27,7 @@ export type ResultadoEmissaoDps =
       dataEmissao: Date;
       valorServicosCentavos: number;
       xmlStoragePath: string;
-      pdfStoragePath: string;
+      pdfStoragePath: string | null;
       respostaSefinRaw?: Record<string, unknown>;
     }
   | {

@@ -30,6 +30,7 @@ export interface AppConfig {
   agenteFiscalAtivo?: boolean;
   preparacaoFiscalAtiva?: boolean;
   comunicacaoMedicoAtiva?: boolean;
+  emissaoComprovanteHomologacaoAtiva?: boolean;
   meuDanfeApiKey?: string;
   hubDesenvolvedorToken?: string;
 }
@@ -62,6 +63,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     agenteFiscalAtivo: env['AGENTE_FISCAL_ATIVO'] === 'true',
     preparacaoFiscalAtiva: env['PREPARACAO_FISCAL_ATIVA'] === 'true',
     comunicacaoMedicoAtiva: env['COMUNICACAO_MEDICO_ATIVA'] === 'true',
+    emissaoComprovanteHomologacaoAtiva: env['EMISSAO_COMPROVANTE_HOMOLOGACAO_ATIVA'] === 'true',
     meuDanfeApiKey: env['MEU_DANFE_API_KEY'],
     hubDesenvolvedorToken: env['HUB_DESENVOLVEDOR_TOKEN'],
   };

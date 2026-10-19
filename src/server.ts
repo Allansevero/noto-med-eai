@@ -33,6 +33,7 @@ import { MemoriaConversaMedico } from './onboarding/contexto-conversa-medico.js'
 import { processarComunicacaoMedico } from './onboarding/processar-comunicacao-medico.js';
 import { lerEstadoComunicacaoMedico } from './onboarding/io/ler-estado-comunicacao-medico.js';
 import { orquestrarComprovante } from './fluxos/processar-comprovante.js';
+import { PostgresEmissaoComprovante } from './io/postgres/postgres-emissao-comprovante.js';
 import { PostgresHistoricoComunicacao } from './io/postgres/postgres-historico-comunicacao.js';
 import { ExtratorRespostaMedicoNvidia } from './io/nvidia/extrator-resposta-medico.js';
 import { ExtratorComprovanteNvidia } from './io/nvidia/extrator-comprovante.js';
@@ -173,6 +174,8 @@ export function criarAppExpress() {
 
   // API de Emissão de NFS-e (compatível com Focus NFe + Zero-Config)
   const emissaoApiRepo = new PostgresEmissaoApiRepositorio(pool, config.encryptionKey, config.appPepper);
+  const emissaoComprovante = config.emissaoComprovanteHomologacaoAtiva === true
+    ? new PostgresEmissaoComprovante(pool, config.encryptionKey, config.appPepper) : null;
   const routerNfse = criarRouterNfse({
     repositorio: emissaoApiRepo,
     autenticar: async token => {
@@ -653,6 +656,11 @@ export function criarAppExpress() {
         aoReceberMensagemMedico: contexto => comunicarMedico(contexto.medicoId, `assistente:${contexto.chaveMensagem}`, contexto.texto, contexto.dataMensagem, contexto.chaveConversa),
         aoReceberComprovante: contexto => orquestrarComprovante(contexto, {
           historico: historicoComunicacao,
+          aoDecidir: emissaoComprovante ? async (decisao, lido) => {
+            const resultado = await emissaoComprovante.enfileirar({ ...contexto, decisao, lido });
+            if (resultado.tipo === 'perguntar_medico') console.info('enviaria perguntar_medico');
+            if (resultado.tipo === 'enfileirada') console.info('Solicitação enfileirada por comprovante.');
+          } : undefined,
           lerEstado: atendimentoRepo.lerEstado.bind(atendimentoRepo),
           extrator: new ExtratorComprovanteNvidia(config.nvidiaApiKey, config.nvidiaRegistroModel,
             mensagem => evolutionClient.obterBase64MensagemMidia(req.body.instance, mensagem.key.id)),

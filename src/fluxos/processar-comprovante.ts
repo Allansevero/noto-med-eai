@@ -10,6 +10,7 @@ interface ProcessarComprovanteDeps {
   extrator: ExtratorComprovante;
   historico: Pick<HistoricoComunicacaoRepositorio, 'registrarComprovante'>;
   log: (nivel: 'erro', codigo: string) => void;
+  aoDecidir?: (decisao: DecisaoPedidoComprovante, lido: ResultadoExtracaoComprovante | null) => Promise<void>;
 }
 
 interface OrquestrarComprovanteDeps extends Omit<ProcessarComprovanteDeps, 'log'> {
@@ -23,7 +24,7 @@ export async function orquestrarComprovante(
 ): Promise<DecisaoPedidoComprovante> {
   const estado = await deps.lerEstado(contexto.medicoId, contexto.pacienteId);
   const decisao = await processarComprovante(contexto.mensagem, estado, deps);
-  if (decisao.tipo === 'pedido_nota_pronto') deps.log('info', `pediria nota ${decisao.tipo}`);
+  if (decisao.tipo === 'pedido_nota_pronto' && !deps.aoDecidir) deps.log('info', `pediria nota ${decisao.tipo}`);
   if (decisao.tipo === 'perguntar_medico' || decisao.tipo === 'perguntar_pacote' || decisao.tipo === 'pedir_agenda') deps.log('info', `enviaria ${decisao.tipo}`);
   return decisao;
 }
@@ -36,9 +37,16 @@ export async function processarComprovante(
     try { lido = await deps.extrator.extrair(mensagem); }
     catch { /* A indisponibilidade é auditada sem inventar campos ou expor o erro do provedor. */ }
   }
-  try { return await deps.historico.registrarComprovante(estado, lido, deps.agenda); }
+  let decisao: DecisaoPedidoComprovante;
+  try { decisao = await deps.historico.registrarComprovante(estado, lido, deps.agenda); }
   catch {
     deps.log('erro', 'AUDITORIA_COMPROVANTE_FALHOU');
     return { tipo: 'nenhuma', motivo: 'AUDITORIA_FALHOU' };
   }
+  if (deps.aoDecidir && (decisao.tipo === 'pedido_nota_pronto' ||
+      decisao.tipo === 'nenhuma' && decisao.motivo === 'COMPROVANTE_JA_PROCESSADO')) {
+    try { await deps.aoDecidir(decisao, lido); }
+    catch { deps.log('erro', 'ENFILEIRAMENTO_COMPROVANTE_FALHOU'); }
+  }
+  return decisao;
 }

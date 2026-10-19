@@ -31,6 +31,7 @@ export async function processarItemFila(
   item: ItemFilaComTentativas,
   deps: ProcessarItemFilaDeps
 ): Promise<ResultadoProcessarItem> {
+  if (item.emissaoComprovante) return processarComprovante(item, deps);
   const dataAtual = deps.agora ? deps.agora() : new Date();
   const tentativaAtual = item.tentativas + 1;
 
@@ -59,9 +60,11 @@ async function tratarSucessoEmissao(item: ItemFilaComTentativas, emissao: any, d
     valorServicosCentavos: emissao.valorServicosCentavos,
     xmlStoragePath: emissao.xmlStoragePath,
     pdfStoragePath: emissao.pdfStoragePath,
-    respostaSefinRaw: emissao.respostaSefinRaw
+    respostaSefinRaw: emissao.respostaSefinRaw,
+    ...(item.emissaoComprovante ? { emissaoComprovante: true as const } : {})
   });
 
+  if (item.emissaoComprovante) return;
   const contexto = await deps.filaRepositorio.buscarContextoEnvio(item.id);
   if (contexto) {
     await deps.enviarPdfDanfse.enviarPdf({
@@ -121,4 +124,42 @@ async function aguardarDadosProfissionais(item: ItemFilaComTentativas, deps: Pro
   await deps.filaRepositorio.suspenderPorDadosProfissionais(item.id);
   await deps.dadosProfissionais?.retomar(item.medicoId);
   return { ok: false, status: 'aguardando_dados_profissionais' };
+}
+
+async function processarComprovante(item: ItemFilaComTentativas, deps: ProcessarItemFilaDeps): Promise<ResultadoProcessarItem> {
+  let autorizada = false;
+  try {
+    const inicio = await deps.filaRepositorio.iniciarEmissaoComprovante?.(item.id);
+    if (inicio === 'ocupada') return { ok: false, status: 'necessita_intervencao' };
+    if (inicio !== 'iniciada') {
+      await avisarFalhaComprovante(item, 'AMBIENTE_FISCAL_BLOQUEADO', deps);
+      return { ok: false, status: 'necessita_intervencao', motivo: 'AMBIENTE_FISCAL_BLOQUEADO' };
+    }
+    const emissao = await deps.emissorDps.emitir(item);
+    if (!emissao.sucesso) {
+      const codigo = emissao.codigoErroSefin === 'AMBIENTE_FISCAL_BLOQUEADO' ? 'AMBIENTE_FISCAL_BLOQUEADO' : 'EMISSAO_COMPROVANTE_RECUSADA';
+      await deps.filaRepositorio.registrarFalhaComprovante?.({ solicitacaoId: item.id, erroCodigo: codigo });
+      await avisarFalhaComprovante(item, codigo, deps);
+      return { ok: false, status: 'necessita_intervencao', motivo: codigo };
+    }
+    autorizada = true;
+    await tratarSucessoEmissao(item, emissao, deps);
+    return { ok: true, status: 'emitida', chaveAcesso: emissao.chaveAcesso };
+  } catch {
+    // Após autorização, conservar a reserva para conciliação, sem nova transmissão.
+    const codigo = autorizada ? 'PERSISTENCIA_COMPROVANTE_PENDENTE' : 'EMISSAO_COMPROVANTE_FALHOU';
+    if (!autorizada) {
+      try { await deps.filaRepositorio.registrarFalhaComprovante?.({ solicitacaoId: item.id, erroCodigo: codigo }); } catch { /* A reserva emitindo impede reenvio. */ }
+    }
+    try { await avisarFalhaComprovante(item, codigo, deps); } catch { /* A notificação não libera a reserva. */ }
+    return { ok: false, status: 'necessita_intervencao', motivo: codigo };
+  }
+}
+
+async function avisarFalhaComprovante(item: ItemFilaComTentativas, codigo: string, deps: ProcessarItemFilaDeps): Promise<void> {
+  await deps.notificadorAlertas.notificarMedicoWhatsApp({
+    telefoneMedico: '', medicoId: item.medicoId, solicitacaoId: item.id,
+    nomePaciente: null, valorCentavos: item.valorServicoCentavos,
+    motivoErro: `${codigo}. Doutor(a), pode revisar os dados fiscais e orientar como prosseguir?`
+  });
 }
