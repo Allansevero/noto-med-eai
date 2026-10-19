@@ -13,6 +13,7 @@ import type { EnviarPdfDanfse } from '../src/whatsapp/enviar-pdf-danfse.js';
 import type { NotificadorAlertas } from '../src/worker/notificar-erro-medico.js';
 import { EvolutionApiClient } from '../src/io/evolution/evolution-api-client.js';
 import { processarItemFila } from '../src/worker/processar-item-fila.js';
+import * as danfse from '../src/fiscal/danfse/gerar-danfse-pdf.js';
 
 const borda = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), extrair: vi.fn() }));
 vi.mock('../src/io/postgres/pool.js', () => ({ pool: borda }));
@@ -158,4 +159,22 @@ it('mudança para produção depois de enfileirar é bloqueada no worker antes d
   await receber(); banco.ambiente = 'producao'; const deps = worker(), item = await deps.filaRepositorio.buscarETravarProximoItem('worker'); expect(item).not.toBeNull();
   expect(await processarItemFila(item!, deps)).toMatchObject({ ok: false, status: 'necessita_intervencao' });
   expect(notas).toEqual([]); expect(banco.emissoes[0].estado).toBe('bloqueada'); expect(transmitir).not.toHaveBeenCalled(); expect(perguntar).toHaveBeenCalledTimes(1);
+});
+
+it('indisponibilidade do PDF não apaga autorização SEFIN: comprovante guarda nota e XML sem PDF', async () => {
+  const gerarPdf = vi.spyOn(danfse, 'generateDanfsePdf').mockRejectedValue(Error('PDF indisponível'));
+  await receber(); const deps = worker(), item = await deps.filaRepositorio.buscarETravarProximoItem('worker'); expect(item).not.toBeNull();
+  expect(await processarItemFila(item!, deps)).toMatchObject({ ok: true, status: 'emitida' });
+  expect(transmitir).toHaveBeenCalledTimes(1); expect(gerarPdf).not.toHaveBeenCalled();
+  expect(notas).toHaveLength(1); expect(banco.emissoes[0]).toMatchObject({ estado: 'nota_gerada', nota_fiscal_id: notas[0].id });
+  expect(perguntar).not.toHaveBeenCalled();
+});
+
+it('emissão legada continua gerando PDF pela implementação real', async () => {
+  const gerarPdf = vi.spyOn(danfse, 'generateDanfsePdf');
+  await receber(); const deps = worker(), item = await deps.filaRepositorio.buscarETravarProximoItem('worker'); expect(item).not.toBeNull();
+  const legado = { ...item! }; delete legado.emissaoComprovante;
+  const resultado = await deps.emissorDps.emitir(legado);
+  expect(resultado).toMatchObject({ sucesso: true, pdfStoragePath: expect.stringContaining('data:application/pdf;base64,') });
+  expect(gerarPdf).toHaveBeenCalledTimes(1);
 });
