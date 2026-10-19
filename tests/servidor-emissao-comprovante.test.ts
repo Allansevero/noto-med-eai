@@ -68,7 +68,7 @@ function sqlServidor(sql: string, valores: any[], base?: { query: (s: string, p?
   }
   if (s.startsWith('insert into notas_fiscais')) {
     if (notas.some(n => n.solicitacao_id === valores[1])) throw Error('UNIQUE_NOTA_SOLICITACAO');
-    const nota = { id: 'nota-ficticia', solicitacao_id: valores[1], chave: valores[2] }; notas.push(nota); return resultado([nota]);
+    const nota = { id: 'nota-ficticia', solicitacao_id: valores[1], chave: valores[2], pdf_storage_path: valores[9] }; notas.push(nota); return resultado([nota]);
   }
   if (s.startsWith('update solicitacoes_nota set status') || s.startsWith('update medico_perfil_fiscal')) return resultado([], 1);
   if (s.includes('from medicos m join solicitacoes_nota')) return resultado([{ nome_completo: 'Clara Almeida Ficticia', crm: '12345/SC' }]);
@@ -166,6 +166,7 @@ it('indisponibilidade do PDF não apaga autorização SEFIN: comprovante guarda 
   await receber(); const deps = worker(), item = await deps.filaRepositorio.buscarETravarProximoItem('worker'); expect(item).not.toBeNull();
   expect(await processarItemFila(item!, deps)).toMatchObject({ ok: true, status: 'emitida' });
   expect(transmitir).toHaveBeenCalledTimes(1); expect(gerarPdf).not.toHaveBeenCalled();
+  expect(notas[0].pdf_storage_path).toBeNull();
   expect(notas).toHaveLength(1); expect(banco.emissoes[0]).toMatchObject({ estado: 'nota_gerada', nota_fiscal_id: notas[0].id });
   expect(perguntar).not.toHaveBeenCalled();
 });
