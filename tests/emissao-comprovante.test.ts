@@ -24,6 +24,7 @@ describe('emissão por comprovante no PostgreSQL', () => {
     expect(banco.solicitacoes[0].descricao).toContain('REFERENTE A CONSULTAS');
     expect(banco.emissoes[0]).toMatchObject({ auditoria_comprovante_id: 'auditoria-0', consulta_id_externo: 'consulta', estado: 'enfileirada', solicitacao_id: 'solicitacao-0', comprovante_chave: createHash('sha256').update(JSON.stringify([20000, '2026-10-19', 'Responsavel'])).digest('hex') });
     expect(banco.comandos.filter(c => c === 'begin')).toHaveLength(1);
+    expect(banco.comandos.some(c => c.includes('pg_advisory_xact_lock'))).toBe(true);
     expect(banco.comandos.at(-1)).toBe('commit');
   });
   it.each(['producao', null])('bloqueia ambiente %s sem solicitação', async ambiente => {
